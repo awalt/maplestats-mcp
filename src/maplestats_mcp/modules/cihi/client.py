@@ -35,6 +35,7 @@ from maplestats_mcp.shared.fr_typography import fr_or_en, lang_error, truncation
 from maplestats_mcp.shared.http import get_raw
 from maplestats_mcp.shared.limits import fit_to_budget
 from maplestats_mcp.shared.rate_limiter import get_limiter
+from maplestats_mcp.shared.xlsx_sheets import check_inflated_size
 
 _LIMITER = get_limiter(
     constants.RATE_LIMIT_SOURCE,
@@ -416,6 +417,7 @@ def _parse_workbook(body: bytes) -> dict[str, tuple[str, list[str], list[list[st
     # only this tool needs it, so server startup stays faster (2026-09-24).
     from openpyxl import load_workbook
 
+    check_inflated_size(body)
     workbook = load_workbook(io.BytesIO(body), read_only=True, data_only=True)
     tables: dict[str, tuple[str, list[str], list[list[str]]]] = {}
     for sheet in workbook.worksheets:

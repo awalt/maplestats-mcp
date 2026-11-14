@@ -1311,6 +1311,12 @@ def _sdmx_transformed(
     params = dict(parse_qsl(query))
     params = transform_params(params, request, ppys[0] if ppys else None, latest_n=latest_n)
     spec.url = f"{base}?{urlencode(params)}"
+    # Last day of end_period, as the tool keeps it (sdmx client `_end`): end_period=2024
+    # on a monthly series runs through 2024-12, not 2024-01.
+    window_end = None
+    if end:
+        end_first, end_ppy = parse_period(str(end))
+        window_end = (period_end(end_first, end_ppy) if end_ppy else end_first).isoformat()
     return _with_transform(
         spec,
         _plan(
@@ -1318,7 +1324,7 @@ def _sdmx_transformed(
             "sdmx",
             [(str(s.get("vector_id")), _computed(s)) for s in series],
             window_start=parse_period(str(start))[0].isoformat() if start else None,
-            window_end=parse_period(str(end))[0].isoformat() if end else None,
+            window_end=window_end,
             latest_n=latest_n,
         ),
     )

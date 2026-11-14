@@ -610,6 +610,21 @@ async def get_monthly_summary(
                 )
             return parsed
 
+        # A month found missing is remembered briefly (short TTL), so a range with a
+        # never-published month does not re-request it on every call.
+        missing_key = f"electricity:aeso:monthly-missing:{month:%Y-%m}"
+
+        async def not_remembered() -> bool:
+            raise LookupError(missing_key)
+
+        try:
+            await cached_fetch(
+                missing_key, constants.AESO_MONTHLY_MISSING_TTL_SECONDS, not_remembered
+            )
+            return None, True
+        except LookupError:
+            pass  # Not remembered as missing: ask AESO.
+
         try:
             return await cached_fetch(
                 f"electricity:aeso:monthly:{month:%Y-%m}",
@@ -617,6 +632,11 @@ async def get_monthly_summary(
                 fetch,
             )
         except NotFound:
+
+            async def remember() -> bool:
+                return True
+
+            await cached_fetch(missing_key, constants.AESO_MONTHLY_MISSING_TTL_SECONDS, remember)
             return None, False
 
     months: list[AlbertaMonth] = []

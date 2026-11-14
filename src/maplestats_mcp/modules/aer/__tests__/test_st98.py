@@ -337,3 +337,27 @@ async def test_a_workbook_without_figures_is_an_upstream_error(httpx_mock):
     _mock_page_and_workbook(httpx_mock, body=buffer.getvalue())
     with pytest.raises(UpstreamError, match="layout"):
         await client.list_st98_tables()
+
+
+def _zip_bomb_body() -> bytes:
+    import zipfile
+
+    from maplestats_mcp.shared.xlsx_sheets import XLSX_MAX_PART_BYTES
+
+    out = io.BytesIO()
+    with (
+        zipfile.ZipFile(io.BytesIO(_workbook())) as source,
+        zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as target,
+    ):
+        for item in source.infolist():
+            if item.filename != "xl/sharedStrings.xml":
+                target.writestr(item, source.read(item))
+        target.writestr("xl/sharedStrings.xml", b" " * (XLSX_MAX_PART_BYTES + 1))
+    return out.getvalue()
+
+
+def test_parse_workbook_refuses_an_oversized_part_before_loading():
+    from maplestats_mcp.shared.file_download import TooLarge
+
+    with pytest.raises(TooLarge, match="sharedStrings"):
+        st98.parse_workbook(_zip_bomb_body())

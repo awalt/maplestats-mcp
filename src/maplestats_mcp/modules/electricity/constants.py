@@ -83,3 +83,7 @@ AESO_MONTHLY_MAX_MONTHS = 24
 AESO_FIRST_DATE = "1999-01-01"
 AESO_TIMEZONE = "America/Edmonton"
 AESO_CACHE_TTL_CURRENT_SECONDS = 2 * 60
+# How long a month whose summary page is missing (404, or no readable table) is
+# remembered as missing, so a range holding a never-published month does not hit
+# AESO again on every call, while a late-posted month is still found in minutes.
+AESO_MONTHLY_MISSING_TTL_SECONDS = 5 * 60
