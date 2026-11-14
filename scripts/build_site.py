@@ -983,6 +983,7 @@ FAMILIES: dict[str, tuple[str, str]] = {
         "Déclarations d'effets indésirables de Canada Vigilance",
     ),
     "ircc/": ("Express Entry rounds", "Rondes d'invitations Entrée express"),
+    "ircc/backlog": ("Backlog percentages", "Pourcentages d'arriéré"),
     "ircc/monthly": ("Monthly IRCC Updates", "Mises à jour mensuelles d'IRCC"),
     "ircc/processing": ("Processing times", "Délais de traitement"),
     "ised/cipo": ("Trademarks (CIPO)", "Marques de commerce (OPIC)"),
