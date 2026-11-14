@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 from _smoke_common import skip_outage, verdict
 
 from maplestats_mcp.modules.statcan.delta import archive, client, realtime, scan_index
+from maplestats_mcp.modules.statcan.wds import client as wds_client
 from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
 
 SOURCE = "the StatCan Delta File archive"
@@ -125,6 +126,10 @@ async def main() -> int:
         except NotFound:
             print("OK: a table outside the release raises NotFound")
         ok &= realtime.list_real_time_tables().count == 19
+        # Checked 2026-11-14: no WDS metadata, but the full-table zip link is returned.
+        link = await wds_client.get_full_table_download_csv(16100118)
+        print(f"OK: bulk-only real-time table 16-10-0118 -> {link.download_url}")
+        ok &= link.download_url.endswith("16100118-eng.zip")
     except (UpstreamError, UpstreamUnavailable) as exc:
         skip_outage(SOURCE, exc)
 

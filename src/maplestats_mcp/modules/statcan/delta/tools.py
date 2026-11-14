@@ -172,7 +172,9 @@ async def statcan_delta_list_real_time_tables(
     release-date (vintage) dimension, published about a week later.
     Returns both product ids and titles in English and French; `query`
     filters by a word or a product id. Three of the 19 are listed by
-    StatCan but not served by WDS (flagged wds_available False). Read the
+    StatCan but have no WDS metadata or vector data (wds_available False);
+    their full-table CSV zips are still downloadable (bulk_csv_url, very
+    large, series ended 2024-08 and 2025-05). Read the
     cube itself with wds_get_cube_metadata, wds_get_data_from_cube_coord or
     wds_get_full_table_download.
     Keywords: real-time tables, vintage, revision history, data revisions,

@@ -167,7 +167,17 @@ class RealTimeTable(BaseModel):
     regular_title_en: str
     regular_title_fr: str | None = None
     wds_available: bool = Field(
-        description="False when WDS getCubeMetadata answered CUBE_NOT_AVAILABLE on 2026-10-02."
+        description="False when WDS getCubeMetadata answered CUBE_NOT_AVAILABLE on 2026-10-02. "
+        "That is the metadata and vector routes only: see bulk_csv_url."
+    )
+    bulk_csv_url: str | None = Field(
+        default=None,
+        description="Full-table CSV zip for a table WDS does not serve by metadata or vector "
+        "(WDS getFullTableDownloadCSV still returns this link). Null for the other tables: "
+        "use wds_get_full_table_download.",
+    )
+    last_reference_period: str | None = Field(
+        default=None, description="Last reference month in the bulk CSV, from its metadata file."
     )
     note: str | None = None
 

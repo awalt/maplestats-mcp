@@ -6,9 +6,16 @@ of its regular table. The list is the page
 https://www.statcan.gc.ca/en/developers/real-time-data-tables (Table 1),
 read on 2026-10-02; every title and product id below was checked against
 WDS `getCubeMetadata` the same day. Three of the 19 real-time ids
-(16100118, 16100119, 20100019) are listed on that page but WDS answered
-CUBE_NOT_AVAILABLE for them, so `wds_available` is False and their titles
-come from the page (English only). Six carry "inactive" in their WDS
+(16100118, 16100119, 20100019) are listed on that page but WDS
+getCubeMetadata and the vector routes answer CUBE_NOT_AVAILABLE (or no
+data) for them, so `wds_available` is False and their titles come from the
+page (English only). Checked 2026-11-14: WDS getFullTableDownloadCSV still
+answers SUCCESS for all three with https://www150.statcan.gc.ca/n1/tbl/csv/
+<id>-eng.zip, and those zips are real, complete downloads (122, 134 and
+270 MB; the CSVs inflate to 2.7, 3.0 and 5.7 GB), each with a `Release`
+column holding the vintage and one vector per vintage. Their metadata
+files say "CURRENT" and end at 2025-05 (16100118, 16100119) and 2024-08
+(20100019), so the data exist but the series stopped. Six carry "inactive" in their WDS
 title and end in 2025-12.
 
 StatCan's own real-time viewer service (/rtdat-oadtr-service/) is never
@@ -201,6 +208,13 @@ _TABLES: tuple[tuple[int, str, str | None, int, str, str | None, bool], ...] = (
 )
 
 
+# Last reference month in each bulk CSV's own metadata file, read 2026-11-14
+# through shared/remote_zip.py (the metadata member is about 3 KB).
+_BULK_LAST_PERIOD = {16100118: "2025-05", 16100119: "2025-05", 20100019: "2024-08"}
+BULK_ONLY_PRODUCT_IDS = frozenset(_BULK_LAST_PERIOD)
+_BULK_URL = "https://www150.statcan.gc.ca/n1/tbl/csv/{product_id}-eng.zip"
+
+
 def _table_number(product_id: int) -> str:
     text = str(product_id)
     return f"{text[:2]}-{text[2:4]}-{text[4:]}"
@@ -209,11 +223,17 @@ def _table_number(product_id: int) -> str:
 def _note(title: str, available: bool, lang: str) -> str | None:
     if not available:
         return say(
-            "Listed on StatCan's real-time page, but WDS getCubeMetadata answered "
-            "CUBE_NOT_AVAILABLE on 2026-10-02.",
-            "Figure sur la page des tableaux en temps réel de Statistique Canada, mais "
-            "getCubeMetadata de WDS a répondu CUBE_NOT_AVAILABLE le 2026-10-02 ; titre "
-            "disponible en anglais seulement.",
+            "Listed on StatCan's real-time page. WDS getCubeMetadata and the vector routes "
+            "do not serve it (CUBE_NOT_AVAILABLE, 2026-10-02 and 2026-11-14), but the "
+            "full-table CSV in bulk_csv_url does exist (checked 2026-11-14): a very large "
+            "zip with one row per vintage (Release column) and vector, which the series "
+            "stopped updating at last_reference_period.",
+            "Figure sur la page des tableaux en temps réel de Statistique Canada. Les "
+            "routes getCubeMetadata et vecteur de WDS ne le servent pas (CUBE_NOT_AVAILABLE, "
+            "2026-10-02 et 2026-11-14), mais le CSV du tableau complet de bulk_csv_url existe "
+            "(vérifié le 2026-11-14) : un très gros zip avec une ligne par version (colonne "
+            "Release) et par vecteur, dont la série a cessé d'être mise à jour à "
+            "last_reference_period ; titre disponible en anglais seulement.",
             lang,
         )
     if title.endswith(", inactive"):
@@ -239,6 +259,8 @@ def list_real_time_tables(query: str | None = None, lang: str = "en") -> RealTim
             regular_title_en=reg_en,
             regular_title_fr=reg_fr,
             wds_available=available,
+            bulk_csv_url=None if available else _BULK_URL.format(product_id=rt_id),
+            last_reference_period=_BULK_LAST_PERIOD.get(rt_id),
             note=_note(rt_en, available, lang),
         )
         for rt_id, rt_en, rt_fr, reg_id, reg_en, reg_fr, available in _TABLES
@@ -269,11 +291,19 @@ def list_real_time_tables(query: str | None = None, lang: str = "en") -> RealTim
                 lang,
             ),
             say(
-                "The three real-time ids with wds_available False are not served by WDS, so their "
-                "history cannot be fetched here.",
-                "Les trois tableaux en temps réel marqués wds_available False ne sont pas offerts "
-                "par WDS ; leur historique ne peut donc pas être obtenu ici, et leur titre n'existe "
-                "qu'en anglais.",
+                "The three real-time ids with wds_available False have no WDS metadata or vector "
+                "data, so wds_get_cube_metadata and the vector tools fail for them (wds_get_full_table_download "
+                "still returns their zip link); their history "
+                "is in the full-table CSV at bulk_csv_url (122 to 270 MB zipped, billions of "
+                "bytes unzipped, sorted by reference month with every vintage), which this server "
+                "does not read row by row. Download it and filter the Release column.",
+                "Les trois tableaux en temps réel marqués wds_available False n'ont ni métadonnées "
+                "ni données vectorielles dans WDS, donc wds_get_cube_metadata et les outils de "
+                "vecteurs échouent pour eux ; leur historique se trouve dans le CSV du tableau "
+                "complet à bulk_csv_url (122 à 270 Mo compressés, plusieurs Go décompressés, "
+                "trié par mois de référence avec toutes les versions), que ce serveur ne lit pas "
+                "ligne par ligne. Téléchargez-le et filtrez la colonne Release. Leur titre "
+                "n'existe qu'en anglais.",
                 lang,
             ),
         ],
