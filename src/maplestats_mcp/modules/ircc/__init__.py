@@ -9,6 +9,9 @@ Two sub-sources:
   behind the 12 "Monthly IRCC Updates" datasets on open.canada.ca
   (organization "cic"), checked live 2026-09-25. CKAN only lists them and
   none is DataStore-active, so the tables are read and summed here.
+- Backlog percentages (backlog/): the seven monthly tables (actual and projected share
+  of the inventory beyond service standards, January 2022 on) on IRCC's "Inventories
+  and backlogs" page, parsed from its HTML (no file or API), checked live 2026-11-14.
 - Processing times (processing/): the undocumented JSON files behind
   IRCC's "Check processing times" tool on canada.ca, checked live
   2026-11-03. Point-in-time estimates, not a series.
@@ -32,7 +35,9 @@ MODULE_DESCRIPTION = (
     "visas, study and work permits from inside or outside Canada, by country "
     "where they vary; Express Entry and other permanent residence programs; "
     "sponsorship; refugees; citizenship; PR cards), point-in-time estimates "
-    "IRCC replaces weekly or monthly. Other IRCC "
+    "IRCC replaces weekly or monthly. ircc_backlog_: monthly backlog percentages "
+    "(actual and projected) for Express Entry, family, citizenship, visitor visa, "
+    "study and work permit applications, from January 2022. Other IRCC "
     "datasets are reachable through the federal ckan_ tools filtered to "
     "organization:cic."
 )
@@ -51,7 +56,9 @@ MODULE_DESCRIPTION_FR = (
     "l'étranger, par pays lorsqu'ils varient; Entrée express et autres "
     "programmes de résidence permanente; parrainage; réfugiés; citoyenneté; "
     "cartes de RP), estimations ponctuelles qu'IRCC remplace chaque semaine "
-    "ou chaque mois. "
+    "ou chaque mois. ircc_backlog_ : pourcentages mensuels d'arriéré (réels et "
+    "projetés) pour Entrée express, la famille, la citoyenneté, les visas de visiteur, "
+    "les permis d'études et de travail, depuis janvier 2022. "
     "Les autres jeux de données d'IRCC sont accessibles via les outils "
     "fédéraux ckan_ filtrés sur organization:cic."
 )

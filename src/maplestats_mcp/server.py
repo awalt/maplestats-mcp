@@ -760,6 +760,7 @@ Sources, by tool-name prefix:
   hc_device_ (medical device licences), hc_vigilance_ (adverse reaction
   reports); ircc_ (Express Entry rounds), ircc_monthly_ (monthly
   immigration counts), ircc_processing_ (current processing times),
+  ircc_backlog_ (backlog percentages, actual and projected),
   jobbank_ (Job Bank wages by occupation and region, ESDC),
   cra_digital_economy_registry_, cra_charities_ (registered charities, directors),
   gc_infobase_ (federal spending, FTEs), disclosure_ (proactive disclosure:
