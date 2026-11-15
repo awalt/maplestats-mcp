@@ -278,6 +278,21 @@ async def test_download_link_for_a_known_table(httpx_mock):
     assert link.download_url.endswith("18100004-eng.zip")
 
 
+async def test_download_link_for_a_bulk_only_real_time_table(httpx_mock):
+    """Live 2026-11-14: 16100118 is in neither the inventory nor getCubeMetadata, yet
+    getFullTableDownloadCSV answers with a real zip (122 MB), so no inventory check."""
+    httpx_mock.add_response(
+        url=f"{BASE}getFullTableDownloadCSV/16100118/en",
+        json={
+            "status": "SUCCESS",
+            "object": "https://www150.statcan.gc.ca/n1/tbl/csv/16100118-eng.zip",
+        },
+    )
+    link = await client.get_full_table_download_csv(16100118)
+    assert link.download_url.endswith("16100118-eng.zip")
+    assert len(httpx_mock.get_requests()) == 1  # the link request only
+
+
 @pytest.mark.parametrize("fmt", ["csv", "sdmx"])
 async def test_download_link_failed_envelope_raises_instead_of_returning_its_text(httpx_mock, fmt):
     """A FAILED envelope's error text used to come back as the download URL."""

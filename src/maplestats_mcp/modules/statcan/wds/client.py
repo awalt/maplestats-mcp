@@ -1449,6 +1449,13 @@ async def get_changed_series_data_from_cube_pid_coord(
 async def _require_known_table(pid: int) -> None:
     """WDS hands out a download URL for any number, existing or not (confirmed
     live 2026-10-02: 99999999 gets a link that 404s), so check the inventory."""
+    # Lazy import: the delta module imports this one's schemas.
+    from maplestats_mcp.modules.statcan.delta.realtime import BULK_ONLY_PRODUCT_IDS
+
+    # Three real-time tables are absent from the inventory and from
+    # getCubeMetadata but their full-table zips exist (checked 2026-11-14).
+    if pid in BULK_ONLY_PRODUCT_IDS:
+        return
     inventory = await get_all_cubes_list(lite=True)
     if not any(c.product_id == pid for c in inventory.cubes):
         raise NotFound(

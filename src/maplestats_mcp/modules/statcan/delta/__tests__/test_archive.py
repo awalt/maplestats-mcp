@@ -704,6 +704,14 @@ def test_real_time_list_is_complete_and_consistent():
     unavailable = [t for t in result.tables if not t.wds_available]
     assert sorted(t.real_time_product_id for t in unavailable) == [16100118, 16100119, 20100019]
     assert all(t.real_time_title_fr is None and t.note for t in unavailable)
+    # The three have no WDS metadata, but their full-table CSV zips exist.
+    assert all(
+        t.bulk_csv_url
+        == f"https://www150.statcan.gc.ca/n1/tbl/csv/{t.real_time_product_id}-eng.zip"
+        and t.last_reference_period
+        for t in unavailable
+    )
+    assert all(t.bulk_csv_url is None for t in result.tables if t.wds_available)
     inactive = [t for t in result.tables if t.real_time_title_en.endswith(", inactive")]
     assert len(inactive) == 6
     assert all(t.note and "inactive" in t.note for t in inactive)
