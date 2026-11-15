@@ -366,6 +366,52 @@ def test_xlsx_whose_shared_strings_inflate_past_the_cap_is_refused_before_loadin
         tables.describe(body, "xlsx", None)
 
 
+def _with_member(body: bytes, name: str, data: bytes) -> bytes:
+    import io
+    import zipfile
+
+    out = io.BytesIO()
+    with (
+        zipfile.ZipFile(io.BytesIO(body)) as source,
+        zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as target,
+    ):
+        for item in source.infolist():
+            if item.filename != name:
+                target.writestr(item, source.read(item))
+        target.writestr(name, data)
+    return out.getvalue()
+
+
+def test_large_media_member_does_not_trip_the_per_part_cap():
+    # openpyxl never parses xl/media, so a 35 MB embedded image is not the
+    # "unpacks to ... XML" case; only the total cap applies to it.
+    from maplestats_mcp.shared.xlsx_sheets import XLSX_MAX_PART_BYTES
+
+    image = b"\0" * (XLSX_MAX_PART_BYTES + 3 * 1024 * 1024)
+    body = _with_member(_xlsx({"Data": CASELOAD}), "xl/media/image1.png", image)
+    assert len(body) < 1_000_000
+    assert tables.sheet_sizes(body, "xlsx") == [("Data", len(CASELOAD), 4)]
+
+
+def test_per_part_cap_covers_styles_workbook_and_theme():
+    from maplestats_mcp.shared.file_download import TooLarge
+    from maplestats_mcp.shared.xlsx_sheets import XLSX_MAX_PART_BYTES, check_inflated_size
+
+    big = b" " * (XLSX_MAX_PART_BYTES + 1)
+    for name in ("xl/styles.xml", "xl/workbook.xml", "xl/theme/theme1.xml"):
+        with pytest.raises(TooLarge, match=name):
+            check_inflated_size(_with_member(_xlsx({"Data": CASELOAD}), name, big))
+
+
+def test_total_cap_still_covers_media():
+    from maplestats_mcp.shared.file_download import TooLarge
+    from maplestats_mcp.shared.xlsx_sheets import XLSX_MAX_INFLATED_BYTES, check_inflated_size
+
+    image = b"\0" * (XLSX_MAX_INFLATED_BYTES + 1)
+    with pytest.raises(TooLarge):
+        check_inflated_size(_with_member(_xlsx({"Data": CASELOAD}), "xl/media/image1.png", image))
+
+
 def test_ordinary_workbook_with_shared_strings_still_opens():
     body = _xlsx({"Data": CASELOAD * 2000})
     assert tables.sheet_sizes(body, "xlsx") == [("Data", 10000, 4)]

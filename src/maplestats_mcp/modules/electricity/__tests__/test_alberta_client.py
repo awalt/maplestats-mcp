@@ -287,8 +287,10 @@ async def test_monthly_summary_does_not_cache_a_month_that_is_not_there_yet(
     httpx_mock.add_response(url=url, **first_answer)
     first = await alberta_client.get_monthly_summary("2026-10")
     assert first.months == [] and first.months_not_published == ["2026-10"]
-    # AESO posts the page minutes later: the next call must ask again instead of
-    # reading a cached "not published" for the 6 h archive TTL.
+    # AESO posts the page minutes later; the short negative-cache window has passed
+    # by then, so the next call asks again instead of reading a "not published"
+    # kept for the 6 h archive TTL.
+    cache_module.forget("electricity:aeso:monthly-missing:2026-10")
     httpx_mock.add_response(url=url, text=MONTHLY_2026)
     second = await alberta_client.get_monthly_summary("2026-10")
     assert [m.month for m in second.months] == ["2026-10"]
@@ -296,6 +298,30 @@ async def test_monthly_summary_does_not_cache_a_month_that_is_not_there_yet(
     # A month that was read is cached as before.
     third = await alberta_client.get_monthly_summary("2026-10")
     assert third.provenance.cached is True
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {"status_code": 404},
+        {"text": "<html><body>Pool Monthly Summary is being prepared.</body></html>"},
+    ],
+    ids=["page_not_posted", "page_without_the_table"],
+)
+async def test_monthly_summary_remembers_a_missing_month_briefly(httpx_mock, monkeypatch, answer):
+    monkeypatch.setattr(alberta_client, "alberta_today", lambda: date(2026, 11, 10))
+    url = re.compile(r".*PMS_10012026\.html")
+    httpx_mock.add_response(url=url, **answer)
+    for _ in range(3):
+        result = await alberta_client.get_monthly_summary("2026-10")
+        assert result.months_not_published == ["2026-10"]
+    # One request for three calls; pytest-httpx fails on a second unmatched request.
+    assert len(httpx_mock.get_requests(url=url)) == 1
+    # Once the negative entry expires the month is requested again.
+    cache_module.forget("electricity:aeso:monthly-missing:2026-10")
+    httpx_mock.add_response(url=url, text=MONTHLY_2026)
+    later = await alberta_client.get_monthly_summary("2026-10")
+    assert [m.month for m in later.months] == ["2026-10"]
 
 
 async def test_monthly_summary_rejects_bad_months():

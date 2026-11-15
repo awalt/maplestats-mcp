@@ -106,6 +106,28 @@ async def test_reference_range_and_sdmx_requests_start_earlier():
     assert "FREQUENCY_MONTHS = 12" in spec.prepare["python"].body
 
 
+@pytest.mark.parametrize("end", ["2024", "2024-03", "2024-Q2", "2024-03-15"])
+async def test_sdmx_script_window_end_matches_the_tools_window(end):
+    from maplestats_mcp.modules.statcan.sdmx.client import _end
+
+    args = {
+        "product_id": 18100004,
+        "key": "2.2",
+        "start_period": "2023-01",
+        "end_period": end,
+        "transform": "yoy_pct_change",
+    }
+    result = {"series": [{"vector_id": 41690973, "transformed": _computed("yoy_pct_change")}]}
+    spec = await builders._sdmx_data(args, result)
+    tool_end = _end(end)
+    assert tool_end is not None
+    # The tool keeps the whole last period (end_period=2024 runs through 2024-12), so
+    # the script must stop on the same day, not on the period's first day.
+    assert f"WINDOW_END = date.fromisoformat('{tool_end.isoformat()}')" in (
+        spec.prepare["python"].body
+    )
+
+
 async def test_valet_script_uses_the_window_the_tool_returned():
     args = {"series_names": ["V41690973"], "recent": 3, "transform": "yoy_pct_change"}
     result = {

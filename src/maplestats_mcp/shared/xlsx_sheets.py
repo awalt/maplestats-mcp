@@ -37,6 +37,8 @@ SUSPICIOUS_SHEET_CELLS = 10_000_000
 # numbers, run to a few MB, and a whole 20-40 MB workbook passes.
 XLSX_MAX_INFLATED_BYTES = 400 * 1024 * 1024
 XLSX_MAX_PART_BYTES = 32 * 1024 * 1024
+# The members openpyxl parses whole inside load_workbook (plus xl/theme/*).
+_WHOLE_PARTS = frozenset({"xl/sharedStrings.xml", "xl/styles.xml", "xl/workbook.xml"})
 
 
 def cell_text(value: Any) -> str:
@@ -77,9 +79,10 @@ def check_inflated_size(body: bytes) -> None:
     except zipfile.BadZipFile:
         return  # Not a ZIP; openpyxl raises its own error for that.
     total = sum(m.file_size for m in members)
-    # Worksheets stream row by row under the deadline, so only the parts loaded
-    # whole get the tight per-member cap.
-    whole = [m for m in members if not m.filename.startswith("xl/worksheets/")]
+    # Worksheets stream row by row under the deadline, and media, embeddings and
+    # pivot caches are never parsed, so only the parts openpyxl loads whole get
+    # the tight per-member cap. The total cap still covers every member.
+    whole = [m for m in members if m.filename in _WHOLE_PARTS or m.filename.startswith("xl/theme/")]
     biggest = max(whole, key=lambda m: m.file_size, default=None)
     if total > XLSX_MAX_INFLATED_BYTES or (
         biggest is not None and biggest.file_size > XLSX_MAX_PART_BYTES

@@ -36,6 +36,7 @@ from typing import Any
 
 from maplestats_mcp.modules.aer import constants
 from maplestats_mcp.shared.executor import check_deadline
+from maplestats_mcp.shared.xlsx_sheets import check_inflated_size
 
 _TITLE = re.compile(r"^\s*(Figure|Table)\s+(\d+)\b", re.IGNORECASE)
 _NUMBER = re.compile(r"^(-?[\d,]*\.?\d+)\s*([a-z]{0,2})$")
@@ -388,6 +389,8 @@ def parse_workbook(body: bytes) -> list[ParsedBlock]:
     """Every Figure and Table block of an ST98 executive-summary workbook."""
     from openpyxl import load_workbook
 
+    # Declared-size guard before anything inflates the ZIP (slim_styles reads every part).
+    check_inflated_size(body)
     spans = merged_ranges(body)
     workbook = load_workbook(io.BytesIO(slim_styles(body)), read_only=True, data_only=True)
     try:

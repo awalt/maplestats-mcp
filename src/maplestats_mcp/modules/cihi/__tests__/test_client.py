@@ -303,3 +303,23 @@ async def test_data_file_declared_over_the_cap_is_refused_unread(httpx_mock, mon
     httpx_mock.add_response(url=_EN_FILE, content=b"x" * 20_000)
     with pytest.raises(UpstreamError, match="is 20,000 bytes"):
         await client.get_indicator_data(_SLUG)
+
+
+def test_parse_workbook_refuses_an_oversized_part_before_loading():
+    import zipfile
+
+    from maplestats_mcp.shared.file_download import TooLarge
+    from maplestats_mcp.shared.xlsx_sheets import XLSX_MAX_PART_BYTES
+
+    wb = Workbook()
+    wb.create_sheet("Table 1")
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    out = io.BytesIO()
+    with zipfile.ZipFile(buffer) as source, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as t:
+        for item in source.infolist():
+            if item.filename != "xl/sharedStrings.xml":
+                t.writestr(item, source.read(item))
+        t.writestr("xl/sharedStrings.xml", b" " * (XLSX_MAX_PART_BYTES + 1))
+    with pytest.raises(TooLarge, match="sharedStrings"):
+        client._parse_workbook(out.getvalue())
