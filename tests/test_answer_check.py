@@ -908,3 +908,20 @@ async def test_a_year_of_a_daily_rate_matches_its_average(monkeypatch):
         question, {"value": 1.50, "period": "2025", "boc_series": "FXUSDCAD"}
     )
     assert problems == [(0, "value")]
+
+
+def test_a_value_in_thousands_from_the_newer_period_names_both_mistakes():
+    """Live 2026-11-15: Alberta employment cited as 2660 persons for 2026-09 is the
+    2026-10 value (2,659.9 thousand); it was reported only as a wrong value."""
+    figure = CitedFigure(value=2660, unit="persons")
+    problems = client._value_problems(
+        0, figure, 2684.2, 1000.0, "thousands", "2026-09", ("2026-10", 2659.9), "en"
+    )
+    assert [p.check for p in problems] == ["period"]
+    assert "2026-10" in problems[0].problem and "2,659,900" in problems[0].problem
+    # In thousands for the right period it is still a scale problem.
+    figure = CitedFigure(value=2684.2, unit="persons")
+    problems = client._value_problems(
+        0, figure, 2684.2, 1000.0, "thousands", "2026-09", ("2026-10", 2659.9), "en"
+    )
+    assert [p.check for p in problems] == ["scale"]
