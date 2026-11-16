@@ -781,6 +781,16 @@ async def test_list_metropolitan_areas_filters_by_name_and_province(httpx_mock):
         await client.list_metropolitan_areas(province_id="99")
 
 
+async def test_name_search_cites_the_province_page_it_matched(httpx_mock):
+    """Issue #263: a name search reads every province; the result must cite the page the
+    match came from, or reproduce_code falls back to whichever request finished last."""
+    _mock_geographies(httpx_mock)
+    one = await client.list_metropolitan_areas(name="St. John's")
+    assert one.provenance.url.endswith("/Navigation/MetsByProvince/10")
+    everywhere = await client.list_metropolitan_areas()
+    assert everywhere.provenance.url.endswith("/Navigation/MetsByProvince/{province_id}")
+
+
 async def test_cma_alias_and_name_resolve_to_hmip_type_and_id(httpx_mock):
     """Live 2026-11-03: HMIP answers geography_type "CMA" with HTTP 500 (an unknown name
     becomes enum value 0); "MetropolitanMajorArea" with Toronto's 2270 resolves."""
