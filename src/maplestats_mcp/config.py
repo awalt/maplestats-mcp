@@ -128,6 +128,17 @@ def get_usage_stats_enabled() -> bool:
     return raw not in {"0", "false", "no", "off"}
 
 
+def get_internal_token() -> str | None:
+    """Secret that marks the maintainer's own calls in the usage counts (MAPLE_INTERNAL_TOKEN).
+
+    A client that sends it in an `X-Maple-Internal` header is counted under the
+    label `internal`, so /stats can be read without it. The token is compared and
+    never stored or logged. Unset or blank labels nothing internal.
+    """
+    raw = os.environ.get("MAPLE_INTERNAL_TOKEN", "").strip()
+    return raw or None
+
+
 def get_usage_stats_file() -> Path | None:
     """JSON file the /stats counts are kept in across restarts (MAPLE_USAGE_STATS_FILE).
 
