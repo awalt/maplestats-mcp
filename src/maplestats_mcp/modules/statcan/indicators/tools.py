@@ -24,7 +24,8 @@ async def statcan_indicators_get_indicators(
     """Get current StatCan indicators (population, CPI, GDP, trade, etc.) with growth rates.
 
     Use for: quick current-value lookups for named indicators (e.g.
-    "population", "consumer price index", "GDP", "unemployment rate")
+    "population", "consumer price index", "GDP", "unemployment rate",
+    the Labour Force Survey headline)
     -- the same feeds that power My StatCan, statcan.gc.ca's home
     page, and The Daily's own indicator widgets. dataset="economic"
     is a curated subset of major economic indicators; "homepage" is
@@ -35,11 +36,12 @@ async def statcan_indicators_get_indicators(
     to one geography using the feed's own numbering: 0 Canada, 1 NL,
     2 PEI, 3 NS, 4 NB, 5 QC, 6 ON, 7 MB, 8 SK, 9 AB, 10 BC, 11 YT,
     12 NT, 13 NU; SGC codes (48), "AB" and "Alberta" are mapped. Keywords: StatCan, indicator, current value, latest
-    statistics, growth rate, population, CPI, GDP, unemployment.
-    Mots-clés : Statistique Canada, indicateur, valeur actuelle,
+    statistics, growth rate, population, CPI, GDP, unemployment,
+    headline, LFS, Labour Force Survey, employment.
+    Mots-clés : Statistique Canada, indicateur, valeur actuelle, chiffre actuel,
     dernières statistiques, taux de croissance, population, IPC, PIB,
     taux de chômage, emploi, inflation, indice des prix à la
-    consommation.
+    consommation, EPA, Enquête sur la population active.
     """
     use_lang(lang)
     return await client.get_indicators(dataset, query, geo_code=geo_code, lang=lang, limit=limit)
