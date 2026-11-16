@@ -143,6 +143,30 @@ async def test_layer_level_item_downloads_use_bare_id_and_its_layer(httpx_mock):
     )
 
 
+async def test_kamloops_photo_grid_does_not_publish_dead_exports(httpx_mock):
+    """Live 2026-11-16: all four generated exports for layer 33 returned 404."""
+    portal = "kamloops"
+    item_id = "7fc821f079f0412d8be217bce854ecc2"
+    base = f"https://{constants.PORTALS[portal].domain}/api/search/v1/collections/dataset"
+    feature = {
+        "id": f"{item_id}_33",
+        "type": "Feature",
+        "geometry": None,
+        "properties": {
+            "id": f"{item_id}_33",
+            "title": "Photo Grid",
+            "type": "Feature Layer",
+            "url": "https://maps.kamloops.ca/arcgis/rest/services/"
+            "OpenData/OpenDataAdminCad/MapServer/33",
+        },
+    }
+    httpx_mock.add_response(url=f"{base}/items/{item_id}", json=feature)
+    detail = await client.get_dataset(portal, item_id)
+    assert detail.download_urls == []
+    assert "HTTP 404" in (detail.provenance.limits or "")
+    assert detail.service_url is not None and detail.service_url.endswith("/33")
+
+
 async def test_query_feature_layer_returns_attributes(httpx_mock):
     httpx_mock.add_response(
         url=f"{_COLLECTION_URL}/items/14cca5b087f74d2d9eadc018c261d1b3",
