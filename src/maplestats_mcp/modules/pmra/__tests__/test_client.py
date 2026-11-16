@@ -110,7 +110,7 @@ def test_product_extract_accepts_added_columns_by_name():
     import csv
     import io
 
-    raw = list(csv.reader(io.StringIO((_PRODUCT_HEADER + _ROUNDUP))))
+    raw = list(csv.reader(io.StringIO(_PRODUCT_HEADER + _ROUNDUP)))
     headers, row = raw
     headers.insert(3, "New regulatory field")
     row.insert(3, "test-only value")
