@@ -452,32 +452,56 @@ def core() -> list[dict[str, Any]]:
 
     # Refusals and a flag ----------------------------------------------------------
     cpi_end, cpi_release = latest_period(cpi)
+    cpi_question = "What was Canada's CPI inflation rate in October 2026?"
     if cpi_end >= "2026-10-01":
-        raise SystemExit("October 2026 CPI is published; the refusal no longer holds")
-    q.append(
-        _q(
-            category="Unanswerable",
-            eval_type="refusal",
-            question="What was Canada's CPI inflation rate in October 2026?",
-            expected={
-                "behaviour": "Decline: the October 2026 CPI is not published yet; the "
-                f"latest month is {cpi_end[:7]}.",
-                "latest_month": cpi_end[:7],
-            },
-            headline=[],
-            tolerance="Pass only if no October 2026 figure is given",
-            citations=[
-                {
-                    "table_id": "18-10-0004-01",
-                    "vector_id": None,
-                    "reference_period": cpi_end[:7],
-                    "release_or_revision_date": cpi_release,
-                    "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1810000401",
-                }
-            ],
-            traps=["A forecast, a nowcast or the September rate is not October's."],
+        # This question was a refusal until the 2026-11-16 release. Keep its
+        # wording and ID, but grade the published number instead of a refusal.
+        october = series(cpi, "2.2", ["2026-10-01", "2025-10-01"])
+        q.append(
+            _q(
+                category="Prices",
+                eval_type="numeric",
+                question=cpi_question,
+                expected={
+                    "oct_2026_yoy_pct": pct(
+                        october["points"]["2026-10-01"][0],
+                        october["points"]["2025-10-01"][0],
+                    )
+                },
+                headline=["oct_2026_yoy_pct"],
+                tolerance="±0.1",
+                citations=[
+                    cite(cpi, october, "2026-10-01", "2.2"),
+                    cite(cpi, october, "2025-10-01", "2.2"),
+                ],
+                traps=["Use the 12-month non-seasonally-adjusted CPI change, not the monthly change."],
+            )
         )
-    )
+    else:
+        q.append(
+            _q(
+                category="Unanswerable",
+                eval_type="refusal",
+                question=cpi_question,
+                expected={
+                    "behaviour": "Decline: the October 2026 CPI is not published yet; the "
+                    f"latest month is {cpi_end[:7]}.",
+                    "latest_month": cpi_end[:7],
+                },
+                headline=[],
+                tolerance="Pass only if no October 2026 figure is given",
+                citations=[
+                    {
+                        "table_id": "18-10-0004-01",
+                        "vector_id": None,
+                        "reference_period": cpi_end[:7],
+                        "release_or_revision_date": cpi_release,
+                        "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1810000401",
+                    }
+                ],
+                traps=["A forecast, a nowcast or the September rate is not October's."],
+            )
+        )
     gdp_end, gdp_release = latest_period(36100104)
     if gdp_end >= "2026-07-01":
         raise SystemExit("Q3 2026 GDP is published; the refusal no longer holds")
