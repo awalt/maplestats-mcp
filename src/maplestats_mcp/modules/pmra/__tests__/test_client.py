@@ -105,6 +105,44 @@ def test_extract_parsing_and_layout_check():
     assert client.base_chemical("GLYPHOSATE (PRESENT AS POTASSIUM SALT)") == "glyphosate"
 
 
+def test_product_extract_accepts_added_columns_by_name():
+    """New source columns can appear anywhere without shifting known fields."""
+    import csv
+    import io
+
+    raw = list(csv.reader(io.StringIO((_PRODUCT_HEADER + _ROUNDUP))))
+    headers, row = raw
+    headers.insert(3, "New regulatory field")
+    row.insert(3, "test-only value")
+    headers.append("Second new field")
+    row.append("other value")
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(headers)
+    writer.writerow(row)
+    parsed, skipped = client.parse_extract(out.getvalue().encode("cp1252"), 16, "product")
+    assert skipped == 0
+    assert parsed[0][0] == "31153"
+    assert parsed[0][3] == "Full Registration"
+    assert parsed[0][15] == "Current"
+    assert parsed[0][8].startswith("GLYPHOSATE")
+
+
+def test_product_extract_rejects_unknown_column_layout():
+    """Do not silently use incorrect positions when known headers change."""
+    import csv
+    import io
+
+    rows = list(csv.reader(io.StringIO(_PRODUCT_HEADER + _ROUNDUP)))
+    rows[0][8] = "Unknown active ingredient column"
+    rows[0].extend(["Unexpected A", "Unexpected B"])
+    rows[1].extend(["extra", "extra"])
+    output = io.StringIO()
+    csv.writer(output).writerows(rows)
+    with pytest.raises(UpstreamError, match="cannot be mapped"):
+        client.parse_extract(output.getvalue().encode("cp1252"), 16, "product")
+
+
 async def test_skipped_rows_are_reported(httpx_mock):
     short_row = "99999,SHORT ROW,Current\r\n"
     httpx_mock.add_response(url=f"{_BASE}product", content=_csv(_ROUNDUP, short_row, pad=True))
