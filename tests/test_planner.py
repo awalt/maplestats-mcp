@@ -397,3 +397,20 @@ async def test_plan_query_reads_a_bounded_question(monkeypatch):
     plan = await tools.plan_query("rents in Calgary " * 100_000)
     assert len(seen[0]) == tools.MAX_QUESTION_CHARS
     assert plan.topics
+
+
+def _topic_tools(question: str) -> list[str]:
+    return [step.tool for topic in client.plan(question).topics for step in topic.steps]
+
+
+def test_one_citys_tools_stay_out_of_a_plan_for_other_places():
+    """Issue #265: an Edmonton and Calgary rent question was given Toronto's tools,
+    and an Ottawa restaurant question started with Toronto's DineSafe."""
+    rents = _topic_tools("How have rents moved in Edmonton and Calgary since 2020?")
+    assert not [tool for tool in rents if tool.startswith("toronto_")]
+    assert "toronto_search_dinesafe" not in _topic_tools("restaurant inspections in Ottawa")
+    assert "ets_get_service_alerts" not in _topic_tools("transit alerts in Calgary")
+    # The city, its province, or no place at all keep them.
+    assert "ets_get_service_alerts" in _topic_tools("transit alerts in Edmonton")
+    assert "toronto_summarize_short_term_rentals" in _topic_tools("short-term rentals in Ontario")
+    assert "toronto_summarize_short_term_rentals" in _topic_tools("short-term rentals")
