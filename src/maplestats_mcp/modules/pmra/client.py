@@ -121,17 +121,57 @@ def parse_extract(
     """
     text = body.decode("cp1252", errors="replace").lstrip("﻿")
     rows = list(csv.reader(io.StringIO(text)))
-    if not rows or len(rows[0]) != columns:
-        found = len(rows[0]) if rows else 0
+    header = rows[0] if rows else []
+    # The product extract gained two additional columns in November 2026.
+    # Project by the original field names, not by their positions: inserting
+    # fields before Current / Historical must not silently corrupt status,
+    # ingredient, registrant or other values. Leave other extract types strict.
+    product_fields = (
+        "Registration number",
+        "Product name - English",
+        "Product name - French",
+        "Registration Status",
+        "Expiry date",
+        "Marketing type",
+        "Date first registered",
+        "Exclusive period start date",
+        "Active ingredients - English",
+        "Active ingredients - French",
+        "Product Type",
+        "Registrant name",
+        "Use Site Category",
+        "Sites of Use",
+        "Pests",
+        "Current / Historical",
+    )
+    projection = list(range(columns))
+    if what == "product" and len(header) > columns:
+        positions = {_fold(name): i for i, name in enumerate(header)}
+        if all(_fold(name) in positions for name in product_fields):
+            projection = [positions[_fold(name)] for name in product_fields]
+        else:
+            _raise(
+                UpstreamError,
+                "pmra: new product columns cannot be mapped to the 16 known fields; "
+                f"header: {header!r}",
+                "pmra : les nouvelles colonnes product ne correspondent pas aux 16 "
+                f"champs connus ; en-tête : {header!r}",
+                lang,
+            )
+    elif len(header) != columns:
         _raise(
             UpstreamError,
-            f"pmra: the {what} extract has {found} columns, expected "
-            f"{columns}; its layout changed.",
-            f"pmra : l'extrait {what} a {found} colonnes au lieu de {columns} ; sa structure "
-            "a changé.",
+            f"pmra: the {what} extract has {len(header)} columns, expected "
+            f"{columns}; its layout changed. Header: {header!r}",
+            f"pmra : l'extrait {what} a {len(header)} colonnes au lieu de {columns} ; "
+            f"sa structure a changé. En-tête : {header!r}",
             lang,
         )
-    kept = [[_clean(cell) for cell in row] for row in rows[1:] if len(row) == columns]
+    kept = [
+        [_clean(row[i]) for i in projection]
+        for row in rows[1:]
+        if len(row) == len(header)
+    ]
     return kept, len(rows) - 1 - len(kept)
 
 
