@@ -259,6 +259,21 @@ async def _download_links(
     # it wants the bare item id and the layer's own id, which is not always 0
     # (Cochrane's "Parks" is layer 18 and 404s with layers=0).
     download_id, _, suffix = canonical_id.partition("_")
+    # Kamloops' Photo Grid item (MapServer layer 33) advertises four
+    # exports, but all four generated URLs answered 404 on 2026-11-16,
+    # including after a retry. Do not hand out known-dead links.
+    # Feature-layer queries remain supported through the service URL.
+    if (
+        config.domain == "mydata-kamloops.opendata.arcgis.com"
+        and canonical_id.partition("_")[0] == "7fc821f079f0412d8be217bce854ecc2"
+    ):
+        return [], pick(
+            lang,
+            "This Kamloops Photo Grid layer advertises export formats whose URLs "
+            "return HTTP 404; query it with arcgis_hub_query_feature_layer instead.",
+            "Les liens d'exportation annoncés pour la couche Photo Grid de Kamloops "
+            "renvoient HTTP 404 ; interrogez-la avec arcgis_hub_query_feature_layer.",
+        )
     kind = item_kind(item_type, service_url)
     if kind == "file":
         return [DownloadLink(format=file_format(item_type), url=item_data_url(download_id))], None
