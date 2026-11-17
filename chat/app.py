@@ -26,6 +26,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from anthropic import AsyncAnthropic
 from fastmcp import Client
@@ -52,6 +53,21 @@ MODEL = os.environ.get("CHAT_MODEL", "claude-haiku-5-5")
 API_KEY = os.environ.get("CHAT_API_KEY", "")
 BASE_URL = os.environ.get("CHAT_BASE_URL", "")
 MCP_URL = os.environ.get("CHAT_MCP_URL", "https://mcp.maplestats.danielstats.io/mcp")
+
+
+def labelled_url(url: str) -> str:
+    """`url` with `?client=maplestats-chat`, so the server's /stats counts the demo's calls as `chat-demo`.
+
+    Anthropic's MCP connector announces its own name and takes no custom headers, so
+    the label goes in the URL; the server maps it to a fixed label and stores nothing else.
+    """
+    parts = urlsplit(url)
+    query = [(k, v) for k, v in parse_qsl(parts.query) if k != "client"]
+    query.append(("client", "maplestats-chat"))
+    return urlunsplit(parts._replace(query=urlencode(query)))
+
+
+MCP_CALL_URL = labelled_url(MCP_URL)
 EFFORT = os.environ.get("CHAT_EFFORT", "medium")
 
 # Limits protect the key's budget: this endpoint is public and every call costs money.
@@ -352,7 +368,9 @@ async def ask_anthropic(messages: list[dict[str, str]]) -> dict[str, Any]:
                     betas=["mcp-client-2025-11-20"],
                     system=SYSTEM_PROMPT,
                     output_config={"effort": EFFORT},
-                    mcp_servers=[{"type": "url", "url": MCP_URL, "name": "maplestats"}],
+                    mcp_servers=[
+                        {"type": "url", "url": MCP_CALL_URL, "name": "maplestats"}
+                    ],
                     tools=[{"type": "mcp_toolset", "mcp_server_name": "maplestats"}],
                     messages=conversation,
                 )
@@ -444,7 +462,7 @@ async def ask_openai_compatible(messages: list[dict[str, str]]) -> dict[str, Any
         # The OpenAI client owns an HTTP connection pool, so close it when the request ends.
         async with (
             AsyncOpenAI(api_key=API_KEY, base_url=BASE_URL or None) as client,
-            Client(MCP_URL) as mcp,
+            Client(MCP_CALL_URL) as mcp,
         ):
             # The server exposes three tools and they do not change per request.
             tools = await load_openai_tools(mcp)
