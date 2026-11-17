@@ -30,6 +30,7 @@ from maplestats_mcp.modules.elections_provincial.common import (
     fetch_bytes,
     finish_shares,
 )
+from maplestats_mcp.shared import csv_files
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.errors import UpstreamError
 from maplestats_mcp.shared.executor import run_parse
@@ -55,12 +56,9 @@ def file_url(year: str) -> str:
 
 
 def _decode(body: bytes) -> str:
-    try:
-        return body.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        # The by-voting-area file is Windows-1252; its byte order mark comes through as
-        # three odd characters that would corrupt the first header name.
-        return body.decode("cp1252").removeprefix("ï»¿")
+    # The by-voting-area file is Windows-1252; its byte order mark comes through as
+    # three odd characters that would corrupt the first header name.
+    return csv_files.decode(body).removeprefix("ï»¿")
 
 
 def _count(text: str) -> int:

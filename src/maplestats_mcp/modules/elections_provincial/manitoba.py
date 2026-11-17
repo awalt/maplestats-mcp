@@ -32,7 +32,6 @@ one in 2019) the voting-area file itself differs, so responses give both sums. C
 
 from __future__ import annotations
 
-import io
 import re
 import unicodedata
 from collections.abc import Iterator
@@ -52,6 +51,7 @@ from maplestats_mcp.shared.errors import UpstreamError
 from maplestats_mcp.shared.executor import run_parse
 from maplestats_mcp.shared.fr_typography import call_error
 from maplestats_mcp.shared.rate_limiter import get_limiter
+from maplestats_mcp.shared.xlsx_sheets import open_workbook
 
 _LIMITER = get_limiter(
     constants.MB_RATE_LIMIT_SOURCE,
@@ -178,10 +178,7 @@ def _sheets(body: bytes) -> Iterator[tuple[str, list[list[object]]]]:
     The 1999 to 2007 summaries of results are .xlsx workbooks saved with an .xls name.
     """
     if body[:2] == b"PK":
-        # openpyxl takes ~0.7 s to import, so it loads on first use.
-        from openpyxl import load_workbook
-
-        workbook = load_workbook(io.BytesIO(body), read_only=True, data_only=True)
+        workbook = open_workbook(body)
         try:
             for sheet in workbook:
                 yield sheet.title, [list(row) for row in sheet.iter_rows(values_only=True)]

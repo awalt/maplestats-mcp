@@ -31,6 +31,7 @@ from typing import Any
 from defusedxml.ElementTree import iterparse
 
 from maplestats_mcp.shared.executor import check_deadline
+from maplestats_mcp.shared.xlsx_sheets import open_workbook
 
 _ESCAPE = re.compile(r"_x([0-9A-Fa-f]{4})_")
 _SPACES = re.compile(r"\s+")
@@ -128,9 +129,7 @@ def _xlsx_cell(value: Any) -> Cell:
 
 
 def xlsx_sheets(body: bytes) -> list[str]:
-    from openpyxl import load_workbook
-
-    workbook = load_workbook(io.BytesIO(body), read_only=True, data_only=True)
+    workbook = open_workbook(body)
     try:
         return list(workbook.sheetnames)
     finally:
@@ -146,9 +145,7 @@ def xlsx_records(body: bytes, sheet: str) -> Iterator[dict[str, Cell]]:
     ('Off-Peak price \\n(¢ per kWh)'); a blank or repeated header becomes
     'column N'. Rows with no value at all are skipped.
     """
-    from openpyxl import load_workbook
-
-    workbook = load_workbook(io.BytesIO(body), read_only=True, data_only=True)
+    workbook = open_workbook(body)
     try:
         rows = workbook[sheet].iter_rows(values_only=True)
         header: list[str] | None = None

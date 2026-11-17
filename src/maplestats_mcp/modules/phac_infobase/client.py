@@ -288,11 +288,17 @@ async def _get(url: str, lang: str = "en", max_bytes: int | None = None) -> _Hop
 
 def _decode(body: bytes, encoding: str | None) -> tuple[str, str]:
     if encoding:
-        return body.decode(encoding), encoding
+        try:
+            return body.decode(encoding), encoding
+        except UnicodeDecodeError:
+            pass  # a stray byte must not lose the file: read it as the fallbacks below do
     try:
         text = body.decode("utf-8-sig")
     except UnicodeDecodeError:
-        return body.decode("cp1252"), "cp1252"
+        try:
+            return body.decode("cp1252"), "cp1252"
+        except UnicodeDecodeError:  # cp1252 leaves 0x81, 0x8d, 0x8f, 0x90 and 0x9d undefined
+            return body.decode("latin-1"), "latin-1"
     return text, "utf-8-sig" if body.startswith(b"\xef\xbb\xbf") else "utf-8"
 
 
@@ -317,7 +323,10 @@ def parse_csv(
             f"phac_infobase : {url} a renvoyé une page Web, pas un fichier CSV.",
         )
     reader = csv.reader(io.StringIO(text))
-    header = next(reader, None)
+    try:
+        header = next(reader, None)
+    except csv.Error as exc:
+        raise _malformed_csv(url, exc, lang) from exc
     if not header:
         raise lang_error(
             UpstreamError,
@@ -332,13 +341,31 @@ def parse_csv(
     keep = [i for i, name in enumerate(names) if name]
     unique = _unique([names[i] for i in keep])
     rows = []
-    for record in reader:
-        if not any(cell.strip() for cell in record):
-            continue
-        rows.append(
-            {unique[j]: (record[i].strip() if i < len(record) else "") for j, i in enumerate(keep)}
-        )
+    try:
+        for record in reader:
+            if not any(cell.strip() for cell in record):
+                continue
+            rows.append(
+                {
+                    unique[j]: (record[i].strip() if i < len(record) else "")
+                    for j, i in enumerate(keep)
+                }
+            )
+    except csv.Error as exc:
+        raise _malformed_csv(url, exc, lang) from exc
     return unique, rows, used
+
+
+def _malformed_csv(url: str, exc: csv.Error, lang: str) -> UpstreamError:
+    # A quote left open turns the rest of the file into one field, which then passes the
+    # field-size limit; csv.Error is not a ValueError, so it would be an untyped failure.
+    return lang_error(
+        UpstreamError,
+        lang,
+        f"phac_infobase: {url} is not well-formed CSV ({exc}); a quote may be left open.",
+        f"phac_infobase : {url} n'est pas un CSV bien formé ({exc}) ; un guillemet est "
+        "peut-être resté ouvert.",
+    )
 
 
 def zip_member(body: bytes, pattern: str | None, url: str, lang: str = "en") -> bytes:

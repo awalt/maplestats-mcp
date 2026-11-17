@@ -89,6 +89,7 @@ from maplestats_mcp.modules.elections_financial_returns.schemas import (
     FilterOption,
     FinancialReturnPart,
 )
+from maplestats_mcp.shared import csv_files
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
@@ -153,10 +154,7 @@ def _decode(content: bytes) -> str:
     UTF-8 is tried first; other elections.ca files are Windows-1252, the
     fallback when the bytes are not valid UTF-8.
     """
-    try:
-        return content.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        return content.decode("cp1252")
+    return csv_files.decode(content)
 
 
 async def _warm_up(url: str, *, force: bool = False, lang: str = "en") -> None:

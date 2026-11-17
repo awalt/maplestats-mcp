@@ -73,7 +73,7 @@ from maplestats_mcp.modules.isc.schemas import (
     ShortTermAdvisoryList,
     TribalCouncil,
 )
-from maplestats_mcp.shared import file_download
+from maplestats_mcp.shared import csv_files, file_download
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance, raise_localized
 from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError
@@ -224,10 +224,7 @@ def _midnight(day: date | None) -> datetime | None:
 
 
 def _decode(body: bytes) -> str:
-    try:
-        return body.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        return body.decode("cp1252")
+    return csv_files.decode(body)
 
 
 def _page_lang(lang: str) -> str:

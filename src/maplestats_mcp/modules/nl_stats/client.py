@@ -8,7 +8,6 @@ back as published text with a guessed header row.
 
 from __future__ import annotations
 
-import io
 import re
 from datetime import date, datetime, time
 from typing import Any, Literal
@@ -34,6 +33,7 @@ from maplestats_mcp.shared.executor import run_parse
 from maplestats_mcp.shared.http import get_raw
 from maplestats_mcp.shared.i18n import pick
 from maplestats_mcp.shared.rate_limiter import get_limiter
+from maplestats_mcp.shared.xlsx_sheets import open_workbook
 
 _LIMITER = get_limiter(
     constants.RATE_LIMIT_SOURCE,
@@ -292,10 +292,7 @@ Workbook = tuple[dict[str, list[list[str]]], set[str]]
 
 
 def _parse_xlsx(body: bytes) -> Workbook:
-    # openpyxl takes ~0.7 s to import, so it loads on first use.
-    from openpyxl import load_workbook
-
-    workbook = load_workbook(io.BytesIO(body), read_only=True, data_only=True)
+    workbook = open_workbook(body)
     try:
         sheets: dict[str, list[list[str]]] = {}
         cut: set[str] = set()
@@ -368,6 +365,8 @@ async def _workbook(url: str, lang: Lang = "en") -> tuple[Workbook, bool]:
         parse = _parse_xlsx if url.lower().endswith(".xlsx") else _parse_xls
         try:
             return await run_parse(parse, body)
+        except UpstreamError:
+            raise  # the unpacked-size limit and the parse budget say so themselves
         # openpyxl and xlrd raise several unrelated types.
         except Exception as exc:  # noqa: BLE001 (raise_localized re-raises it as UpstreamError)
             raise_localized(

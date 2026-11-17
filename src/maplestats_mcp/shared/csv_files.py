@@ -9,6 +9,7 @@ page instead of 404. This module handles those once.
 
 from __future__ import annotations
 
+import codecs
 import csv
 import io
 import ipaddress
@@ -18,7 +19,7 @@ from urllib.parse import urlparse
 
 from maplestats_mcp.shared import file_download
 from maplestats_mcp.shared.cache import cached_fetch
-from maplestats_mcp.shared.errors import InvalidInput, NotFound
+from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError
 from maplestats_mcp.shared.executor import run_parse
 from maplestats_mcp.shared.fr_typography import call_error
 from maplestats_mcp.shared.rate_limiter import TokenBucket
@@ -27,12 +28,19 @@ MAX_FILE_BYTES = 40 * 1024 * 1024
 
 
 def decode(body: bytes) -> str:
-    """UTF-8 (BOM allowed), else Windows-1252, else latin-1.
+    """UTF-16 by byte-order mark, else UTF-8 (BOM allowed), else Windows-1252, else latin-1.
 
     Windows-1252 leaves five byte values undefined (0x81, 0x8d, 0x8f, 0x90,
     0x9d); latin-1 is the last resort so one stray byte never loses a file
-    (the same order as shared/file_tables.decode).
+    (the same order as shared/file_tables.decode). A UTF-16 file (Excel's
+    "Unicode text" export) was read as Windows-1252, which gives text full of NUL
+    characters and no header the columns can be matched against.
     """
+    if body.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        try:
+            return body.decode("utf-16")
+        except UnicodeDecodeError:
+            pass  # a BOM-like start of some other file: read it as 8-bit text below
     try:
         return body.decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -127,12 +135,23 @@ def parse_rows(body: bytes, url: str, context: str) -> list[dict[str, str]]:
             f"{context}: {url} returned a web page, not a CSV file.",
             f"{context} : {url} a renvoyé une page Web, pas un fichier CSV.",
         )
-    return [
-        # DictReader files cells past the header under None, as a list; a
-        # trailing comma on a data row must not add a list-valued column.
-        {k.strip(): (v or "") for k, v in row.items() if k is not None}
-        for row in csv.DictReader(io.StringIO(text))
-    ]
+    try:
+        return [
+            # DictReader files cells past the header under None, as a list; a
+            # trailing comma on a data row must not add a list-valued column.
+            {k.strip(): (v or "") for k, v in row.items() if k is not None}
+            for row in csv.DictReader(io.StringIO(text))
+        ]
+    except csv.Error as exc:
+        # A quote left open turns the rest of the file into one field, which then
+        # passes the field-size limit; csv.Error is not a ValueError, so it would
+        # reach the client as an untyped failure.
+        raise call_error(
+            UpstreamError,
+            f"{context}: {url} is not well-formed CSV ({exc}); a quote may be left open.",
+            f"{context} : {url} n'est pas un CSV bien formé ({exc}) ; un guillemet est "
+            "peut-être resté ouvert.",
+        ) from exc
 
 
 class Columns:

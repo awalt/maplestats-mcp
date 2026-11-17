@@ -652,3 +652,23 @@ async def test_table_without_comments_link_or_file(httpx_mock):
     )
     gone = await client.table_comments("3.3")
     assert gone.comments == [] and "missing" in gone.notes[0]
+
+
+async def test_describe_refuses_a_dictionary_workbook_that_unpacks_past_the_limit(
+    httpx_mock, monkeypatch
+):
+    from maplestats_mcp.shared import xlsx_sheets
+
+    # The size check runs before openpyxl loads the workbook; a tiny limit stands in for
+    # a few-KB file whose ZIP directory declares hundreds of MB.
+    monkeypatch.setattr(xlsx_sheets, "XLSX_MAX_PART_BYTES", 10)
+    _mock_pages(httpx_mock)
+    httpx_mock.add_response(url=_url(CAUSE_CSV_PATH), content=CAUSE_CSV)
+    httpx_mock.add_response(
+        url=_url("/en/data/data_dictionary/NFD - Area burned by cause class - EN FR DD.xlsx"),
+        content=_dictionary("Area burned by jurisdiction and cause class", "CWFIS"),
+    )
+    result = await client.describe_table("3.2.1")
+    # The table itself still reads; only the dictionary is left out, and the reply says so.
+    assert result.n_rows == 7 and result.dictionary_title is None
+    assert "dictionary could not be downloaded or read" in (result.provenance.limits or "")

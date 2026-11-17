@@ -46,7 +46,7 @@ from maplestats_mcp.modules.ircc.monthly.schemas import (
     IrccTableDescription,
     Period,
 )
-from maplestats_mcp.shared import file_download
+from maplestats_mcp.shared import csv_files, file_download
 from maplestats_mcp.shared.arg_checks import check_range
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance, raise_typed
@@ -261,10 +261,7 @@ def _unreadable_note(parsed: ParsedTable, lang: str) -> str:
 
 
 def parse_table(body: bytes, lang: str = "en") -> ParsedTable:
-    try:
-        text = body.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = body.decode("cp1252")
+    text = csv_files.decode(body)
     first_line = text.split("\n", 1)[0]
     delimiter = "\t" if "\t" in first_line else ","
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)

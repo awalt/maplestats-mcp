@@ -12,9 +12,7 @@ party and vote pairs (k1/v1 to k13/v13, largest first), and whose sheet
 
 from __future__ import annotations
 
-import io
 import unicodedata
-import warnings
 from datetime import date
 
 from pydantic import BaseModel, Field
@@ -28,6 +26,7 @@ from maplestats_mcp.shared.fr_typography import fr_or_en, lang_error
 from maplestats_mcp.shared.limits import join_limits
 from maplestats_mcp.shared.models import Provenance
 from maplestats_mcp.shared.rate_limiter import get_limiter
+from maplestats_mcp.shared.xlsx_sheets import open_workbook
 
 DATASET_DOI = "https://doi.org/10.5683/SP2/1N4Y1G"
 DATASET_FILE_URL = "https://borealisdata.ca/api/access/datafile/86556"
@@ -95,13 +94,8 @@ def _int(value: object) -> int | None:
 
 
 def _parse(body: bytes) -> tuple[list[dict[str, object]], dict[str, str]]:
-    # openpyxl takes ~0.7 s to import, so it loads on first use.
-    from openpyxl import load_workbook
-
-    with warnings.catch_warnings():
-        # The workbook carries an invalid print-area name that is irrelevant here.
-        warnings.simplefilter("ignore", UserWarning)
-        workbook = load_workbook(io.BytesIO(body), read_only=True, data_only=True)
+    # open_workbook ignores the invalid print-area name this workbook carries.
+    workbook = open_workbook(body)
     try:
         names: dict[str, str] = {}
         for row in list(workbook[PARTY_SHEET].iter_rows(values_only=True))[3:]:
@@ -135,6 +129,8 @@ async def _dataset(
         )
         try:
             return await run_parse(_parse, downloaded.body)
+        except UpstreamError:
+            raise  # the unpacked-size limit and the parse budget say so themselves
         except Exception as exc:  # openpyxl raises several unrelated types
             raise lang_error(
                 UpstreamError,

@@ -39,6 +39,7 @@ from maplestats_mcp.modules.ircc.schemas import (
     ExpressEntryRoundDetail,
     ExpressEntryRoundsResult,
 )
+from maplestats_mcp.shared import csv_files
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance, raise_typed
 from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
@@ -154,10 +155,8 @@ def _round_from_json(obj: dict[str, Any]) -> ExpressEntryRound:
 
 
 def _decode_feed(raw_bytes: bytes) -> str:
-    try:
-        return raw_bytes.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        return raw_bytes.decode("cp1252")
+    # UTF-8, else Windows-1252, else latin-1: cp1252 alone fails on its five undefined bytes.
+    return csv_files.decode(raw_bytes)
 
 
 def _parse_feed(raw_bytes: bytes, lang: str) -> list[ExpressEntryRound]:
