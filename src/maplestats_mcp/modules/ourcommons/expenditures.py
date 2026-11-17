@@ -90,7 +90,7 @@ async def _get(url: str, lang: str, what_en: str, what_fr: str) -> str:
     async def fetch() -> str:
         await _LIMITER.acquire()
         try:
-            response = await get_raw(url, timeout=60.0)
+            response = await get_raw(url, timeout=60.0, max_bytes=constants.MAX_BODY_BYTES)
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
             if status in (301, 302, 404):

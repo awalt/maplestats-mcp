@@ -53,7 +53,13 @@ from maplestats_mcp.modules.ecb.schemas import (
 )
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance, raise_localized
-from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
+from maplestats_mcp.shared.errors import (
+    InvalidInput,
+    NotFound,
+    TooLarge,
+    UpstreamError,
+    UpstreamUnavailable,
+)
 from maplestats_mcp.shared.http import get_raw
 from maplestats_mcp.shared.i18n import fr_number, normalize_lang, pick
 from maplestats_mcp.shared.rate_limiter import get_limiter
@@ -102,14 +108,24 @@ async def _get(
     not_found: tuple[str, str],
     bad_request: tuple[str, str],
     lang: str,
+    max_bytes: int | None = None,
+    too_large: tuple[type[ValueError], str, str] | None = None,
 ) -> httpx.Response:
+    """GET one ECB URL. A body past `max_bytes` is not held: it raises `too_large`
+    (class, English text, French text), or TooLarge when none is given."""
     await get_limiter(
         constants.RATE_LIMIT_SOURCE,
         rate=constants.RATE_LIMIT_PER_SECOND,
         capacity=constants.RATE_LIMIT_CAPACITY,
     ).acquire()
     try:
-        response = await get_raw(url, params=params, headers={"Accept": accept}, timeout=timeout)
+        response = await get_raw(
+            url, params=params, headers={"Accept": accept}, timeout=timeout, max_bytes=max_bytes
+        )
+    except TooLarge:
+        if too_large is None:
+            raise
+        raise_localized(too_large[0], too_large[1], too_large[2], lang)
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         if status == 404:
@@ -175,6 +191,9 @@ async def _catalogue(lang: str) -> tuple[dict[str, dict[str, str]], bool]:
             ),
             ("The ECB refused the dataflow list request.", "la BCE a refusé la demande."),
             lang,
+            # The list is a small XML file; the structure cap is the bound already used
+            # for the ECB's other SDMX-ML answers.
+            max_bytes=constants.MAX_STRUCTURE_BYTES,
         )
         try:
             root = DefusedET.fromstring(response.content)
@@ -358,9 +377,13 @@ async def _structure(fid: str, info: dict[str, str], lang: str) -> tuple[_Struct
             (f"No structure for ECB dataset {fid}.", f"aucune structure pour le jeu {fid}."),
             (f"The ECB refused the structure of {fid}.", f"la BCE a refusé la structure de {fid}."),
             lang,
+            max_bytes=constants.MAX_STRUCTURE_BYTES,
+            too_large=(
+                UpstreamError,
+                f"the structure of {fid} is over {constants.MAX_STRUCTURE_BYTES:,} bytes.",
+                f"la structure de {fid} dépasse {fr_number(constants.MAX_STRUCTURE_BYTES)} octets.",
+            ),
         )
-        if len(response.content) > constants.MAX_STRUCTURE_BYTES:
-            raise UpstreamError(f"the structure of {fid} is {len(response.content):,} bytes")
         try:
             return parse_structure(response.content, fid, info["structure"])
         except (DefusedXmlException, SyntaxError) as exc:
@@ -534,16 +557,20 @@ async def _fetch_csv(
                 ),
             ),
             lang,
-        )
-        if len(response.content) > constants.MAX_SERIES_LIST_BYTES:
-            raise_localized(
+            max_bytes=constants.MAX_SERIES_LIST_BYTES,
+            too_large=(
                 InvalidInput,
-                f"{fid} key {key} returns {len(response.content):,} bytes. Name more codes or "
-                "narrow the periods.",
-                f"la clé {key} de {fid} renvoie {fr_number(len(response.content))} octets. "
-                "Précisez des codes ou réduisez les périodes.",
-                lang,
-            )
+                (
+                    f"{fid} key {key} returns more than {constants.MAX_SERIES_LIST_BYTES:,} "
+                    "bytes. Name more codes or narrow the periods."
+                ),
+                (
+                    f"la clé {key} de {fid} renvoie plus de "
+                    f"{fr_number(constants.MAX_SERIES_LIST_BYTES)} octets. Précisez des codes "
+                    "ou réduisez les périodes."
+                ),
+            ),
+        )
         return _read_csv(response.text)
 
     return await cached_fetch(f"ecb:data:{fid}:{key}:{sorted(params.items())}", ttl, fetch)

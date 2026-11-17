@@ -13,6 +13,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from maplestats_mcp.modules.cbsa_tariff import client, constants
@@ -331,3 +332,51 @@ async def test_cache_keeps_the_newest_editions(tmp_path: Path):
     client._enforce_cache_cap(root, keep)
     assert keep.exists()
     assert len(list(root.glob("*.parquet"))) <= constants.MAX_CACHED_EDITIONS + 1
+
+
+class _Body:
+    """A response body that counts the chunks the reader actually pulled."""
+
+    def __init__(self, chunks: int, chunk: bytes = b"x" * 16_384) -> None:
+        self.total = chunks
+        self.chunk = chunk
+        self.pulled = 0
+
+    async def __aiter__(self):
+        for _ in range(self.total):
+            self.pulled += 1
+            yield self.chunk
+
+
+@pytest.mark.parametrize(
+    "link",
+    [
+        "https://evil.example/trade-commerce/tariff-tarif/2026/01-99/01-99-2026-2-eng.zip",
+        "http://www.cbsa-asfc.gc.ca/trade-commerce/tariff-tarif/2026/01-99/01-99-2026-2-eng.zip",
+        "https://169.254.169.254/tariff.zip",
+    ],
+)
+def test_a_zip_link_off_the_cbsa_site_is_not_an_edition(link: str) -> None:
+    html = _panel("T2026-2", "2026-09-01", "01-99-2026-2-eng").replace(
+        "/trade-commerce/tariff-tarif/2026/01-99/01-99-2026-2-eng.zip", link
+    )
+    assert client.parse_menu(html, 2026, "en") == []
+
+
+def test_an_absolute_zip_link_on_the_cbsa_site_is_kept() -> None:
+    link = ZIP_2026_2
+    html = _panel("T2026-2", "2026-09-01", "01-99-2026-2-eng").replace(
+        "/trade-commerce/tariff-tarif/2026/01-99/01-99-2026-2-eng.zip", link
+    )
+    [edition] = client.parse_menu(html, 2026, "en")
+    assert edition.access_zip_url == link
+
+
+async def test_an_oversized_zip_is_refused_before_it_is_read(httpx_mock, monkeypatch):
+    monkeypatch.setattr(constants, "MAX_ZIP_BYTES", 100_000)
+    httpx_mock.add_response(url=MENU_2026, text=MENU_HTML)
+    body = _Body(chunks=400)  # 6.5 MB on offer, no Content-Length
+    httpx_mock.add_callback(lambda request: httpx.Response(200, content=body), url=ZIP_2026_2)
+    with pytest.raises(UpstreamError, match="much larger than expected"):
+        await client.lookup("8703", edition="2026-2")
+    assert body.pulled <= 8

@@ -26,7 +26,7 @@ from maplestats_mcp.shared.envelope import raise_localized
 from maplestats_mcp.shared.errors import UpstreamError, UpstreamUnavailable
 from maplestats_mcp.shared.http import counted_once, is_retryable, new_client
 from maplestats_mcp.shared.rate_limiter import TokenBucket, get_limiter
-from maplestats_mcp.shared.remote_zip import ZipMember
+from maplestats_mcp.shared.remote_zip import ZipMember, check_redirect_response
 
 _LOCAL = b"PK\x03\x04"
 _INFLATE_STEP = 16 * 1024 * 1024
@@ -41,6 +41,13 @@ STATCAN_LIMITER = get_limiter(
     f"{constants.SOURCE}_statcan", rate=constants.NATIONAL_RATE_PER_SECOND, capacity=1.0
 )
 _client = new_client(timeout=90.0, follow_redirects=True)
+# Every redirect hop is checked like shared/remote_zip.py's reads of the same feeds
+# (same site or a known file host, never plain http, an IP address or localhost);
+# following any Location let a feed link hand the download to any host.
+_client.event_hooks = {
+    "request": _client.event_hooks["request"],
+    "response": [*_client.event_hooks["response"], check_redirect_response],
+}
 
 
 def _raise_http_status(url: str, exc: httpx.HTTPStatusError, lang: str) -> NoReturn:
@@ -87,6 +94,17 @@ def _raise_inflated(member: ZipMember, limit: int, lang: str) -> NoReturn:
     )
 
 
+def _raise_scan_limit(member: ZipMember, lang: str) -> NoReturn:
+    raise_localized(
+        UpstreamError,
+        f"{member.name} inflates past the {constants.SCAN_MAX_UNCOMPRESSED_BYTES:,}-byte "
+        "scan limit.",
+        f"{member.name} dépasse, une fois décompressé, la limite de lecture de "
+        f"{constants.SCAN_MAX_UNCOMPRESSED_BYTES:,} octets.",
+        lang,
+    )
+
+
 @counted_once
 @retry(
     retry=retry_if_exception(is_retryable),
@@ -97,10 +115,35 @@ def _raise_inflated(member: ZipMember, limit: int, lang: str) -> NoReturn:
 async def _get_range(
     url: str, start: int, end: int, limiter: TokenBucket | None = None
 ) -> httpx.Response:
+    """GET bytes `start..end`, streamed so a host that ignores Range cannot fill memory.
+
+    A host that does not honour `Range` answers 200 with the whole feed (up to 373 MB
+    inflated here, and shared/remote_zip.py met a 3.9 GB one): anything but a 206 comes
+    back with its headers and an empty body, unread, and a 206 body is read only up to
+    one byte past the range asked for, so `fetch_range` still sees a length mismatch.
+    """
     await (limiter or _LIMITER).acquire()
-    response = await _client.get(url, headers={"Range": f"bytes={start}-{end}"})
-    response.raise_for_status()
-    return response
+    expected = end - start + 1
+    async with _client.stream("GET", url, headers={"Range": f"bytes={start}-{end}"}) as response:
+        response.raise_for_status()
+        body = bytearray()
+        if response.status_code == 206:
+            async for chunk in response.aiter_bytes():
+                body.extend(chunk)
+                if len(body) > expected:
+                    break
+        # The encoding headers describe the bytes on the wire, which aiter_bytes() undid.
+        headers = [
+            (name, value)
+            for name, value in response.headers.multi_items()
+            if name.lower() not in ("content-encoding", "transfer-encoding")
+        ]
+        return httpx.Response(
+            response.status_code,
+            headers=headers,
+            content=bytes(body[: expected + 1]),
+            request=response.request,
+        )
 
 
 async def head(url: str, *, lang: str = "en") -> httpx.Response:
@@ -293,8 +336,16 @@ async def stream_member_lines(
         else:
             try:
                 pending = raw
+                room = constants.SCAN_MAX_UNCOMPRESSED_BYTES - produced
                 while pending:
-                    pieces.append(inflater.decompress(pending, _INFLATE_STEP))
+                    # Never inflate more than one byte past the ceiling: one range
+                    # (SCAN_CHUNK_BYTES) of a deflate bomb is stopped here, before its
+                    # whole output is held in memory, not after the loop has built it.
+                    piece = inflater.decompress(pending, max(1, min(_INFLATE_STEP, room + 1)))
+                    pieces.append(piece)
+                    room -= len(piece)
+                    if room < 0:
+                        _raise_scan_limit(member, lang)
                     pending = inflater.unconsumed_tail
             except zlib.error as exc:
                 raise_localized(
@@ -308,14 +359,7 @@ async def stream_member_lines(
         data = carry + b"".join(pieces)
         produced += len(data) - len(carry)
         if produced > constants.SCAN_MAX_UNCOMPRESSED_BYTES:
-            raise_localized(
-                UpstreamError,
-                f"{member.name} inflates past the {constants.SCAN_MAX_UNCOMPRESSED_BYTES:,}-byte "
-                "scan limit.",
-                f"{member.name} dépasse, une fois décompressé, la limite de lecture de "
-                f"{constants.SCAN_MAX_UNCOMPRESSED_BYTES:,} octets.",
-                lang,
-            )
+            _raise_scan_limit(member, lang)
         lines = data.split(b"\n")
         carry = lines.pop()
         if lines:

@@ -65,9 +65,21 @@ from maplestats_mcp.shared import duck
 from maplestats_mcp.shared.arg_checks import check_range
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance, raise_typed
-from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
+from maplestats_mcp.shared.errors import (
+    InvalidInput,
+    NotFound,
+    TooLarge,
+    UpstreamError,
+    UpstreamUnavailable,
+)
 from maplestats_mcp.shared.executor import run_in_pool
-from maplestats_mcp.shared.http import api_get, counted_once, is_retryable, new_client
+from maplestats_mcp.shared.http import (
+    api_get,
+    counted_once,
+    is_retryable,
+    new_client,
+    stream_capped,
+)
 from maplestats_mcp.shared.i18n import french_spacing
 from maplestats_mcp.shared.json_utils import list_or_empty
 from maplestats_mcp.shared.limits import join_limits
@@ -125,8 +137,9 @@ def cipo_client() -> httpx.AsyncClient:
     wait=wait_exponential(multiplier=1, min=1, max=10),
     reraise=True,
 )
-async def _get_cipo_file(url: str) -> bytes:
-    response = await _CIPO_CLIENT.get(url)
+async def _get_cipo_file(url: str, max_bytes: int) -> bytes:
+    """The file's bytes; a body past `max_bytes` raises TooLarge before it is held."""
+    response = await stream_capped(_CIPO_CLIENT, url, timeout=60.0, max_bytes=max_bytes)
     response.raise_for_status()
     return response.content
 
@@ -382,7 +395,14 @@ async def get_dictionary(
     async def fetch() -> Any:
         await _LIMITER.acquire()
         try:
-            body = await _get_cipo_file(url)
+            body = await _get_cipo_file(url, constants.MAX_DICTIONARY_BYTES)
+        except TooLarge:
+            _raise(
+                UpstreamError,
+                f"ised_ip_horizons: {url} is larger than expected.",
+                f"ised_ip_horizons : {url} est plus volumineux que prévu.",
+                lang,
+            )
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
             _raise(
@@ -398,17 +418,26 @@ async def get_dictionary(
                 f"ised_ip_horizons : {url} n'a pas répondu à temps.",
                 lang,
             )
-        if len(body) > constants.MAX_DICTIONARY_BYTES:
-            _raise(
-                UpstreamError,
-                f"ised_ip_horizons: {url} is larger than expected.",
-                f"ised_ip_horizons : {url} est plus volumineux que prévu.",
-                lang,
-            )
         try:
             with zipfile.ZipFile(io.BytesIO(body)) as archive:
                 member = next(n for n in archive.namelist() if n.lower().endswith(".xlsx"))
-                return parse_dictionary(archive.read(member))
+                limit = constants.MAX_DICTIONARY_WORKBOOK_BYTES
+                # archive.read() would inflate whatever the member holds: a 5 MB ZIP can
+                # hold gigabytes, so the member's declared and actual size are bounded.
+                if archive.getinfo(member).file_size > limit:
+                    raise TooLarge(member)
+                with archive.open(member) as handle:
+                    workbook = handle.read(limit + 1)
+                if len(workbook) > limit:
+                    raise TooLarge(member)
+                return parse_dictionary(workbook)
+        except TooLarge:
+            _raise(
+                UpstreamError,
+                f"ised_ip_horizons: {url} unpacks to more than this reader accepts.",
+                f"ised_ip_horizons : {url} se décompresse en plus que ce que ce lecteur accepte.",
+                lang,
+            )
         except (zipfile.BadZipFile, StopIteration):
             # opic-cipo.ca serves its HTML 404 page for a missing file.
             _raise(

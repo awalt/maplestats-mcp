@@ -240,12 +240,37 @@ async def local_member(url: str, member: str) -> tuple[Path, bool]:
     reraise=True,
 )
 async def _get_range(url: str, start: int, end: int) -> httpx.Response:
+    """GET bytes `start..end`, read only as far as the range asked for.
+
+    A host that ignores `Range` answers 200 with the whole archive (1.67 GB for one
+    LODE zip): aread() would pull it into memory. Anything but a 206 comes back with
+    an empty body, unread, and a 206 body is read up to one byte past the range, so
+    `_range` can see that it ran long.
+    """
+    expected = end - start + 1
+    body = bytearray()
     async with _open(
         "GET", url, request_headers(url, {"Range": f"bytes={start}-{end}"})
     ) as response:
-        await response.aread()
-    response.raise_for_status()
-    return response
+        if response.status_code == 206:
+            async for chunk in response.aiter_bytes():
+                body.extend(chunk)
+                if len(body) > expected:
+                    break
+        # The encoding headers describe the bytes on the wire, which aiter_bytes() undid.
+        headers = [
+            (name, value)
+            for name, value in response.headers.multi_items()
+            if name.lower() not in ("content-encoding", "transfer-encoding")
+        ]
+        answer = httpx.Response(
+            response.status_code,
+            headers=headers,
+            content=bytes(body[: expected + 1]),
+            request=response.request,
+        )
+    answer.raise_for_status()
+    return answer
 
 
 async def _range(url: str, start: int, end: int) -> bytes:
@@ -269,6 +294,14 @@ async def _range(url: str, start: int, end: int) -> bytes:
             say(
                 f"{url} does not support range requests (HTTP {response.status_code}).",
                 f"{url} n'accepte pas les requêtes de plage (HTTP {response.status_code}).",
+            )
+        )
+    if len(response.content) > end - start + 1:
+        # _get_range stops one byte past the range, so only "more than" is known.
+        raise UpstreamError(
+            say(
+                f"{url} returned more than the {end - start + 1:,} bytes asked for.",
+                f"{url} a renvoyé plus que les {end - start + 1:,} octets demandés.",
             )
         )
     return response.content

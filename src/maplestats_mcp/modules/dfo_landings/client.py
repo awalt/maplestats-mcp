@@ -34,6 +34,7 @@ import csv
 import re
 import unicodedata
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -46,10 +47,18 @@ from maplestats_mcp.modules.dfo_landings.schemas import (
     LandingsRow,
     LandingsTable,
 )
+from maplestats_mcp.shared import csv_files
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance, raise_localized
-from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
+from maplestats_mcp.shared.errors import (
+    InvalidInput,
+    NotFound,
+    TooLarge,
+    UpstreamError,
+    UpstreamUnavailable,
+)
 from maplestats_mcp.shared.http import api_get, get_raw
+from maplestats_mcp.shared.i18n import fr_number
 from maplestats_mcp.shared.licences import OGL_CANADA
 from maplestats_mcp.shared.rate_limiter import get_limiter
 
@@ -87,16 +96,36 @@ def _fold(text: str) -> str:
 
 
 def _decode(raw: bytes) -> str:
-    try:
-        return raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        return raw.decode("cp1252")
+    # UTF-8, else Windows-1252, else latin-1: cp1252 alone fails on its five undefined
+    # bytes (0x81, 0x8d, 0x8f, 0x90, 0x9d), and one stray byte lost the whole file.
+    return csv_files.decode(raw)
 
 
 async def _fetch_bytes(url: str, context: str, lang: str) -> bytes:
+    # The link comes from the catalogue's package_show answer, so it is checked before
+    # anything is requested (get_raw does not follow redirects, so this is the one hop).
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname != constants.FILE_HOST:
+        raise_localized(
+            UpstreamError,
+            f"dfo_landings:{context}: the catalogue links {url}, which is not on "
+            f"{constants.FILE_HOST}; it is not downloaded.",
+            f"dfo_landings:{context} : le catalogue renvoie {url}, qui n'est pas sur "
+            f"{constants.FILE_HOST} ; il n'est pas téléchargé.",
+            lang,
+        )
     await _LIMITER.acquire()
     try:
-        response = await get_raw(url, timeout=60.0)
+        response = await get_raw(url, timeout=60.0, max_bytes=constants.MAX_FILE_BYTES)
+    except TooLarge:
+        raise_localized(
+            UpstreamError,
+            f"dfo_landings:{context}: {url} is over {constants.MAX_FILE_BYTES:,} bytes; this "
+            "reader stops there.",
+            f"dfo_landings:{context} : {url} dépasse {fr_number(constants.MAX_FILE_BYTES)} octets ; ce "
+            "lecteur s'arrête là.",
+            lang,
+        )
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         if status == 404:

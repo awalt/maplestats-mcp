@@ -55,6 +55,12 @@ CACHE_TTL_EXPENDITURES_SECONDS = 6 * 60 * 60
 EXPENDITURES_LIMIT_DEFAULT = 50
 EXPENDITURES_LIMIT_MAX = 500
 
+# The largest body read from ourcommons.ca (a members or roles XML file, the
+# expenditure pages and CSV files). No cap existed; the files are well under 1 MB
+# when read, so 16 MB (twice recalls' page cap, under the 40 MB the CSV readers
+# use) keeps a changed link from filling memory before it is parsed.
+MAX_BODY_BYTES = 16 * 1024 * 1024
+
 RATE_LIMIT_SOURCE = "ourcommons"
 RATE_LIMIT_PER_SECOND = 2.0
 RATE_LIMIT_CAPACITY = 4.0

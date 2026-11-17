@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import re
 import zipfile
+import zlib
 
 import httpx
 import pytest
@@ -107,3 +108,101 @@ def test_blob_member_read_is_bounded():
         zipstream.read_blob_member(body, member, max_bytes=100)
     with pytest.raises(UpstreamError, match="not a valid ZIP"):
         zipstream.members_of(b"not a zip", URL)
+
+
+class _Body:
+    """A response body that counts the chunks the reader actually pulled."""
+
+    def __init__(self, chunks: int, chunk: bytes = b"x" * 16_384) -> None:
+        self.total = chunks
+        self.chunk = chunk
+        self.pulled = 0
+
+    async def __aiter__(self):
+        for _ in range(self.total):
+            self.pulled += 1
+            yield self.chunk
+
+
+async def test_a_deflate_bomb_in_one_range_is_stopped_before_it_is_held(httpx_mock, monkeypatch):
+    # 16 MB of text deflates to about 16 KB: one 4 MB range holds all of it. The limit
+    # is checked while inflating, so a range cannot build its whole output first.
+    body, member = _archive("a,b\n" * 4_000_000)
+    assert len(body) < 100_000
+    monkeypatch.setattr(constants, "SCAN_MAX_UNCOMPRESSED_BYTES", 1024 * 1024)
+    monkeypatch.setattr(zipstream, "_INFLATE_STEP", 64 * 1024)
+    httpx_mock.add_callback(_serve(body), url=URL, is_reusable=True)
+    produced: list[int] = []
+    real = zlib.decompressobj
+
+    class Counting:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def decompress(self, data, max_length=0):
+            out = self._inner.decompress(data, max_length)
+            produced.append(len(out))
+            return out
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+    monkeypatch.setattr(zlib, "decompressobj", lambda *a, **k: Counting(real(*a, **k)))
+    with pytest.raises(UpstreamError, match="scan limit"):
+        await _lines(member)
+    assert sum(produced) <= 1024 * 1024 + 2 * 64 * 1024
+
+
+async def test_a_host_that_ignores_ranges_is_not_read_whole(httpx_mock):
+    served = _Body(chunks=400)  # 6.5 MB on offer
+    httpx_mock.add_callback(
+        lambda request: httpx.Response(200, content=served), url=URL, is_reusable=True
+    )
+    with pytest.raises(UpstreamError, match="byte range"):
+        await zipstream.fetch_range(URL, 0, 99)
+    assert served.pulled == 0
+
+
+async def test_a_range_answer_longer_than_the_range_is_cut_off(httpx_mock):
+    served = _Body(chunks=400)
+    httpx_mock.add_callback(
+        lambda request: httpx.Response(206, content=served), url=URL, is_reusable=True
+    )
+    with pytest.raises(UpstreamError, match="byte range"):
+        await zipstream.fetch_range(URL, 0, 99)
+    assert served.pulled <= 2
+
+
+async def test_head_falls_back_to_a_range_whose_headers_survive(httpx_mock):
+    httpx_mock.add_response(method="HEAD", url=URL, status_code=502)
+    httpx_mock.add_response(
+        method="GET",
+        url=URL,
+        status_code=206,
+        content=b"P",
+        headers={
+            "content-range": "bytes 0-0/1234",
+            "last-modified": "Mon, 01 Jan 2026 00:00:00 GMT",
+        },
+    )
+    response = await zipstream.head(URL)
+    assert zipstream.total_bytes(response) == 1234
+    assert response.headers["last-modified"].startswith("Mon, 01 Jan 2026")
+
+
+@pytest.mark.parametrize(
+    "target",
+    ["http://example.test/feed.zip", "https://127.0.0.1/feed.zip", "https://other.invalid/x"],
+)
+async def test_a_redirect_off_the_feeds_site_is_refused(httpx_mock, target):
+    httpx_mock.add_response(url=URL, status_code=302, headers={"location": target})
+    with pytest.raises(UpstreamError, match="redirect"):
+        await zipstream.fetch_range(URL, 0, 99)
+    assert len(httpx_mock.get_requests()) == 1  # the hop was never requested
+
+
+async def test_a_redirect_to_a_known_file_host_is_followed(httpx_mock):
+    blob = "https://store.s3.amazonaws.com/feed.zip?sig=x"
+    httpx_mock.add_response(url=URL, status_code=302, headers={"location": blob})
+    httpx_mock.add_response(url=blob, status_code=206, content=b"x" * 100)
+    assert await zipstream.fetch_range(URL, 0, 99) == b"x" * 100
