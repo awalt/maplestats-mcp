@@ -67,6 +67,21 @@ QUESTIONS: list[tuple[str, str, str]] = [
     ("How many study permits were issued in 2024?", "immigration", "ircc_monthly_list_tables"),
     ("Latest Express Entry draw CRS cutoff", "immigration", "ircc_list_express_entry_rounds"),
     ("Emergency department wait times in Quebec", "health", "cihi_search_indicators"),
+    (
+        "How many registered nurses are there in Alberta?",
+        "health_workforce",
+        "cihi_workforce_list_workbooks",
+    ),
+    (
+        "Physicians per 100,000 population by province",
+        "health_workforce",
+        "cihi_workforce_get_table",
+    ),
+    (
+        "Nombre de médecins de famille par province",
+        "health_workforce",
+        "cihi_workforce_list_workbooks",
+    ),
     ("Opioid overdose deaths in BC", "public_health", "phac_infobase_list_datasets"),
     (
         "Patented medicine prices compared with other countries",

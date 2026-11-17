@@ -1276,7 +1276,29 @@ TOPICS: tuple[Topic, ...] = (
             PlanStep("ckan_search_datasets", "Health Canada and PHAC data: portal='federal'"),
         ),
         (),
-        ("list of hospitals", "hospital locations"),
+        (
+            "list of hospitals",
+            "hospital locations",
+            # Counts of providers are the health_workforce topic's.
+            "health workforce",
+            "number of physicians",
+            "number of nurses",
+            "physicians per 100*",
+            "physician supply",
+            "family physician*",
+            "family doctor*",
+            "registered nurse*",
+            "nurse practitioner*",
+            "licensed practical nurse*",
+            "nursing workforce",
+            "ressources humaines en sante",
+            "main d'oeuvre de la sante",
+            "nombre de medecins",
+            "medecins de famille",
+            "personnel infirmier",
+            "infirmieres autorisees",
+            "infirmieres praticiennes",
+        ),
     ),
     Topic(
         "drug_prices",
@@ -3857,6 +3879,95 @@ TELECOM = Topic(
     ),
 )
 TOPICS = (*TOPICS, TELECOM)
+
+HEALTH_WORKFORCE = Topic(
+    "health_workforce",
+    "Health workforce: physicians, nurses, pharmacists, therapists, support workers",
+    (
+        "health workforce",
+        "health human resources",
+        "physician*",
+        "nurse*",
+        "number of physicians",
+        "number of nurses",
+        "physicians per 100*",
+        "physician supply",
+        "physician migration",
+        "family physician*",
+        "family doctor*",
+        "registered nurse*",
+        "nurse practitioner*",
+        "licensed practical nurse*",
+        "nursing workforce",
+        "pharmacist*",
+        "physiotherapist*",
+        "occupational therapist*",
+        "personal support worker*",
+        "npdb",
+        "ressources humaines en sante",
+        "main d'oeuvre de la sante",
+        "medecin*",
+        "nombre de medecins",
+        "medecins de famille",
+        "medecins pour 100*",
+        "personnel infirmier",
+        "infirmieres autorisees",
+        "infirmieres praticiennes",
+        "pharmacien*",
+        "physiotherapeute*",
+        "ergotherapeute*",
+        "preposes aux services de soutien a la personne",
+    ),
+    (
+        PlanStep(
+            "cihi_workforce_list_workbooks",
+            "CIHI's workbook for the profession (physicians, nurses, pharmacists, "
+            "physiotherapists, occupational therapists, personal support workers in Alberta, "
+            "National Physician Database)",
+        ),
+        PlanStep(
+            "cihi_workforce_list_tables",
+            "the workbook's tables: ids, titles, label and value columns",
+        ),
+        PlanStep(
+            "cihi_workforce_get_table",
+            "rows by jurisdiction, year, specialty or age; marks such as '—' are not zero",
+            ("per 100", "per 10", "par 100", "migration"),
+        ),
+        PlanStep(
+            "cihi_workforce_get_notes",
+            "CIHI's definitions, methodology and how to cite the workbook",
+            ("definition", "methodology", "how to cite", "methodologie"),
+        ),
+        PlanStep(
+            "cihi_search_indicators",
+            "CIHI indicators on the workforce: physicians per 100,000, nurses entering and "
+            "leaving the workforce",
+        ),
+        PlanStep(
+            "wds_search_cubes",
+            "StatCan labour force and census tables on health occupations (survey-based)",
+        ),
+    ),
+    (
+        (
+            "CIHI's terms of use limit commercial use and use inside software applications "
+            "without its written authorization: say so when passing these figures on, and "
+            "credit CIHI as the source."
+        ),
+        (
+            "CIHI counts regulated providers from registries (Scott's Medical Database, the "
+            "Health Workforce Database); StatCan's labour force and census occupation counts "
+            "come from surveys. They differ in definition: do not mix them in one series."
+        ),
+        (
+            "A '—' in a CIHI table means no data, not zero: in the 2025 physician tables the "
+            "Ontario column is '—' (data release delayed), so the Canada totals are '—' too. "
+            "Read the table's notes."
+        ),
+    ),
+)
+TOPICS = (*TOPICS, HEALTH_WORKFORCE)
 
 # Places this server has no data for. A question naming one of them, with no
 # Canadian place and nothing that crosses the border (trade, exchange rates,
