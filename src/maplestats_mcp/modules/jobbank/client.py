@@ -739,6 +739,15 @@ async def get_wages(
     if published_only:
         rows = [r for r in rows if r.published]
     published = sum(r.published for r in rows)
+    # A published economic region whose source code says PR shows its province's
+    # wage (Edmonton repeats Alberta's in the 2025 release, confirmed live
+    # 2026-11-16), so it is a published cell but not a separate estimate.
+    stand_ins = sum(
+        r.published
+        and r.geography_level == "economic_region"
+        and r.estimate_geography == "provincial"
+        for r in rows
+    )
     return OccupationWages(
         noc_code=code,
         occupation=_wage_row(table.records[0], table.columns, lang).occupation,
@@ -756,9 +765,21 @@ async def get_wages(
             coverage=pick(
                 lang,
                 f"{len(rows)} of {len(table.records)} geographies for NOC {code}, "
-                f"{published} with a published wage",
+                f"{published} with a published wage"
+                + (
+                    "; economic regions repeating their province's wage (estimate_geography "
+                    f"provincial, not separate estimates): {stand_ins}"
+                    if stand_ins
+                    else ""
+                ),
                 f"{len(rows)} géographies sur {len(table.records)} pour la CNP {code}, dont "
-                f"{published} avec un salaire publié",
+                f"{published} avec un salaire publié"
+                + (
+                    " ; régions économiques reprenant le salaire de leur province "
+                    f"(estimate_geography provincial, estimations non distinctes) : {stand_ins}"
+                    if stand_ins
+                    else ""
+                ),
             ),
         ),
     )

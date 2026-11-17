@@ -14,6 +14,7 @@ from functools import cache
 from maplestats_mcp.catalogue import TOOL_SWITCHES
 from maplestats_mcp.modules.planner.places import (
     CITIES,
+    CITY_PROVINCES,
     CITY_SHADOWS,
     PROVINCE_ALIASES,
     PROVINCE_CODES,
@@ -94,6 +95,21 @@ _CITY_TOOLS = {
     "opendatasoft_vancouver_": ("Vancouver", "British Columbia"),
 }
 
+# Tools that serve one province only, and the province a question must name, or name
+# a city of, for them to belong in its plan: "transit alerts in Calgary" listed BC
+# Transit and DriveBC (2026-11-15, issue #275). Unlike a city tool above, one of
+# these is dropped only when every place the question names has a known province
+# and none is theirs; a place whose province is unknown keeps them.
+_PROVINCE_TOOLS = {
+    "bc_transit_": "British Columbia",
+    "drivebc_": "British Columbia",
+    "bc_env_": "British Columbia",
+    "bc_lobbyists_": "British Columbia",
+    "ab_wildfire_": "Alberta",
+    "aer_": "Alberta",
+}
+_PROVINCE_LABELS = frozenset(label for label, _ in PROVINCES.values())
+
 
 def _normalize(text: str) -> str:
     # Map the characters the ASCII step would drop: a typographic apostrophe
@@ -167,13 +183,24 @@ def _ordered(topic: Topic, text: str, labels: list[str]) -> list[StepOut]:
 
 
 def _for_places(step: PlanStep, labels: list[str]) -> bool:
-    """False for one city's tool when the question names only other places."""
+    """False for one city's or province's tool when the question names only other places."""
     if not labels:
         return True
     for prefix, places in _CITY_TOOLS.items():
         if step.tool.startswith(prefix):
             return any(label in places for label in labels)
+    for prefix, province in _PROVINCE_TOOLS.items():
+        if step.tool.startswith(prefix):
+            provinces = {_province_of(label) for label in labels}
+            return None in provinces or province in provinces
     return True
+
+
+def _province_of(label: str) -> str | None:
+    """The province a place label is in; None when it is not known."""
+    if label in _PROVINCE_LABELS:
+        return label
+    return CITY_PROVINCES.get(label)
 
 
 def _available(step: PlanStep) -> bool:

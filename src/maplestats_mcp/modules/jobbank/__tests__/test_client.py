@@ -288,6 +288,36 @@ async def test_get_wages_marks_unpublished_cells_and_provincial_stand_ins(httpx_
     assert {r.region_code for r in ontario.rows} == {"ER35", "ER3510", "ER3530", "ER3590"}
 
 
+async def test_coverage_says_how_many_published_cells_repeat_the_province(httpx_mock):
+    """Ottawa's published wage is Ontario's (source code PR), so it counts in
+    published_count but is not a separate estimate: the coverage line says so."""
+    _mock(httpx_mock)
+    result = await client.get_wages("21231")
+    assert result.published_count == 6
+    assert result.provenance.coverage == (
+        f"{len(_GEOS_21231)} of {len(_GEOS_21231)} geographies for NOC 21231, "
+        "6 with a published wage; economic regions repeating their province's wage "
+        "(estimate_geography provincial, not separate estimates): 1"
+    )
+    # Ontario's own row says PR too, but it is the province, not a stand-in.
+    ontario = await client.get_wages("21231", province="ON")
+    assert ontario.published_count == 4
+    assert ontario.provenance.coverage and ontario.provenance.coverage.endswith("estimates): 1")
+
+    # French provenance text gets no-break spaces before ":" and ";".
+    french = await client.get_wages("21231", lang="fr")
+    assert french.provenance.coverage
+    assert french.provenance.coverage.replace("\xa0", " ").endswith(
+        "(estimate_geography provincial, estimations non distinctes) : 1"
+    )
+
+    # Toronto has its own estimate (ER in its source code): nothing to flag.
+    toronto = await client.get_wages("21231", region="toronto")
+    assert toronto.provenance.coverage == (
+        f"1 of {len(_GEOS_21231)} geographies for NOC 21231, 1 with a published wage"
+    )
+
+
 async def test_region_resolution(httpx_mock):
     _mock(httpx_mock)
     with pytest.raises(InvalidInput, match="ER3590 Northeast \\(ON\\); ER5980 Northeast \\(BC\\)"):

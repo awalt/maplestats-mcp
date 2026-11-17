@@ -129,7 +129,11 @@ class OccupationWages(BaseModel):
         "orders them."
     )
     returned_count: int
-    published_count: int
+    published_count: int = Field(
+        description="Rows with a published wage. It includes economic regions that repeat "
+        "their province's wage (estimate_geography 'provincial'), which are not separate "
+        "estimates; the provenance coverage says how many."
+    )
     unpublished_count: int
     release: WageRelease
     provenance: Provenance

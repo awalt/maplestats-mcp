@@ -15,6 +15,7 @@ from maplestats_mcp.modules.ckan.constants import PORTALS as CKAN_PORTALS
 from maplestats_mcp.modules.planner import client, topics_fr
 from maplestats_mcp.modules.planner.places import (
     CITIES,
+    CITY_PROVINCES,
     CITY_SHADOWS,
     PROVINCE_ALIASES,
     PROVINCES,
@@ -414,3 +415,58 @@ def test_one_citys_tools_stay_out_of_a_plan_for_other_places():
     assert "ets_get_service_alerts" in _topic_tools("transit alerts in Edmonton")
     assert "toronto_summarize_short_term_rentals" in _topic_tools("short-term rentals in Ontario")
     assert "toronto_summarize_short_term_rentals" in _topic_tools("short-term rentals")
+
+
+def _province_tools(question: str) -> set[str]:
+    return {
+        prefix
+        for prefix in client._PROVINCE_TOOLS
+        for tool in _topic_tools(question)
+        if tool.startswith(prefix)
+    }
+
+
+def test_every_city_has_a_known_province():
+    labels = {label for label, _ in CITIES.values()}
+    assert labels == set(CITY_PROVINCES)
+    assert set(CITY_PROVINCES.values()) <= {label for label, _ in PROVINCES.values()}
+
+
+def test_province_tools_stay_out_of_a_plan_for_other_provinces():
+    """Issue #275: "transit alerts in Calgary" listed BC Transit and DriveBC."""
+    assert _province_tools("transit alerts in Calgary") == set()
+    assert _province_tools("road closures in Calgary") == set()
+    assert _province_tools("air quality in Toronto") == set()
+    assert _province_tools("lobbyists registered in Ontario") == set()
+    assert _province_tools("oil production in Saskatchewan") == set()
+    assert _province_tools("wildfires in Vancouver") == {"bc_env_"}
+    assert _province_tools("wildfires in Ontario") == set()
+
+
+def test_province_tools_stay_for_the_province_its_cities_or_no_place():
+    # The province, one of its cities, or two places of which one is theirs.
+    assert _province_tools("road closures in BC") == {"bc_transit_", "drivebc_"}
+    assert _province_tools("transit alerts in Victoria") == {"bc_transit_", "drivebc_"}
+    assert _province_tools("lobbyists registered in Vancouver") == {"bc_lobbyists_"}
+    assert _province_tools("oil production in Alberta") == {"aer_"}
+    assert _province_tools("oil production in Calgary") == {"aer_"}
+    assert _province_tools("wildfires in Edmonton") == {"ab_wildfire_"}
+    assert _province_tools("transit alerts in Calgary and Vancouver") == {
+        "bc_transit_",
+        "drivebc_",
+    }
+    # A question that names no place keeps every province's tools.
+    assert _province_tools("lobbying activity") == {"bc_lobbyists_"}
+    assert _province_tools("air quality") == {"ab_wildfire_", "bc_env_"}
+
+
+def test_a_place_without_a_known_province_keeps_province_tools(monkeypatch):
+    """The filter never acts on a guess: with no province on record for Calgary, the
+    question might be about anywhere, so BC Transit stays."""
+    monkeypatch.setattr(
+        client,
+        "CITY_PROVINCES",
+        {label: province for label, province in CITY_PROVINCES.items() if label != "Calgary"},
+    )
+    assert "bc_transit_get_stop_predictions" in _topic_tools("transit alerts in Calgary")
+    assert "bc_transit_get_stop_predictions" not in _topic_tools("transit alerts in Toronto")
