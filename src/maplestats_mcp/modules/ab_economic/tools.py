@@ -65,6 +65,9 @@ async def ab_economic_list_tables(query: str | None = None, lang: Lang = "en") -
     query="Unemployment", "CPI", "AESO", "RigCount", "Exports", or a
     StatCan table number such as "14100287". Names ending in an 8-10
     digit number mirror that StatCan table with Alberta-focused cuts.
+    The list also holds the dashboard's own working tables (TableIndex,
+    "_stage" copies that stopped updating, Defence_* project lists);
+    prefer the table an indicator page names.
     Keywords: Alberta, economic data, tables, labour force, CPI,
     exports, energy, housing starts, population, rig count.
     Mots-clés : Alberta, données économiques, tableaux de données,
@@ -107,7 +110,8 @@ async def ab_economic_get_data(
     table="UnemploymentRates_14100287", filters={"GeoName": "Alberta",
     "Sex": "Both sexes", "Age": "15 years and over"}. Dates are
     inclusive ISO dates; the most recent `limit` rows (max 2000) come
-    back oldest first.
+    back oldest first. provenance.caveats says when the newest row is
+    over three years old, or when rows repeat or disagree for one date.
     Keywords: Alberta, economic data, time series, unemployment rate,
     inflation, GDP, exports, oil production, Calgary, Edmonton.
     Mots-clés : Alberta, données économiques, séries chronologiques,
