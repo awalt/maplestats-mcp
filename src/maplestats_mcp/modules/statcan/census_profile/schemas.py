@@ -47,7 +47,11 @@ class CensusProfileValue(BaseModel):
 
 
 class CensusProfileDataResult(BaseModel):
-    level: str
+    level: str = Field(description="The geography level, or 'mixed' when `levels` has several.")
+    levels: list[str] = Field(
+        default_factory=list,
+        description="Every geography level the codes named (each fetched on its own).",
+    )
     values: list[CensusProfileValue] = Field(default_factory=list)
     release_date: str | None = None
     provenance: Provenance

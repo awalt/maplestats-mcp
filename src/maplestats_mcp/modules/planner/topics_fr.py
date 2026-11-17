@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 
+from maplestats_mcp.modules.planner import topics as _en
 from maplestats_mcp.shared.i18n import french_text
 
 FR: dict[str, str] = {
@@ -50,10 +51,27 @@ FR: dict[str, str] = {
         "téléchargement, attribution et conditions seulement; aucune valeur, car les "
         "conditions de l'ACI en interdisent la publication"
     ),
-    "census shelter cost and tenure: level, geography_codes (DGUIDs from "
-    "statcan_census_profile_search_geography) and characteristic_codes": (
-        "frais de logement et mode d'occupation au recensement : level, geography_codes "
-        "(DGUID tirés de statcan_census_profile_search_geography) et characteristic_codes"
+    "census tenure and the share of households spending 30% or more of income on "
+    "shelter (characteristics 1470 owners, 1478 tenants), or shelter cost for small "
+    "areas: geography_codes (DGUIDs from statcan_census_profile_search_geography) "
+    "and characteristic_codes": (
+        "mode d'occupation au recensement et part des ménages qui consacrent 30 % ou plus "
+        "de leur revenu aux frais de logement (caractéristiques 1470 propriétaires, 1478 "
+        "locataires), ou frais de logement des petites régions : geography_codes (DGUID "
+        "tirés de statcan_census_profile_search_geography) et characteristic_codes"
+    ),
+    _en.CENSUS_SHELTER_STEP: (
+        "Recensement de 2021 : frais de logement mensuels médians et moyens selon le mode "
+        "d'occupation, pour le Canada, les provinces, les régions métropolitaines et les "
+        "agglomérations (moins d'une seconde) : product_id=98-10-0253, "
+        "coordinate=<id de la géographie>.1.1.1.1.<id du coût>.<id du mode d'occupation> "
+        "(id du coût 12 médian, 11 moyen ; mode d'occupation 2 propriétaire, 5 locataire) ; "
+        "ids de géographie de ce tableau : Canada 1, NL 2, PE 7, NS 10, NB 16, QC 24, ON 54, "
+        "MB 98, SK 105, AB 115, BC 133, YT 162, NT 164, NU 166 ; une région métropolitaine "
+        "ou une agglomération : wds_get_cube_metadata avec dimension=1 et member_query=<nom> "
+        "donne son id. La part des ménages qui consacrent 30 % ou plus de leur revenu aux "
+        "frais de logement n'est que dans le profil du recensement (les comptes de "
+        "98-10-0252 sont arrondis autrement)"
     ),
     "CMHC reports by census metropolitan area and centre; StatCan price indexes are by CMA "
     "too, but the two define some areas differently, so name the geography each figure "
@@ -330,17 +348,52 @@ FR: dict[str, str] = {
     ),
     # Population
     "Population, census and demographics": "Population, recensement et démographie",
-    "find the census area's DGUID: level='census_subdivisions' (a municipality), "
+    "find the census area's DGUID for what the tables above lack (other "
+    "characteristics, dissemination areas, forward sortation areas, health "
+    "regions...): level='census_subdivisions' (a municipality), "
     "'census_metro_areas' or 'canada_provinces_territories', and query=<place>": (
-        "trouver le DGUID de la région de recensement : level='census_subdivisions' (une "
+        "trouver le DGUID de la région de recensement pour ce que les tableaux ci-dessus "
+        "n'ont pas (autres caractéristiques, aires de diffusion, régions de tri "
+        "d'acheminement, régions sociosanitaires...) : level='census_subdivisions' (une "
         "municipalité), 'census_metro_areas' ou 'canada_provinces_territories', et "
         "query=<lieu>"
+    ),
+    _en.CENSUS_COUNTS_STEP: (
+        "Recensement de 2021 : population et logements du Canada, des provinces, des régions "
+        "métropolitaines et des agglomérations (moins d'une seconde) : product_id=98-10-0005, "
+        "coordinate=<id de la géographie>.<id du compte> (id du compte 1 population de 2021, "
+        "2 population de 2016, 3 variation, 4 logements privés, 7 logements occupés, "
+        "10 superficie, 11 densité ; ids de géographie comme à l'étape du revenu des "
+        "ménages) ; municipalités et divisions de recensement : 98-10-0004 (ids de compte "
+        "1 à 4 comme ci-dessus, 5 logements occupés, 6 superficie, 7 densité)"
+    ),
+    _en.CENSUS_AGE_STEP: (
+        "Recensement de 2021 : âge moyen et âge médian du Canada, des provinces, des régions "
+        "métropolitaines et des agglomérations : product_id=98-10-0020, "
+        "coordinate=<id de la géographie>.1.<id de l'âge>.1 (id de l'âge 127 âge moyen, "
+        "128 âge médian ; ids de géographie comme à l'étape du revenu des ménages) ; "
+        "municipalités et divisions de recensement : 98-10-0022 avec la même coordonnée"
+    ),
+    _en.CENSUS_INCOME_STEP: (
+        "Recensement de 2021 : revenu des ménages (année de revenu 2020) du Canada, des "
+        "provinces, des régions métropolitaines et des agglomérations (moins d'une seconde) : "
+        "product_id=98-10-0061, coordinate=<id de la géographie>.1.1.<id de la statistique> "
+        "(id de la statistique 2 revenu total médian, 3 revenu après impôt médian, 5 revenu "
+        "total moyen, 7 revenu après impôt moyen ; ids de géographie : "
+        + _en.CENSUS_GEOGRAPHY_IDS
+        + " ; une région métropolitaine ou une agglomération : wds_get_cube_metadata avec "
+        "dimension=1 et member_query=<nom> donne son id) ; municipalités et divisions de "
+        "recensement : 98-10-0060, même coordonnée, id par member_query ; secteurs de recensement : "
+        "98-10-0058 avec coordinate=<id du secteur>.1.1.<id de la statistique> (3 revenu "
+        "total médian, 5 revenu après impôt médian)"
     ),
     "find the characteristic code (query='median age', 'household income'...)": (
         "trouver le code de la caractéristique (query='median age', 'household income'...)"
     ),
-    "2021 values: the same level, geography_codes and characteristic_codes": (
-        "valeurs de 2021 : les mêmes level, geography_codes et characteristic_codes"
+    "2021 values (30 to 45 s, then kept): geography_codes of any levels in one call, "
+    "and characteristic_codes": (
+        "valeurs de 2021 (30 à 45 s, puis conservées) : geography_codes de tous niveaux "
+        "dans un seul appel, et characteristic_codes"
     ),
     "older or custom census tables in Beyond 20/20 format": (
         "tableaux de recensement anciens ou personnalisés au format Beyond 20/20"
@@ -435,6 +488,59 @@ FR: dict[str, str] = {
     "a drug's PMPRB price review status": "état de l'examen du prix d'un médicament par le CEPMB",
     "public drug program spending (CIHI)": "dépenses des régimes publics d'assurance médicaments (ICIS)",
     "StatCan CPI for prescribed medicines": "IPC des médicaments d'ordonnance de Statistique Canada",
+    # Health workforce
+    "Health workforce: physicians, nurses, pharmacists, therapists, support workers": (
+        "Main-d'œuvre de la santé : médecins, infirmières, pharmaciens, thérapeutes, préposés"
+    ),
+    "CIHI's workbook for the profession (physicians, nurses, pharmacists, "
+    "physiotherapists, occupational therapists, personal support workers in Alberta, "
+    "National Physician Database)": (
+        "classeur de l'ICIS pour la profession (médecins, infirmières, pharmaciens, "
+        "physiothérapeutes, ergothérapeutes, préposés aux services de soutien à la personne "
+        "en Alberta, Base de données nationale sur les médecins)"
+    ),
+    "the workbook's tables: ids, titles, label and value columns": (
+        "les tableaux du classeur : identifiants, titres, colonnes d'identification et de valeurs"
+    ),
+    "rows by jurisdiction, year, specialty or age; marks such as '—' are not zero": (
+        "lignes par province ou territoire, année, spécialité ou âge ; un symbole comme « — » "
+        "n'est pas un zéro"
+    ),
+    "CIHI's definitions, methodology and how to cite the workbook": (
+        "définitions et méthodologie de l'ICIS, et comment citer le classeur"
+    ),
+    "CIHI indicators on the workforce: physicians per 100,000, nurses entering and "
+    "leaving the workforce": (
+        "indicateurs de l'ICIS sur la main-d'œuvre : médecins pour 100 000 habitants, "
+        "infirmières qui entrent dans la profession et la quittent"
+    ),
+    "StatCan labour force and census tables on health occupations (survey-based)": (
+        "tableaux de Statistique Canada sur la population active et le recensement pour les "
+        "professions de la santé (fondés sur des enquêtes)"
+    ),
+    "CIHI's terms of use limit commercial use and use inside software applications "
+    "without its written authorization: say so when passing these figures on, and "
+    "credit CIHI as the source.": (
+        "Les conditions d'utilisation de l'ICIS limitent l'usage commercial et l'usage dans "
+        "des applications logicielles sans son autorisation écrite : dites-le en transmettant "
+        "ces chiffres, et citez l'ICIS comme source."
+    ),
+    "CIHI counts regulated providers from registries (Scott's Medical Database, the "
+    "Health Workforce Database); StatCan's labour force and census occupation counts "
+    "come from surveys. They differ in definition: do not mix them in one series.": (
+        "L'ICIS dénombre les fournisseurs réglementés à partir de registres (Base de données "
+        "médicales Scott's, Base de données sur la main-d'œuvre de la santé) ; les effectifs "
+        "par profession de la population active et du recensement de Statistique Canada "
+        "viennent d'enquêtes. Les définitions diffèrent : ne les mêlez pas dans une même série."
+    ),
+    "A '—' in a CIHI table means no data, not zero: in the 2025 physician tables the "
+    "Ontario column is '—' (data release delayed), so the Canada totals are '—' too. "
+    "Read the table's notes.": (
+        "Un « — » dans un tableau de l'ICIS signifie aucune donnée, et non zéro : dans les "
+        "tableaux de 2025 sur les médecins, la colonne de l'Ontario est à « — » (diffusion "
+        "des données retardée), de sorte que les totaux du Canada sont aussi « — ». Lisez "
+        "les notes du tableau."
+    ),
     "Public health surveillance: respiratory viruses, overdoses, infectious disease": (
         "Surveillance de la santé publique : virus respiratoires, surdoses, maladies infectieuses"
     ),

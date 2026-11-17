@@ -1401,6 +1401,40 @@ and exact column filters).
 The all-indicators XLSX (~98 MB, at Excel's row limit) is not used. Adds the
 `openpyxl` dependency.
 
+**Health workforce data tables (added 2026-11-17, issue #252).** CIHI's
+"Health workforce: Data tables" page (cihi.ca/en/topics/health-workforce/
+data-tables, five pages of ten, French twin under /fr/sujets/main-doeuvre-de-
+la-sante/) lists 45 downloads: 43 anonymous `.xlsx` workbooks and 2 `.zip`
+archives of 2023 releases. `modules/cihi/workforce/` (4 tools,
+`cihi_workforce_*`) lists them from that page (a workbook is read only if the
+page names it), reads their tables sheet by sheet and returns rows by
+jurisdiction, profession, specialty, year or age. The earlier probe missed the
+nursing workbook because it read the first listing page only: *Nursing in
+Canada, 2025* is on page 1. Read in both languages: the current physician
+supply, distribution and migration workbook (30 tables, 1.6 MB), its 2001-2024
+and 1971-2000 histories (27.5 MB and 4.9 MB), the National Physician Database
+2024-2025 utilization and payments tables, the historical utilization (2015-2024,
+24.9 MB, 204,000 rows on one sheet) and payments (1999-2024) workbooks, and the
+2025 nursing, pharmacist, physiotherapist, occupational therapist and Alberta
+personal support worker workbooks. Not read: Quick Stats (interactive
+dashboards over hidden sheets), the two `.zip` archives, hidden helper sheets
+and drop-down tabs inside workbooks, and any workbook over the existing 30 MB
+download cap (the NPDB historical utilization 1996 to 2014 is 40.3 MB).
+
+Layout (checked on all of the above): a title row "Table 3a  ..." in column A,
+a header row, vertically merged label cells (blank under their first row in
+read-only mode), "—" (no data or not reported), "n/a", "x" (suppressed) and
+"n/r" marks, percentage-formatted cells that store a fraction, footer notes
+that define the marks and say what is missing (in the 2025 physician tables the
+Ontario column and the Canada total are "—", and the note says only that the
+data release was delayed), several tables on one tab, a
+header repeated per group (NPDB), and Excel's "Column1" ... "Column16384"
+junk headers. Tables from the HWDB family (nursing, pharmacists, physiotherapists,
+occupational therapists, PSWs) share one layout. Terms: CIHI's Terms of Use limit
+commercial use and use inside software applications without its written
+authorization; the owner approved building the tools on 2026-11-17 knowing
+that, so every result carries the terms in `provenance.caveats`.
+
 CIHI retired Your Health System and the Health Indicators Interactive Tool
 (the old URLs now redirect to a "Modernizing how we deliver data" page) in
 favour of the Indicator Library, whose …

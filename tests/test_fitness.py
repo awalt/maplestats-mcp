@@ -64,6 +64,25 @@ VERIFIED_TABLES = {
     36100434: "Gross domestic product (GDP) at basic prices, by industry, monthly",
     98100001: "Population and dwelling counts: Canada, provinces and territories",
     98100002: "Population and dwelling counts: Canada and census subdivisions (municipalities)",
+    # The 98-10 tables the planner routes census figures to; titles read with WDS
+    # getCubeMetadata on 2026-11-17.
+    98100004: "Population and dwelling counts: Canada, provinces and territories, census "
+    "divisions, census subdivisions (municipalities) and designated places",
+    98100005: "Population and dwelling counts: Canada, provinces and territories, census "
+    "metropolitan areas and census agglomerations",
+    98100020: "Age (in single years), average age and median age and gender: Canada, provinces "
+    "and territories, census metropolitan areas and census agglomerations with parts",
+    98100022: "Age (in single years), average age and median age and gender: Canada, provinces "
+    "and territories, census divisions and census subdivisions",
+    98100058: "Household income statistics by household type: Census metropolitan areas, tracted "
+    "census agglomerations and census tracts",
+    98100060: "Household income statistics by dwelling and household characteristics: Canada, "
+    "provinces and territories, census divisions and census subdivisions",
+    98100061: "Household income statistics by dwelling and household characteristics: Canada, "
+    "provinces and territories, census metropolitan areas and census agglomerations with parts",
+    98100253: "Shelter cost by tenure including presence of mortgage payments and subsidized "
+    "housing: Canada, provinces and territories, census metropolitan areas and census "
+    "agglomerations",
     14100064: "Employee wages by industry, annual",
     14100458: "Labour force characteristics by census metropolitan area, three-month moving "
     "average, unadjusted for seasonality",
@@ -244,3 +263,14 @@ def test_plan_does_not_repeat_a_note_across_topics():
     fitness = {note for rule in RULES for note in (rule.note_en,)}
     added = [note for note in caveats if note in fitness]
     assert len(added) == len(set(added))
+
+
+def test_the_census_tables_the_planner_routes_to_carry_the_boundary_note():
+    # A figure read from a 98-10 table through wds_get_data_from_cube_coord keeps the note
+    # the census profile's results carry (the profile's own tools match by prefix).
+    for product_id in (98100004, 98100005, 98100020, 98100022, 98100058, 98100060, 98100061):
+        keys = _keys("wds_get_data_from_cube_coord", {"product_id": product_id})
+        assert keys == {"census-geography-vintage"}, product_id
+    assert _keys("wds_get_data_from_cube_coord", {"product_id": 98100253}) == {
+        "census-geography-vintage"
+    }

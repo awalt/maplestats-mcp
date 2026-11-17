@@ -92,6 +92,12 @@ CASES = [
     ("taux de réadmission à l'hôpital ICIS", "cihi_get_indicator_data"),
     # CIHI and CMHC data tables answer in French (paired from the sources).
     ("indicateurs de santé ICIS mortalité", "cihi_search_indicators"),
+    # Tableaux de l'ICIS sur la main-d'œuvre de la santé (2026-11-17).
+    ("médecins pour 100 000 habitants par province", "cihi_workforce_get_table"),
+    ("nombre d'infirmières autorisées par province", "cihi_workforce_get_table"),
+    ("effectif de pharmaciens ICIS", "cihi_workforce_list_workbooks"),
+    ("préposés aux services de soutien à la personne en Alberta", "cihi_workforce_list_workbooks"),
+    ("migration des médecins entre les provinces", "cihi_workforce_get_table"),
     ("tableaux de données SCHL caractéristiques des ménages", "cmhc_dt_list_tables"),
     ("fichier Excel des tableaux de données SCHL", "cmhc_dt_get_download_url"),
     ("dépenses fédérales comptes publics ministère", "gc_infobase_query"),

@@ -28,6 +28,9 @@ services:
       MAPLE_LODE_CACHE_DIR: "/data/lode"
       MAPLE_LODE_CACHE_MAX_GB: "${MAPLE_LODE_CACHE_MAX_GB:-3}"
       MAPLE_CBSA_TARIFF_CACHE_DIR: "/data/cbsa_tariff"
+      # Census profile values read from StatCan (33 to 47 s a request): one file of at
+      # most 8 MB, each value kept 14 days (statcan/census_profile/value_store.py).
+      MAPLE_CENSUS_CACHE_DIR: "/data/census"
       # The /stats call counts, kept across restarts (shared/usage.py).
       MAPLE_USAGE_STATS_FILE: "/data/usage/stats.json"
       # Browser origins allowed to call /mcp; unset keeps the defaults (the
@@ -41,13 +44,15 @@ services:
     # restarts: pumf-cache holds PUMF microdata, ip-horizons-cache the CIPO
     # patent tables, and lode-cache the StatCan open-database (LODE) files
     # unpacked from their archives (without it every restart downloads them
-    # again), and usage-stats the /stats call counts. Everything else is in memory.
+    # again), usage-stats the /stats call counts and census-cache the census profile's
+    # values. Everything else is in memory.
     volumes:
       - pumf-cache:/data/pumf
       - ip-horizons-cache:/data/ip_horizons
       - lode-cache:/data/lode
       - cbsa-tariff-cache:/data/cbsa_tariff
       - usage-stats:/data/usage
+      - census-cache:/data/census
     restart: unless-stopped
 
 volumes:
@@ -56,3 +61,4 @@ volumes:
   lode-cache:
   cbsa-tariff-cache:
   usage-stats:
+  census-cache:

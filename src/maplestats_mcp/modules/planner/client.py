@@ -483,6 +483,15 @@ def plan(question: str, lang: str = "en") -> QueryPlan:
         for _, topic, hits, topic_text in scored[:_MAX_TOPICS]
     ]
 
+    # A step two topics share (the census income table under both "population" and
+    # "income") is listed once, under the topic that ranks first: the plan is read again
+    # at every later step, and the same 700 characters twice were pure cost.
+    shown: set[tuple[str, str]] = set()
+    for match in topics:
+        fresh = [step for step in match.steps if (step.tool, step.purpose) not in shown]
+        shown.update((step.tool, step.purpose) for step in fresh)
+        match.steps = fresh
+
     result = QueryPlan(
         question=question,
         topics=topics,

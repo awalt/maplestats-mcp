@@ -226,10 +226,24 @@ RULES: tuple[FitnessRule, ...] = (
             "six new CMAs named; Ottawa-Gatineau expanded to Arnprior and Carleton Place, "
             "Windsor to Leamington. WDS footnotes on 98-10-0002: 'boundary change since the "
             "2016 Census that resulted in an adjustment to the 2016 population and/or "
-            "dwelling counts'."
+            "dwelling counts'. The same 2021 boundaries apply to the 98-10 tables the planner "
+            "sends census figures to (read with WDS getCubeMetadata on 2026-11-17, their "
+            "values compared with the census profile's): 98-10-0004, -0005, -0020, -0022, "
+            "-0058, -0060, -0061 and -0253."
         ),
         tool_prefixes=("statcan_census_profile_", "statcan_geo_"),
-        product_ids=(98100001, 98100002),
+        product_ids=(
+            98100001,
+            98100002,
+            98100004,
+            98100005,
+            98100020,
+            98100022,
+            98100058,
+            98100060,
+            98100061,
+            98100253,
+        ),
     ),
     FitnessRule(
         key="low-income-lines",
