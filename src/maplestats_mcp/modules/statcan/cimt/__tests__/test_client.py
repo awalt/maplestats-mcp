@@ -752,13 +752,13 @@ async def test_large_code_list_is_parsed_off_the_event_loop(httpx_mock, monkeypa
     assert len(_UOM.encode()) < threshold < len(hs10.encode())
     monkeypatch.setattr(constants, "CODES_THREAD_PARSE_BYTES", threshold)
     threaded: list[object] = []
-    real_to_thread = asyncio.to_thread
+    real_run_parse = client.run_parse
 
-    async def to_thread(func, /, *args, **kwargs):
+    async def run_parse(func, /, *args, **kwargs):
         threaded.append(func)
-        return await real_to_thread(func, *args, **kwargs)
+        return await real_run_parse(func, *args, **kwargs)
 
-    monkeypatch.setattr(client.asyncio, "to_thread", to_thread)
+    monkeypatch.setattr(client, "run_parse", run_parse)
     result = await client.search_commodities("2709", direction="imports", level="national")
     assert result.commodities[0].code == "2709000041"
     assert result.commodities[0].unit == "Volume in cubic metres"
