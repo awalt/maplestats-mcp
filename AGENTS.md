@@ -88,6 +88,15 @@ a module defines only under a setting (`statcan_pumf_tabulate` with
 the same test fails without it. Code that needs a tool's module should call
 `catalogue.tool_module(tool)`: listed tools have no `fn` until loaded.
 
+A tool in a geospatial module (ArcGIS, WFS, OGC API, boundaries, geocoding) also has a
+class in `gis_profile.py`: PURE (geometry, a layer, a grid or geocoding is the product;
+`MAPLE_GIS=0` hides it) or HYBRID (rows or figures from a map service; never hidden).
+`tests/test_gis_profile.py` fails for a tool of those modules with no class, and for any
+text the statistics-only profile still shows that names a PURE tool (the server
+instructions, a module description, a docs page, a plan): add a cut for it in
+`gis_profile.py`. The default profile never changes: keep every cut to the words that name
+the hidden tool.
+
 ### Response contract
 
 Every tool's return type annotation is a Pydantic `BaseModel` (never
@@ -242,6 +251,18 @@ builds the website once, and the discovery tests ask every query over one
 client session. Keep tests independent of order (each one mocks or
 resets the module-level state it reads), so a run with
 `uv run --with pytest-randomly pytest` passes too.
+
+The `ocr` extra (pypdfium2) and the system's `tesseract` program, with its
+English and French data, are not part of a default install, like `semantic`.
+`shared/ocr.py` imports pypdfium2 only when a page is read, so the server and
+every other test run without them. The unit tests of `shared/ocr.py` and of the
+StatCan reader's OCR path replace the render-and-read step with canned text and
+a fake child program. The tests marked `ocr` (`tests/test_shared_ocr_engine.py`)
+read a scan built in the test with the real engine; run them with
+`uv sync --extra ocr` and `uv run pytest -m ocr` (set `TESSDATA_PREFIX` when the
+language data are not where tesseract looks). They skip without the extra, the
+program or the data; CI's `ocr` job installs all three and sets
+`MAPLE_REQUIRE_OCR=1` (`conftest.py`), which turns a skip there into a failure.
 
 ### Changelog
 

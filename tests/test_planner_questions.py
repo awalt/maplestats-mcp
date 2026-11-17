@@ -16,7 +16,7 @@ from maplestats_mcp.catalogue import tool_module
 from maplestats_mcp.modules.planner import client
 from maplestats_mcp.modules.planner.places import CITIES, PROVINCES
 from maplestats_mcp.modules.planner.topics import FALLBACK_STEPS, TOPICS
-from maplestats_mcp.server import mcp
+from tests.gis_profiles import hides, server_for
 
 # (question, expected topic, expected first tool of that topic)
 QUESTIONS: list[tuple[str, str, str]] = [
@@ -327,10 +327,14 @@ NOT_SOURCES = {
 
 
 @pytest.mark.parametrize(("question", "topic", "first_tool"), QUESTIONS)
-def test_question_routes_to_first_tool(question: str, topic: str, first_tool: str):
+def test_question_routes_to_first_tool(profile: str, question: str, topic: str, first_tool: str):
+    # Under MAPLE_GIS=0 a plan starts with the same tool, or never names a hidden one.
     result = client.plan(question)
     assert result.out_of_scope is None, question
     assert result.topics, question
+    if hides(profile, first_tool):
+        assert first_tool not in [s.tool for t in result.topics for s in t.steps], question
+        return
     assert result.topics[0].topic == topic, (question, [t.topic for t in result.topics])
     assert result.topics[0].steps[0].tool == first_tool, question
 
@@ -529,12 +533,15 @@ def _planned_steps():
         yield steps
 
 
-async def test_every_step_names_its_required_arguments():
+async def test_every_step_names_its_required_arguments(profile: str):
     # A step can run only if each required argument is named in its purpose or
-    # comes from an earlier step of the same module in the same list.
-    tools = {tool.name: tool for tool in await mcp._list_tools()}
+    # comes from an earlier step of the same module in the same list. Under MAPLE_GIS=0 the
+    # hidden tools' steps are dropped from every plan, so they are neither run nor an
+    # earlier step another step could take its arguments from.
+    tools = {tool.name: tool for tool in await server_for(profile)._list_tools()}
     missing = []
-    for steps in _planned_steps():
+    for all_steps in _planned_steps():
+        steps = [step for step in all_steps if not hides(profile, step.tool)]
         modules_before: set[str] = set()
         for step in steps:
             tool = tools[step.tool]
@@ -547,9 +554,19 @@ async def test_every_step_names_its_required_arguments():
     assert not missing, f"steps without their required arguments: {missing}"
 
 
-async def test_report_unrouted_modules():
-    tools = [tool for tool in await mcp._list_tools() if tool.name not in NOT_SOURCES]
-    planned = {step.tool for steps in _planned_steps() for step in steps}
+# The census geography module's only planner step is the boundary-maps tool, a PURE one.
+# Under MAPLE_GIS=0 its three spatial-layer tools (HYBRID: deprivation index, housing need,
+# road network) are left with no plan step, and search_tools is how they are found.
+UNROUTED_STATS_ONLY = {"statcan/geo"}
+
+
+async def test_report_unrouted_modules(profile: str):
+    tools = [
+        tool for tool in await server_for(profile)._list_tools() if tool.name not in NOT_SOURCES
+    ]
+    planned = {
+        step.tool for steps in _planned_steps() for step in steps if not hides(profile, step.tool)
+    }
     modules = {_module(tool) for tool in tools}
     routed = {_module(tool) for tool in tools if tool.name in planned}
     unrouted = sorted(modules - routed)
@@ -557,7 +574,8 @@ async def test_report_unrouted_modules():
     if pending:
         warnings.warn(f"modules not yet in any plan (pending): {pending}", stacklevel=1)
     failing = [m for m in unrouted if m not in pending]
-    assert not failing, f"modules no plan reaches: {failing}"
+    expected = sorted(UNROUTED_STATS_ONLY) if profile == "stats_only" else []
+    assert failing == expected, f"modules no plan reaches: {failing} (expected {expected})"
 
 
 # 2026-10-16 review (M-8): planner term data -------------------------------------------

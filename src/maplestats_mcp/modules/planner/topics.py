@@ -1312,6 +1312,9 @@ TOPICS: tuple[Topic, ...] = (
             "electricite",
             "puits",
             "gaz naturel",
+            "bcer",
+            "bc energy regulator",
+            "montney",
             "ontario energy board",
             "oeb",
             "saidi",
@@ -1393,6 +1396,26 @@ TOPICS: tuple[Topic, ...] = (
                 ),
             ),
             PlanStep(
+                "bcer_get_production",
+                "British Columbia gas, oil and water production by month for a well, operator, "
+                "area or the province: well_authorization, operator, from_period",
+                ("bcer", "bc energy regulator", "montney", "colombie-britannique"),
+                (
+                    r"\b(bc|british columbia)\b.*\b(wells?|gas|oil|production|montney)\b",
+                    r"\b(wells?|gas|oil|production|montney)\b.*\b(bc|british columbia)\b",
+                ),
+            ),
+            PlanStep(
+                "bcer_search_wells",
+                "British Columbia wells (BCER well index): authorization number, UWI, status, "
+                "operator, area; also bcer_get_drilling_records, bcer_get_fracture_records",
+                ("bcer", "bc energy regulator", "montney", "colombie-britannique"),
+                (
+                    r"\b(bc|british columbia)\b.*\bwells?\b",
+                    r"\bwells?\b.*\b(bc|british columbia)\b",
+                ),
+            ),
+            PlanStep(
                 "sdmx_space_search",
                 "CCEI energy information flows (efficiency, supply): query=<topic>",
             ),
@@ -1403,6 +1426,11 @@ TOPICS: tuple[Topic, ...] = (
             (
                 "Electricity demand and prices cover Ontario (IESO), Quebec (Hydro-Quebec) and "
                 "Alberta (AESO) only; AESO and Hydro-Quebec data are for non-commercial use."
+            ),
+            (
+                "BCER's well and production files (bcer_) state no licence and its website terms "
+                "ask for written permission to reproduce them: use them for personal or "
+                "internal analysis and check with BCER before redistributing."
             ),
         ),
     ),

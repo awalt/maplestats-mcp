@@ -6,6 +6,10 @@ These are phrased the way a user asks, not the way a tool is named;
 the French counterpart is test_french_discovery.py. Several expectations
 accept a reasonable neighbour (e.g. CPI from the Bank of Canada rather
 than StatCan) because either answers the question.
+
+Every case runs under both GIS profiles (tests/gis_profiles.py). With MAPLE_GIS=0 a
+case whose tool the profile hides asserts that the tool is not offered, and the others
+keep their real check.
 """
 
 from __future__ import annotations
@@ -16,9 +20,14 @@ import re
 import pytest
 from fastmcp import Client
 
-from maplestats_mcp.server import mcp
+from tests.gis_profiles import PROFILES, STATS_ONLY, hides, profile_env, server_for
 
 TOP_N = 3
+# Where a case may sit with the 14 PURE tools out of the BM25 index. Dropping documents
+# shifts the IDF of every word they hold: "CPI-common" ranked boc_search_series third
+# with them and fourth without (measured 2026-11-17). The default profile still asks for
+# the top 3; this is the one case the opt-in profile reads one place wider.
+STATS_ONLY_TOP_N = {"CPI-common": 4}
 
 CASES = [
     ("What is Canada's current unemployment rate?", "statcan_indicators_get_indicators"),
@@ -354,31 +363,46 @@ FIRST = [
 ]
 
 
-@pytest.fixture(scope="module")
-def top_names() -> dict[str, list[str]]:
-    """search_tools's top names for every query, asked over one client session.
+@pytest.fixture(scope="module", params=PROFILES)
+def top_names(request: pytest.FixtureRequest) -> tuple[str, dict[str, list[str]]]:
+    """The profile and search_tools's names for every query, asked over one client session.
 
     One session serves every case instead of one session per case.
     """
+    profile = request.param
 
     async def search_all() -> dict[str, list[str]]:
         found = {}
-        async with Client(mcp) as client:
-            for query, _ in CASES:
+        async with Client(server_for(profile)) as client:
+            for query, _ in [*CASES, *FIRST]:
                 result = await client.call_tool("search_tools", {"query": query})
                 text = " ".join(getattr(block, "text", "") for block in result.content)
-                found[query] = re.findall(r'"name":\s*"([a-z0-9_]+)"', text)[:TOP_N]
+                found[query] = re.findall(r'"name":\s*"([a-z0-9_]+)"', text)
         return found
 
-    return asyncio.run(search_all())
+    with profile_env(profile):
+        return profile, asyncio.run(search_all())
 
 
 @pytest.mark.parametrize(("query", "expected"), CASES)
-def test_english_query_finds_tool(query: str, expected: str, top_names: dict[str, list[str]]):
-    names = top_names[query]
+def test_english_query_finds_tool(
+    query: str, expected: str, top_names: tuple[str, dict[str, list[str]]]
+):
+    profile, found = top_names
+    if hides(profile, expected):
+        assert expected not in found[query], f"{expected} is switched off: {query!r}"
+        return
+    top_n = STATS_ONLY_TOP_N.get(query, TOP_N) if profile == STATS_ONLY else TOP_N
+    names = found[query][:top_n]
     assert expected in names, f"{query!r} -> {names}"
 
 
 @pytest.mark.parametrize(("query", "expected"), FIRST)
-def test_english_query_ranks_tool_first(query: str, expected: str, top_names: dict[str, list[str]]):
-    assert top_names[query][:1] == [expected], f"{query!r} -> {top_names[query]}"
+def test_english_query_ranks_tool_first(
+    query: str, expected: str, top_names: tuple[str, dict[str, list[str]]]
+):
+    profile, found = top_names
+    if hides(profile, expected):
+        assert expected not in found[query], f"{expected} is switched off: {query!r}"
+        return
+    assert found[query][:1] == [expected], f"{query!r} -> {found[query][:TOP_N]}"

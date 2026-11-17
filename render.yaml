@@ -73,6 +73,12 @@ services:
         value: "128"
       - key: MAPLE_IP_HORIZONS_CACHE_MAX_GB
         value: "1.5"
+      # The image carries Tesseract, but reading a scanned PDF page takes about
+      # 125 MB for a second or two on top of the server's own memory, too much for
+      # the free 512 MB plan: the backup answers a scanned page empty, with a note.
+      # The Azure endpoint sets MAPLE_OCR=1 (docker.yml).
+      - key: MAPLE_OCR
+        value: "0"
       # The two switches below are the Render backup's settings only; the
       # Azure endpoint (mcp.maplestats.danielstats.io) has both on.
       # PUMF tabulation downloads whole ZIPs; the free disk does not persist.

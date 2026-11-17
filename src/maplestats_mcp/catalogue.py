@@ -31,7 +31,7 @@ from fastmcp.tools.base import ToolResult
 from fastmcp.utilities.components import FastMCPComponent
 from pydantic import Field
 
-from maplestats_mcp import config
+from maplestats_mcp import config, gis_profile
 
 MODULES_ROOT = Path(__file__).parent / "modules"
 CATALOGUE_PATH = Path(__file__).parent / "tool_catalogue.json"
@@ -55,13 +55,39 @@ _LISTED_FIELDS = {
     "timeout",
 }
 
-# Tools a module defines only when a setting allows it. The catalogue is
-# built with every switch on and lists these only while theirs is.
+# Tools a setting can switch off. The first two a module defines only when its setting
+# allows it; the PURE geospatial class (gis_profile.py) is always defined and hidden here,
+# while MAPLE_GIS is off. The catalogue is built with every switch on and lists a tool only
+# while its switch is.
 TOOL_SWITCHES: dict[str, Callable[[], bool]] = {
     "statcan_pumf_tabulate": config.get_pumf_tabulate_enabled,
     "wds_query_series": config.get_query_series_enabled,
+    **dict.fromkeys(gis_profile.PURE_GIS_TOOLS, config.get_gis_enabled),
 }
-_SWITCH_ENV = {"MAPLE_PUMF_TABULATE": "1", "MAPLE_QUERY_SERIES": "1"}
+_SWITCH_ENV = {"MAPLE_PUMF_TABULATE": "1", "MAPLE_QUERY_SERIES": "1", "MAPLE_GIS": "1"}
+
+# Switches that are a profile, not a limit: while one is off its tool reads as an unknown
+# name, where the others say they are switched off on this server (server.py's call_tool).
+PROFILE_SWITCHES: frozenset[str] = gis_profile.PURE_GIS_TOOLS
+
+
+def tool_enabled(name: str) -> bool:
+    """False for a tool a setting has switched off; True for every other name."""
+    switch = TOOL_SWITCHES.get(name)
+    return switch is None or switch()
+
+
+def module_hidden(entry: dict[str, Any]) -> bool:
+    """Whether switches hide every tool of a catalogued module, and it has nothing else.
+
+    Such a module is not registered at all (preload would import it to list nothing), and
+    docs://catalogue leaves it out. A module with resources or prompts stays: those are
+    served whatever its tools do.
+    """
+    tools = entry["tools"]
+    if not tools or any(Path(name).name in EXTRA_FILES for name in entry["files"]):
+        return False
+    return not any(tool_enabled(tool["name"]) for tool in tools)
 
 
 class CatalogueTool(Tool):

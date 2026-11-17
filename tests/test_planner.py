@@ -29,6 +29,7 @@ from maplestats_mcp.modules.planner.topics import (
 from maplestats_mcp.modules.socrata.constants import PORTALS as SOCRATA_PORTALS
 from maplestats_mcp.server import mcp
 from maplestats_mcp.shared.errors import InvalidInput
+from tests.gis_profiles import hides, server_for
 
 
 def _all_steps():
@@ -39,10 +40,14 @@ def _all_steps():
         yield from steps
 
 
-async def test_every_planned_tool_is_registered():
-    registered = {tool.name for tool in await mcp._list_tools()}
-    missing = sorted({step.tool for step in _all_steps()} - registered)
-    assert not missing, f"plan names unregistered tools: {missing}"
+async def test_every_planned_tool_is_registered(profile: str):
+    # The maps name every tool the planner can send a question to. Under MAPLE_GIS=0 the
+    # tools the profile hides are the only ones not registered, and plan() drops their steps
+    # (test_a_hidden_tool_is_never_planned, in test_gis_profile.py).
+    registered = {tool.name for tool in await server_for(profile)._list_tools()}
+    planned = {step.tool for step in _all_steps()}
+    missing = {tool for tool in planned - registered if not hides(profile, tool)}
+    assert not missing, f"plan names unregistered tools: {sorted(missing)}"
 
 
 def test_every_planned_portal_exists():

@@ -12,6 +12,10 @@ without recording why in the baseline report.
 
 The run is deterministic and needs no network: search_tools and plan_query read the
 registry and bundled maps only. Latency is reported, never asserted.
+
+The benchmark runs under both GIS profiles (tests/gis_profiles.py) against the same floors.
+With MAPLE_GIS=0 the hidden tools stop being accepted answers (runner.without_tools), the
+fixtures are still checked against the whole registry, and nothing is re-baselined.
 """
 
 from __future__ import annotations
@@ -21,7 +25,9 @@ from pathlib import Path
 
 import pytest
 
+from maplestats_mcp import gis_profile
 from tests.discovery_benchmark import runner
+from tests.gis_profiles import DEFAULT, PROFILES, profile_env, server_for
 
 # Measured 2026-10-19 (129 queries), re-measured 2026-10-27 against the reviewed fixtures (129
 # search, 105 plan). Overall floors sit about 0.04 below the baseline, language floors 0.05
@@ -70,10 +76,16 @@ PLAN_FLOORS: dict[tuple[str, str], dict[str, float]] = {
 }
 
 
-@pytest.fixture(scope="module")
-def benchmark() -> runner.Benchmark:
-    """The whole benchmark, run once for the module (one client session, one index build)."""
-    return runner.run_benchmark(strict=False)
+def _run(profile: str) -> runner.Benchmark:
+    hidden = frozenset() if profile == DEFAULT else gis_profile.PURE_GIS_TOOLS
+    with profile_env(profile):
+        return runner.run_benchmark(strict=False, server=server_for(profile), hidden=hidden)
+
+
+@pytest.fixture(scope="module", params=PROFILES)
+def benchmark(request: pytest.FixtureRequest) -> runner.Benchmark:
+    """The whole benchmark, run once per profile (one client session, one index build)."""
+    return _run(request.param)
 
 
 def test_every_expected_tool_topic_and_portal_exists(benchmark: runner.Benchmark):
@@ -127,7 +139,9 @@ def test_plan_query_stays_above_its_floor(benchmark: runner.Benchmark, group: st
         )
 
 
-def test_two_runs_return_the_same_tools(benchmark: runner.Benchmark):
+def test_two_runs_return_the_same_tools(
+    benchmark: runner.Benchmark, request: pytest.FixtureRequest
+):
     def tools(report: dict) -> list[tuple]:
         return [
             (
@@ -138,7 +152,7 @@ def test_two_runs_return_the_same_tools(benchmark: runner.Benchmark):
             for row in report["queries"]
         ]
 
-    again = runner.run_benchmark(strict=False)
+    again = _run(request.node.callspec.params["benchmark"])
     assert tools(again.report) == tools(benchmark.report)
 
 

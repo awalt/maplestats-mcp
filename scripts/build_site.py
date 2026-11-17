@@ -349,6 +349,16 @@ SOURCES: dict[str, Source] = {
         places=("BC",),
         row="provincial_agency",
     ),
+    "bcer": Source(
+        "BC Energy Regulator: wells, production and drilling files",
+        "BC Energy Regulator : fichiers sur les puits, la production et le forage",
+        "provincial",
+        "BCER",
+        "BCER",
+        domain="energy",
+        places=("BC",),
+        row="provincial_agency",
+    ),
     "bcgw": Source(
         "BC Geographic Warehouse",
         "Entrepôt géographique de la C.-B.",

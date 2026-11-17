@@ -16,24 +16,28 @@ from maplestats_mcp.shared import cache, file_download
 from maplestats_mcp.shared.breaker import BREAKER
 from maplestats_mcp.shared.rate_limiter import TokenBucket
 
+# Marker, and the variable that turns its skip into a failure.
+_REQUIRED_WHEN_SKIPPED = (("r_julia", "MAPLE_REQUIRE_R_JULIA"), ("ocr", "MAPLE_REQUIRE_OCR"))
+
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]):
-    """Fail an r_julia test that skips when MAPLE_REQUIRE_R_JULIA=1.
+    """Fail an r_julia or ocr test that skips when MAPLE_REQUIRE_R_JULIA=1 or MAPLE_REQUIRE_OCR=1.
 
-    Those tests skip without R, Julia or one of their packages, which is right
-    on a laptop but would let CI's r-julia job pass with a package missing.
+    Those tests skip without R, Julia or one of their packages (or without
+    pypdfium2, the tesseract program or its language data), which is right on a
+    laptop but would let CI's r-julia or ocr job pass with a package missing.
     """
     outcome = yield
     report = outcome.get_result()
-    if (
-        report.skipped
-        and os.environ.get("MAPLE_REQUIRE_R_JULIA") == "1"
-        and item.get_closest_marker("r_julia") is not None
-    ):
-        reason = report.longrepr[2] if isinstance(report.longrepr, tuple) else report.longrepr
-        report.outcome = "failed"
-        report.longrepr = f"MAPLE_REQUIRE_R_JULIA=1, but the test skipped: {reason}"
+    if not report.skipped:
+        return
+    for marker, variable in _REQUIRED_WHEN_SKIPPED:
+        if os.environ.get(variable) == "1" and item.get_closest_marker(marker) is not None:
+            reason = report.longrepr[2] if isinstance(report.longrepr, tuple) else report.longrepr
+            report.outcome = "failed"
+            report.longrepr = f"{variable}=1, but the test skipped: {reason}"
+            return
 
 
 @pytest.fixture

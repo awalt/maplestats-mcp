@@ -26,6 +26,11 @@ What the files look like, and what this module does about it:
 - lines are joined into paragraphs: a line much shorter than the page's usual
   line, or one ending a sentence before a short line, ends a paragraph; a word
   split at the end of a line ("situ-" / "ation") is joined;
+- a page of a scan has no text layer at all (it is an image of a page): it comes out
+  empty, so such a page (under 25 characters of text) is counted, kept apart from
+  the pages that are merely short, and given a bracketed line saying so, with a
+  link to the page. Whether its image covers the page (a scan) or not (a blank page,
+  a drawing) is read from the sizes the page declares, without decoding anything;
 - the outline (bookmarks), when the file has one (the CPI Reference Paper's PDF
   has 26), gives the sections; without one, each page is a section titled by
   its first heading or line ("Page 192 - Gross Output Approach");
@@ -49,13 +54,15 @@ import re
 import statistics
 import time
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
+from maplestats_mcp.modules.statcan.lang import say
 from maplestats_mcp.modules.statcan.reference import pages
+from maplestats_mcp.shared import pdf_pages
 from maplestats_mcp.shared.executor import check_deadline
 
 # pypdf logs a warning for every font it cannot fully decode ("fontTools is
@@ -163,6 +170,9 @@ _FR_SENTENCE_WORDS = frozenset(
         "selon",
     ]
 )
+# A page with fewer characters than this (spaces not counted) has no text layer worth
+# reading: a page number or a stamp on a scan, a blank page, a drawing.
+NO_TEXT_CHARS = 25
 _GUTTER_SPACES = 2  # blank character columns, at least, between two text columns
 _TABLE_GAP = re.compile(r"\S {4,}\S")  # a cell gap inside one column's line
 
@@ -183,12 +193,57 @@ class PdfText:
     # Two-column pages read a column at a time with both columns kept (the same
     # language in each, or a language that could not be told).
     two_column_pages: int = 0
+    # Pages read (1-based, in order) with fewer than NO_TEXT_CHARS characters of text,
+    # and those of them whose images cover the page: scans.
+    no_text_pages: list[int] = field(default_factory=list)
+    scanned_pages: list[int] = field(default_factory=list)
+    # Seconds the extraction took, for the caller that goes on to read scanned pages
+    # within the same budget.
+    seconds: float = 0.0
 
 
 def page_anchor(number: int) -> str:
     """The anchor of a PDF page's heading: its URL fragment is the standard
     PDF open parameter (#page=N), which browsers' PDF viewers honour."""
     return f"page={number}"
+
+
+_RANGES_SHOWN = 12
+
+
+def page_ranges(numbers: list[int], lang: str | None = None) -> str:
+    """Page numbers as ranges, "1-3, 5" for [1, 2, 3, 5] ("1 à 3, 5" in French); only
+    the first dozen ranges of a long list are written."""
+    runs: list[tuple[int, int]] = []
+    for number in sorted(set(numbers)):
+        if runs and number == runs[-1][1] + 1:
+            runs[-1] = (runs[-1][0], number)
+        else:
+            runs.append((number, number))
+    to = say("-", " à ", lang)
+    parts = [str(a) if a == b else f"{a}{to}{b}" for a, b in runs[:_RANGES_SHOWN]]
+    if len(runs) > _RANGES_SHOWN:
+        parts.append("...")
+    return ", ".join(parts)
+
+
+def no_text_marker(url: str, number: int, lang: str = "en", *, scanned: bool = True) -> str:
+    """The line that stands in a page's text when the page has none."""
+    if scanned:
+        return say(
+            f"[Page {number} has no text layer: the PDF holds only an image of it (a scan). "
+            f"Read it in the PDF: {url}#page={number}]",
+            f"[La page {number} n'a pas de couche de texte : le PDF n'en contient qu'une image "
+            f"(numérisation). Lisez-la dans le PDF : {url}#page={number}]",
+            lang,
+        )
+    return say(
+        f"[Page {number} has no text to read (blank, or a drawing). "
+        f"Read it in the PDF: {url}#page={number}]",
+        f"[La page {number} n'a pas de texte à lire (page vierge, ou dessin). "
+        f"Lisez-la dans le PDF : {url}#page={number}]",
+        lang,
+    )
 
 
 def _outline(reader: PdfReader) -> list[tuple[int, str, int]]:
@@ -593,11 +648,17 @@ def extract(
         plain: list[list[str]] = []  # as extracted, for finding the running header
         total = 0
         bilingual = two_column = 0
+        no_text: list[int] = []
+        scanned: list[int] = []
         # Pages read a column at a time: their pieces (see _pick_columns).
         columned: dict[int, list[list[str]]] = {}
         for index in range(min(page_count, max_pages)):
             check_deadline()
             text = _GLYPHS.sub("", reader.pages[index].extract_text() or "")
+            if len(_SPACES.sub("", text)) < NO_TEXT_CHARS:
+                no_text.append(index + 1)
+                if pdf_pages.has_page_image(reader.pages[index]):
+                    scanned.append(index + 1)
             lines = [pages.clean(line) for line in text.replace("\r", "\n").split("\n")]
             plain.append(lines)
             split = None
@@ -666,6 +727,9 @@ def extract(
                 blocks.append(pages.Block("heading", paragraph, level=sub_level, href=page_url))
             else:
                 blocks.append(pages.Block("text", paragraph))
+        if number in no_text:
+            marker = no_text_marker(url, number, lang, scanned=number in scanned)
+            blocks.append(pages.Block("text", marker))
 
     title = ""
     try:
@@ -682,4 +746,41 @@ def extract(
         blocks=blocks,
         links=[],
     )
-    return PdfText(page, page_count, len(texts), bool(outline_levels), bilingual, two_column)
+    return PdfText(
+        page,
+        page_count,
+        len(texts),
+        bool(outline_levels),
+        bilingual,
+        two_column,
+        no_text_pages=no_text,
+        scanned_pages=scanned,
+        seconds=time.monotonic() - started,
+    )
+
+
+def with_page_text(document: PdfText, texts: dict[int, list[str]]) -> PdfText:
+    """A copy of `document` where each page in `texts` (page number to its paragraphs)
+    holds those paragraphs in place of what it had: the "no text layer" line of a scan,
+    or the text layer OCR is asked to replace. The cached document is not changed."""
+    blocks = list(document.page.blocks)
+    for number in sorted(texts, reverse=True):
+        anchor = page_anchor(number)
+        start = next(
+            (i for i, b in enumerate(blocks) if b.kind == "heading" and b.anchor == anchor), None
+        )
+        if start is None:
+            continue
+        # The page's body runs to the next heading at its level or above (the next page
+        # or bookmark); the headings found inside the page are below it.
+        level = blocks[start].level
+        end = next(
+            (
+                i
+                for i in range(start + 1, len(blocks))
+                if blocks[i].kind == "heading" and blocks[i].level <= level
+            ),
+            len(blocks),
+        )
+        blocks[start + 1 : end] = [pages.Block("text", text) for text in texts[number]]
+    return replace(document, page=replace(document.page, blocks=blocks))

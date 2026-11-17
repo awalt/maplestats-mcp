@@ -558,7 +558,7 @@ PORTALS: dict[str, Portal] = {
         "data-bc-er.opendata.arcgis.com",
         "BC Energy Regulator Open Data",
         "Données ouvertes de la BC Energy Regulator",
-        note="British Columbia, provincial energy regulator. 42 datasets confirmed live 2026-10-02 (wells, orphan sites, incidents, facilities); BCER Open Data Licence, based on OGL-BC 2.0, commercial use allowed. The IRIS bulk files (iris.bcogc.ca) are not covered.",
+        note="British Columbia, provincial energy regulator. 42 datasets confirmed live 2026-10-02 (wells, orphan sites, incidents, facilities); BCER Open Data Licence, based on OGL-BC 2.0, commercial use allowed. The IRIS bulk files (iris.bcogc.ca) are not under this licence: they are read by the bcer_ tools, whose results state BCER's unresolved terms.",
     ),
     "toronto_police": Portal(
         "data.tps.ca",
@@ -827,7 +827,8 @@ NOTES_FR: dict[str, str] = {
         "données confirmés le 2026-10-02 (puits, sites orphelins, incidents, installations) ; "
         "BCER Open Data Licence, fondée sur la Licence du gouvernement ouvert – "
         "Colombie-Britannique 2.0, usage commercial permis. Les fichiers en bloc IRIS "
-        "(iris.bcogc.ca) ne sont pas couverts."
+        "(iris.bcogc.ca) ne relèvent pas de cette licence : les outils bcer_ les lisent et "
+        "leurs résultats indiquent les conditions non réglées de la BCER."
     ),
     "toronto_police": (
         "Ontario. 71 jeux de données confirmés le 2026-09-30 (crimes signalés, fusillades, "

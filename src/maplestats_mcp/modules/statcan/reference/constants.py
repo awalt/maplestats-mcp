@@ -116,6 +116,10 @@ PDF_MAX_CHARS = 3_000_000
 # Seconds of extraction before the rest of the file is left unread; the shared
 # parse budget (MAPLE_PARSE_TIMEOUT_SECONDS, 60 s) stops a stuck file outright.
 PDF_EXTRACT_SECONDS = 40.0
+# A downloaded PDF's bytes stay in the shared file cache (inside its byte budget) for
+# this long, so reading its scanned pages by OCR (shared/ocr.py) after its text was
+# extracted does not download it again.
+PDF_BYTES_TTL_SECONDS = 3 * 60 * 60
 
 
 # Where a concept is defined when it is not in the publication a caller is
