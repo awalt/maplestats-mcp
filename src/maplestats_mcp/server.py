@@ -50,17 +50,20 @@ from fastmcp.utilities.components import FastMCPComponent
 from fastmcp.utilities.versions import VersionSpec
 from mcp.types import Icon, ToolAnnotations
 
-from maplestats_mcp import __version__, config
+from maplestats_mcp import __version__, config, gis_profile
 from maplestats_mcp.catalogue import (
     EXTRA_FILES,
     MODULES_ROOT,
+    PROFILE_SWITCHES,
     TOOL_FILES,
     TOOL_SWITCHES,
     CatalogueTool,
     component_files,
     import_components,
     module_dirs,
+    module_hidden,
     read_catalogue,
+    tool_enabled,
 )
 from maplestats_mcp.shared import search, semantic
 from maplestats_mcp.shared.argument_aliases import apply_aliases
@@ -140,9 +143,28 @@ def _module_annotations(root: Path) -> ToolAnnotations:
     return _read_only_annotations(root.name not in _LOCAL_MODULES)
 
 
+def _without_hidden_pointer(tool: Tool) -> Tool:
+    """`tool`, or a copy whose description no longer points at a tool MAPLE_GIS=0 hides.
+
+    A copy, never an edit: the module's own tool object is shared by every server built
+    in the process, and the default profile must keep reading the whole description.
+    """
+    cuts = gis_profile.TOOL_DESCRIPTION_CUTS.get(tool.name)
+    if not cuts or not tool.description:
+        return tool
+    description = gis_profile.cut_text(tool.description, cuts)
+    return (
+        tool
+        if description == tool.description
+        else tool.model_copy(update={"description": description})
+    )
+
+
 def _register(
     provider: LocalProvider, component: FastMCPComponent, annotations: ToolAnnotations
 ) -> None:
+    if isinstance(component, Tool):
+        component = _without_hidden_pointer(component)
     _prepare(component, annotations)
     if isinstance(component, Tool):
         provider.add_tool(component)
@@ -168,6 +190,9 @@ class ModuleProvider(LocalProvider):
         self._root = Path(root).resolve()
         annotations = _module_annotations(self._root)
         for component in import_components(self._root, component_files(self._root)):
+            # The same switches the lazy listing honours, so the two stay equal.
+            if isinstance(component, Tool) and not tool_enabled(component.name):
+                continue
             _register(self, component, annotations)
 
     def __repr__(self) -> str:
@@ -207,10 +232,9 @@ class LazyModuleProvider(LocalProvider):
         self._extras_error: str | None = None
         self._listed: list[Tool] = []
         for item in entry["tools"]:
-            switch = TOOL_SWITCHES.get(item["name"])
-            if switch is not None and not switch():
+            if not tool_enabled(item["name"]):
                 continue
-            listed = CatalogueTool.model_validate(item)
+            listed = _without_hidden_pointer(CatalogueTool.model_validate(item))
             _prepare(listed, self._annotations)
             self._listed.append(listed)
         self._names = frozenset(tool.name for tool in self._listed)
@@ -513,8 +537,10 @@ class AnnotatedBM25SearchTransform(BM25SearchTransform):
                 resolved = _resolve_tool_name(name, catalog)
                 if resolved is not None:
                     return await _call_with_schema(ctx, tools[resolved], arguments, detail)
+                # A name MAPLE_GIS has hidden is an unknown name, as for any other caller;
+                # the other switches are limits, and say so.
                 switch = TOOL_SWITCHES.get(name)
-                if switch is not None and not switch():
+                if switch is not None and not switch() and name not in PROFILE_SWITCHES:
                     raise InvalidInput(
                         f"{name} is switched off on this server (it runs code or files "
                         "the hosted server does not allow). For StatCan series use "
@@ -946,13 +972,24 @@ def _build_module_catalogue() -> str:
     actually surfaced (each module's own __init__.py declares them, but
     FileSystemProvider never reads them, so without this they'd be dead)."""
     lines = ["# MapleStats MCP — module catalogue / catalogue des modules", ""]
+    catalogue = read_catalogue() or {}
     for module_dir in sorted(MODULES_ROOT.iterdir()):
         if not module_dir.is_dir() or module_dir.name.startswith("_"):
             continue
+        # A module MAPLE_GIS=0 hides whole is not registered, so it is not described.
+        entry = catalogue.get(module_dir.name)
+        if entry is not None and module_hidden(entry):
+            continue
         module = importlib.import_module(f"maplestats_mcp.modules.{module_dir.name}")
         name = getattr(module, "MODULE_NAME", module_dir.name)
-        description_en = getattr(module, "MODULE_DESCRIPTION", "")
-        description_fr = getattr(module, "MODULE_DESCRIPTION_FR", "")
+        description_en = gis_profile.cut_text(
+            getattr(module, "MODULE_DESCRIPTION", ""),
+            gis_profile.DESCRIPTION_CUTS.get((module_dir.name, "en"), ()),
+        )
+        description_fr = gis_profile.cut_text(
+            getattr(module, "MODULE_DESCRIPTION_FR", ""),
+            gis_profile.DESCRIPTION_CUTS.get((module_dir.name, "fr"), ()),
+        )
         lines.append(f"## {name}")
         lines.append(f"EN: {description_en}")
         lines.append(f"FR: {description_fr}")
@@ -972,7 +1009,7 @@ def build_server() -> FastMCP:
     mcp = FastMCP(
         "maplestats-mcp",
         version=__version__,
-        instructions=SERVER_INSTRUCTIONS,
+        instructions=gis_profile.cut_text(SERVER_INSTRUCTIONS, gis_profile.INSTRUCTION_CUTS),
         website_url="https://maplestats.danielstats.io/",
         icons=[icon],
         # Replaced by CachedDereferenceMiddleware below: same output, but each
@@ -986,7 +1023,9 @@ def build_server() -> FastMCP:
         # A module the catalogue does not list yet (a new one) loads eagerly.
         if entry is None:
             mcp.add_provider(ModuleProvider(root=module_dir))
-        else:
+        # MAPLE_GIS=0 hides bcgw, nrcan_nbac and nrcan_geo whole: no provider, so no
+        # tools, and preload has nothing of theirs to import.
+        elif not module_hidden(entry):
             mcp.add_provider(LazyModuleProvider(module_dir, entry))
     # Outside the validation middleware, so its one-line argument errors get a fix too.
     mcp.add_middleware(ErrorHintMiddleware())

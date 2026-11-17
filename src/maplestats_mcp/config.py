@@ -324,6 +324,19 @@ def get_query_series_enabled() -> bool:
     return raw not in {"0", "false", "no", "off"}
 
 
+def get_gis_enabled() -> bool:
+    """Whether the 14 pure geospatial tools are offered (MAPLE_GIS, on by default).
+
+    `0`, `false`, `no` or `off` runs a statistics-only profile from the same install: the
+    tools whose product is geometry, a layer, a grid or a geocoding result (listed in
+    `gis_profile.PURE_GIS_TOOLS`) leave search, planning and listing. The tools that serve
+    rows or figures from a GIS endpoint (ArcGIS Hub, ECCC observations, the Alberta and
+    CWFIS fire-point tools) stay either way. Nothing is hidden unless this is set.
+    """
+    raw = os.environ.get("MAPLE_GIS", "1").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
+
 def get_preload_enabled() -> bool:
     """Whether the server imports every module and builds the search index at startup.
 
