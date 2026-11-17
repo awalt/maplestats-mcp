@@ -63,13 +63,18 @@ from maplestats_mcp.catalogue import (
     read_catalogue,
 )
 from maplestats_mcp.shared import search, semantic
+from maplestats_mcp.shared.argument_aliases import apply_aliases
 from maplestats_mcp.shared.breaker import render_status
 from maplestats_mcp.shared.dereference import CachedDereferenceMiddleware
 from maplestats_mcp.shared.duck_worker import clean_error
 from maplestats_mcp.shared.error_hints import ErrorHintMiddleware
 from maplestats_mcp.shared.errors import InvalidInput, ModuleUnavailable
 from maplestats_mcp.shared.private_logs import configure_private_logs
-from maplestats_mcp.shared.response_budget import ResponseBudgetMiddleware, with_detail
+from maplestats_mcp.shared.response_budget import (
+    ResponseBudgetMiddleware,
+    add_caveats,
+    with_detail,
+)
 from maplestats_mcp.shared.timeouts import ToolTimeoutMiddleware
 from maplestats_mcp.shared.usage import STATS, UsageMiddleware, normalized_tool_name
 from maplestats_mcp.shared.validation import (
@@ -541,9 +546,14 @@ async def _call_with_schema(
     search_tools answers with a one-line signature per tool (long enums cut to a
     count), so a call can miss a value it did not show. The schema in the error
     lets the next call be right without another search.
+
+    Before that, a few argument names models commonly guess for this tool are read
+    as the real ones (shared/argument_aliases.py), and the result says so in its
+    provenance caveats.
     """
+    arguments, mapped = apply_aliases(tool.name, tool.parameters.get("properties", {}), arguments)
     try:
-        return await ctx.fastmcp.call_tool(tool.name, with_detail(arguments, detail))
+        result = await ctx.fastmcp.call_tool(tool.name, with_detail(arguments, detail))
     except InvalidArguments as exc:
         message = str(exc)
     except NotFoundError:
@@ -555,6 +565,9 @@ async def _call_with_schema(
             "a fault of the server, not of the arguments; use another tool for the same data "
             "(search_tools), or say the server needs fixing. Do not answer from memory."
         ) from None
+    else:
+        lang = str((arguments or {}).get("lang", "en"))
+        return add_caveats(result, [m.note(lang) for m in mapped])
     schema = search.serialize_tools_compact([tool])[0].get("inputSchema") or {}
     lang = str((arguments or {}).get("lang", "en"))
     label = (
