@@ -402,3 +402,45 @@ def test_sdmx_dataflow_counts_as_a_table():
     assert result_product_ids(payload) == [11100190]
     notes = caveats_for("sdmx_get_data", {"_result_product_ids": [11100190]}, "en")
     assert any("Economic families and persons not in an economic family" in n for n in notes)
+
+
+# A cell of a census table (98-10-0061, coordinate 151.1.1.2: Kelowna's median household
+# income) has vectorId 0, read live on 2026-11-17; the citation used to say "Vector v0".
+CENSUS_CELL = VectorSeries(
+    product_id=98100061,
+    coordinate="151.1.1.2.0.0.0.0.0.0",
+    vector_id=0,
+    observations=[_obs("2021-01-01", 85000.0)],
+)
+CENSUS_TITLE = "Household income statistics by dwelling and household characteristics"
+
+
+def test_citation_leaves_out_the_vector_of_a_table_without_vectors():
+    english = context.citation(CENSUS_CELL, CENSUS_TITLE, "2023-03-29T08:30", "en")
+    assert english == (
+        f"Statistics Canada. Table 98-10-0061-01, {CENSUS_TITLE}. Released 2023-03-29."
+    )
+    french = context.citation(CENSUS_CELL, CENSUS_TITLE, "2023-03-29T08:30", "fr")
+    assert french == (
+        f"Statistique Canada. Tableau 98-10-0061-01, {CENSUS_TITLE}. Diffusé le 2023-03-29."
+    )
+    assert "Vector" not in english and "Vecteur" not in french
+    # Without a title or a release the citation is still a sentence.
+    assert (
+        context.citation(CENSUS_CELL, None, None, "en") == "Statistics Canada. Table 98-10-0061-01."
+    )
+
+
+def test_citation_keeps_the_vector_of_a_series_that_has_one():
+    english = context.citation(RENT, "Rents", "2025-12-17T08:30", "en")
+    assert english == (
+        "Statistics Canada. Table 34-10-0133-01, Rents. Vector v3823103. Released 2025-12-17."
+    )
+    assert "Vecteur v3823103." in context.citation(RENT, "Loyers", None, "fr")
+
+
+def test_query_citation_leaves_out_vector_zero_too():
+    from maplestats_mcp.modules.statcan.wds import query
+
+    assert query.citation(CENSUS_CELL) == "Statistics Canada. Table 98-10-0061-01."
+    assert query.citation(RENT) == "Statistics Canada. Table 34-10-0133-01. Vector v3823103."

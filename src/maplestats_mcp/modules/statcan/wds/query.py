@@ -156,13 +156,15 @@ def citation(series: VectorSeries) -> str:
         return ready
     number = context.table_number(series.product_id)
     title = ctx.table_title if ctx is not None else None
+    # Vector id 0 marks a table without vectors (98-10 census tables): no vector to cite.
+    has_vector = series.vector_id > 0
     return client._m(
         f"Statistics Canada. Table {number}"
         + (f", {title}" if title else "")
-        + f". Vector v{series.vector_id}.",
+        + (f". Vector v{series.vector_id}." if has_vector else "."),
         f"Statistique Canada. Tableau {number}"
         + (f", {title}" if title else "")
-        + f". Vecteur v{series.vector_id}.",
+        + (f". Vecteur v{series.vector_id}." if has_vector else "."),
     )
 
 

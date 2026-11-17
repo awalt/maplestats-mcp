@@ -49,10 +49,20 @@ QUESTIONS: list[tuple[str, str, str]] = [
     ("How much wheat did Canada export to China in 2023?", "agriculture", "cgc_exports_query"),
     ("interprovincial trade flows between provinces", "economy", "sdmx_space_search"),
     ("Population estimates for Nova Scotia", "population", "wds_search_cubes"),
+    # Census figures for Canada, provinces and metro areas start with the WDS 98-10 tables,
+    # which answer in under a second; the census profile (33 to 47 s a request) follows
+    # for what they lack. Until 2026-11-17 this one started with the profile's search.
+    ("Median age in Saskatoon from the census", "population", "wds_get_data_from_cube_coord"),
     (
-        "Median age in Saskatoon from the census",
+        "Compare Kelowna's household income with BC and Canada",
         "population",
-        "statcan_census_profile_search_geography",
+        "wds_get_data_from_cube_coord",
+    ),
+    ("Population density of Kelowna", "population", "wds_get_data_from_cube_coord"),
+    (
+        "Median monthly shelter cost for renters in Halifax",
+        "housing",
+        "wds_get_data_from_cube_coord",
     ),
     ("How many study permits were issued in 2024?", "immigration", "ircc_monthly_list_tables"),
     ("Latest Express Entry draw CRS cutoff", "immigration", "ircc_list_express_entry_rounds"),

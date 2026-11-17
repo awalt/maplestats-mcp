@@ -26,7 +26,30 @@ RATE_LIMIT_PER_SECOND = 5.0
 RATE_LIMIT_CAPACITY = 10.0
 
 CACHE_TTL_CODELIST_SECONDS = 24 * 60 * 60
+# The raw response of one request, kept in shared/cache.py's memory cache (its own
+# entry and megabyte caps apply). It mainly lets requests for the same missing values
+# share one 35 s upstream call; the long-lived copy is the per-value store below.
 CACHE_TTL_DATA_SECONDS = 60 * 60
+
+# The per-value store (value_store.py): each value on its own, in memory and in one file.
+# Lifetime: the 2021 Census Profile is a fixed release (re-issued only for corrections,
+# last on 2022-09-21), so values are kept 14 days: long enough that a repeat or an
+# overlapping question across restarts and quiet weeks is instant, short enough that a
+# correction reaches the server within two weeks.
+VALUE_TTL_SECONDS = 14 * 24 * 60 * 60
+# Size: at most 8 MB of record text (a value is 200 to 400 bytes, measured 2026-11-17: 205
+# for six income and population values, so 20,000 to 40,000 values), in memory and in the
+# file alike, so about 10 to 16 MB resident and at most 8 MB on disk.
+# The least recently used values go first. The file sits beside the siblings' caches
+# (config.get_census_cache_dir(); /data/census on the hosted server).
+VALUE_STORE_MAX_BYTES = 8 * 1024 * 1024
+VALUE_STORE_FILE = "census_profile_values.jsonl"
+# Bump to make a server ignore (and move aside) a file written by another layout.
+VALUE_STORE_VERSION = 1
+
+# Codelists warmed in the background when the hosted server starts: the four the first
+# questions use (characteristics, provinces, census divisions, metro areas and agglomerations).
+WARM_CODELISTS = ("CL_CHARACTERISTIC", "CL_GEO_PR", "CL_GEO_CD", "CL_GEO_CMACA")
 
 GEOGRAPHY_SEARCH_LIMIT_DEFAULT = 20
 GEOGRAPHY_SEARCH_LIMIT_MAX = 200
@@ -51,6 +74,35 @@ GEOGRAPHY_LEVEL_TO_DATAFLOW = {
     "forward_sortation_areas": ("DF_FSA", "CL_GEO_FSA"),
     "health_regions": ("DF_HR", "CL_GEO_HR"),
     "population_centres": ("DF_POPCNTR", "CL_GEO_POPCNTR"),
+}
+
+# A DGUID starts with the vintage year, "A" (administrative) or "S" (statistical) and a
+# four-digit geography type: 9 characters that name the level. Read from the 14 live
+# geography codelists on 2026-11-17 (80,278 codes): every code of a codelist has one of
+# that level's prefixes and no prefix occurs in two levels. Canada (2021A0000) sits
+# in the province list; the 2016-vintage dissolved subdivisions (2016A0005) and the 2023
+# federal electoral districts (2023A0004) and 2022 health regions (2022A0007/8) keep
+# their own vintage, so a prefix without a level here is a new vintage, never guessed.
+DGUID_PREFIX_TO_LEVEL = {
+    "2021A0000": "canada_provinces_territories",
+    "2021A0002": "canada_provinces_territories",
+    "2021A0003": "census_divisions",
+    "2021A0005": "census_subdivisions",
+    "2016A0005": "dissolved_census_subdivisions",
+    "2021S0503": "census_metro_areas",
+    "2021S0504": "census_metro_areas",
+    "2021S0505": "census_metro_areas",
+    "2021S0506": "census_metro_areas",
+    "2021S0507": "census_tracts",
+    "2021S0512": "dissemination_areas",
+    "2021S0516": "aggregate_dissemination_areas",
+    "2021A0006": "designated_places",
+    "2021S0500": "economic_regions",
+    "2023A0004": "federal_electoral_districts",
+    "2021A0011": "forward_sortation_areas",
+    "2022A0007": "health_regions",
+    "2022A0008": "health_regions",
+    "2021S0510": "population_centres",
 }
 
 # Confirmed live via CL_GENDER/CL_STATISTIC codelists.

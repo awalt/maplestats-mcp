@@ -7,8 +7,10 @@ callable shared/security.py's middleware was designed to wrap.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from maplestats_mcp import __version__, config
@@ -110,13 +112,15 @@ def with_shutdown_save(app, save):
     return wrapped
 
 
-def with_startup_preload(app, preload):
+def with_startup_preload(app, preload, after: Callable[[], None] | None = None):
     """Await `preload()` when the server starts, before the wrapped app's own startup.
 
     uvicorn runs the lifespan startup before it binds the port, so until preload
     finishes /health does not answer and the platform's startup and readiness
     probes keep traffic on the previous revision. A failed preload is logged and
     the server starts anyway: the modules then load lazily on first use, as on stdio.
+    `after()`, when given, runs once preload is over (failed or not) and must only
+    start background work and return: the port opens as soon as it does.
     """
 
     async def wrapped(scope, receive, send):
@@ -137,11 +141,35 @@ def with_startup_preload(app, preload):
                         "Preloaded every module and the search index in %.1f s",
                         time.perf_counter() - started,
                     )
+                if after is not None:
+                    try:
+                        after()
+                    except Exception:  # a warm-up is never a reason to refuse to start
+                        logger.exception("Starting the background warm-ups failed")
             return message
 
         await app(scope, receive_after_preload, send)
 
     return wrapped
+
+
+# Warm-up tasks that are running; the loop keeps only weak references to its tasks.
+_warmups: set[asyncio.Task[None]] = set()
+
+
+def start_background_warmups() -> None:
+    """Fire and forget the warm-ups the first questions would otherwise wait for.
+
+    The census profile's four busiest code lists take 0.5 to 1.9 s to read and its
+    stored values' file is read from the share; a warm-up reads them now. This returns
+    at once (the task runs after startup, and logs its own failures), so the
+    port opens as soon as preload is done.
+    """
+    from maplestats_mcp.modules.statcan.census_profile.client import warm_codelists
+
+    task = asyncio.get_running_loop().create_task(warm_codelists(), name="census-profile-warm")
+    _warmups.add(task)
+    task.add_done_callback(_warmups.discard)
 
 
 def build_asgi_app():
@@ -150,7 +178,7 @@ def build_asgi_app():
     # cannot hold the 10,000 sessions one busy caller could otherwise open.
     inner = mcp.http_app(session_idle_timeout=300)
     if config.get_preload_enabled():
-        inner = with_startup_preload(inner, lambda: preload(mcp))
+        inner = with_startup_preload(inner, lambda: preload(mcp), after=start_background_warmups)
     secured = with_http_security(
         inner,
         auth_token=config.get_auth_token(),
