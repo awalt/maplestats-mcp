@@ -25,6 +25,10 @@ URL = sys.argv[1] if len(sys.argv) > 1 else "https://mcp.maplestats.danielstats.
 LOG = os.environ.get("MAPLE_RELAY_LOG")
 TRACE = os.environ.get("MAPLE_RELAY_TRACE")  # every message in and out, for debugging
 HEADERS = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
+# Marks these calls as the maintainer's own in the hosted server's /stats counts (see
+# MAPLE_INTERNAL_TOKEN in the README); without it they count as ordinary callers.
+if os.environ.get("MAPLE_INTERNAL_TOKEN"):
+    HEADERS["X-Maple-Internal"] = os.environ["MAPLE_INTERNAL_TOKEN"]
 
 client = httpx.Client(timeout=httpx.Timeout(300.0, connect=30.0))
 out_lock = threading.Lock()

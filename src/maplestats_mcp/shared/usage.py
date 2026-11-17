@@ -7,7 +7,11 @@ shared/error_hints.py: a fixed list, never the message), how long it took
 large its result was (characters of text, and tokens estimated from them:
 what a call costs a model to read). They never hold
 arguments, query text, result content, client addresses or anything else a
-caller typed. `/stats` reports the period they cover, with
+caller typed. The one thing kept about who calls is a label from a fixed list
+(`CLIENT_LABELS`): the kind of client software, matched from the name it announces
+when it connects (never stored as sent), or `internal` for calls that carry the
+maintainer's secret header (MAPLE_INTERNAL_TOKEN), so their own use and benchmark
+runs can be told apart from everyone else's. `/stats` reports the period they cover, with
 the upstream hosts' error counts and breaker states from shared/breaker.py.
 
 By default they live in memory, so a restart (a deploy, a free host's idle
@@ -24,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import hmac
 import json
 import logging
 import math
@@ -32,7 +37,7 @@ import re
 import time
 from collections import Counter, deque
 from collections.abc import Iterable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from pathlib import Path
@@ -61,13 +66,71 @@ FILE_VERSION = 1
 # upstream today, and at most a few hundred kilobytes for every tool together.
 LATENCY_SAMPLES = 500
 
-# What the file holds: counting since, calls by (tool, ok), calls by day, failures by (tool, code).
+# What the file holds: counting since, calls by (tool, ok), calls by day, failures by
+# (tool, code), calls by (client label, ok), and calls by day and client label.
 _Saved = tuple[
     datetime,
     Counter[tuple[str, bool]],
     dict[str, Counter[bool]],
     Counter[tuple[str, str]],
+    Counter[tuple[str, bool]],
+    dict[str, Counter[str]],
 ]
+
+# Header the maintainer's own clients send, with the secret MAPLE_INTERNAL_TOKEN holds.
+INTERNAL_HEADER = "x-maple-internal"
+
+# Kind of client, from the name it announces in the MCP `initialize` request. Each
+# entry is (text found in the lower-cased name, label); the first match wins, so
+# the specific names come before the general ones. The name is chosen by whoever
+# runs the client, so it says what software connected, not who is using it, and
+# anything not matched is "other": a caller cannot add a label.
+CLIENT_LABELS: tuple[tuple[str, str], ...] = (
+    ("uptime-check", "uptime-check"),
+    ("maple-test", "maple-test"),
+    ("maplestats-chat", "chat-demo"),
+    ("maplestats", "maplestats-client"),
+    ("claude-code", "claude-code"),
+    ("claude-ai", "claude-ai"),
+    ("claude", "claude"),
+    ("cursor", "cursor"),
+    ("windsurf", "windsurf"),
+    ("visual studio code", "vscode"),
+    ("vscode", "vscode"),
+    ("codex", "codex"),
+    ("openai", "chatgpt"),
+    ("chatgpt", "chatgpt"),
+    ("gemini", "gemini"),
+    ("cline", "cline"),
+    ("zed", "zed"),
+    ("goose", "goose"),
+    ("mcp-remote", "mcp-remote"),
+    ("inspector", "mcp-inspector"),
+    ("fastmcp", "python-fastmcp"),
+    ("mcp", "mcp-sdk"),
+)
+CLIENT_OTHER = "other"
+CLIENT_UNKNOWN = "unknown"
+CLIENT_INTERNAL = "internal"
+KNOWN_CLIENT_LABELS = frozenset({label for _, label in CLIENT_LABELS}) | {
+    CLIENT_OTHER,
+    CLIENT_UNKNOWN,
+    CLIENT_INTERNAL,
+}
+
+
+def client_label(announced: str | None) -> str:
+    """The fixed label for a client's announced name; the name itself is never kept."""
+    if not announced or not announced.strip():
+        return CLIENT_UNKNOWN
+    lowered = announced.strip()[:200].lower()
+    return next((label for needle, label in CLIENT_LABELS if needle in lowered), CLIENT_OTHER)
+
+
+def is_internal(headers: dict[str, str], token: str | None) -> bool:
+    """True when the request carries the maintainer's secret; always False with none set."""
+    sent = headers.get(INTERNAL_HEADER, "")
+    return bool(token) and bool(sent) and hmac.compare_digest(sent.encode(), (token or "").encode())
 
 
 def normalized_tool_name(name: str) -> str:
@@ -104,6 +167,10 @@ class UsageStats:
         self.days: dict[str, Counter[bool]] = {}
         # Failures by (tool, error code); a failure counted before codes existed has none.
         self.errors: Counter[tuple[str, str]] = Counter()
+        # Calls by (client label, ok), and per day by label. Calls counted before
+        # labels were kept have none; the snapshot reports them as "untracked".
+        self.clients: Counter[tuple[str, bool]] = Counter()
+        self.client_days: dict[str, Counter[str]] = {}
         self.durations: dict[str, deque[float]] = {}
         # Per tool: [results sized, characters in all of them, the largest]. The
         # size of what the client read, never its content.
@@ -112,6 +179,8 @@ class UsageStats:
         self._new_tools: Counter[tuple[str, bool]] = Counter()
         self._new_days: dict[str, Counter[bool]] = {}
         self._new_errors: Counter[tuple[str, str]] = Counter()
+        self._new_clients: Counter[tuple[str, bool]] = Counter()
+        self._new_client_days: dict[str, Counter[str]] = {}
         self._task: asyncio.Task[None] | None = None
         if path is not None:
             try:
@@ -122,7 +191,14 @@ class UsageStats:
                 logger.warning("Usage stats file unreadable at start: %s", exc)
                 saved = None
             if saved is not None:
-                self.since, self.tools, self.days, self.errors = saved
+                (
+                    self.since,
+                    self.tools,
+                    self.days,
+                    self.errors,
+                    self.clients,
+                    self.client_days,
+                ) = saved
 
     def register_tools(self, names: Iterable[str]) -> None:
         """Accept names from the server registry, never from a request."""
@@ -140,7 +216,12 @@ class UsageStats:
         entry[2] = max(entry[2], chars)
 
     def record(
-        self, tool: str, ok: bool, seconds: float | None = None, code: str | None = None
+        self,
+        tool: str,
+        ok: bool,
+        seconds: float | None = None,
+        code: str | None = None,
+        client: str | None = None,
     ) -> None:
         name = self._name(tool)
         self.tools[(name, ok)] += 1
@@ -158,6 +239,14 @@ class UsageStats:
         day = datetime.now(UTC).date().isoformat()
         self.days.setdefault(day, Counter())[ok] += 1
         self._new_days.setdefault(day, Counter())[ok] += 1
+        if client is not None:
+            # Only a label from the fixed list is kept, never text a caller sent.
+            label = client if client in KNOWN_CLIENT_LABELS else CLIENT_OTHER
+            self.clients[(label, ok)] += 1
+            self._new_clients[(label, ok)] += 1
+            self.client_days.setdefault(day, Counter())[label] += 1
+            self._new_client_days.setdefault(day, Counter())[label] += 1
+            _drop_old_days(self.client_days)
         _drop_old_days(self.days)
         self._start()
 
@@ -209,14 +298,18 @@ class UsageStats:
             # The unsaved counts stay queued for the next save.
             logger.warning("Usage stats file unreadable, not saved this time: %s", exc)
             return False
-        since, tools, days, errors = (
-            saved if saved is not None else (self.since, Counter(), {}, Counter())
+        since, tools, days, errors, clients, client_days = (
+            saved if saved is not None else (self.since, Counter(), {}, Counter(), Counter(), {})
         )
         tools.update(self._new_tools)
         errors.update(self._new_errors)
+        clients.update(self._new_clients)
         for day, counts in self._new_days.items():
             days.setdefault(day, Counter()).update(counts)
+        for day, label_counts in self._new_client_days.items():
+            client_days.setdefault(day, Counter()).update(label_counts)
         _drop_old_days(days)
+        _drop_old_days(client_days)
         since = min(since, self.since)
         body = {
             "version": FILE_VERSION,
@@ -224,6 +317,8 @@ class UsageStats:
             "by_tool": _by_tool(tools),
             "by_day": _by_day(days),
             "by_error": _by_error(errors),
+            "by_client": _by_client(clients),
+            "by_day_client": _by_day_client(client_days),
         }
         temp = self.path.with_name(self.path.name + f".{os.getpid()}.tmp")
         try:
@@ -236,9 +331,12 @@ class UsageStats:
             logger.warning("Usage stats not saved to %s: %s", self.path, exc)
             return False
         self.since, self.tools, self.days, self.errors = since, tools, days, errors
+        self.clients, self.client_days = clients, client_days
         self._new_tools = Counter()
         self._new_days = {}
         self._new_errors = Counter()
+        self._new_clients = Counter()
+        self._new_client_days = {}
         return True
 
     def _start(self) -> None:
@@ -295,22 +393,39 @@ class UsageStats:
         # Failures counted before codes were kept (an older file) have none.
         if failed > sum(by_code.values()):
             error_codes["uncoded"] = failed - sum(by_code.values())
+        by_client = _by_client(self.clients)
+        tracked = sum(c["ok"] + c["error"] for c in by_client.values())
+        total = sum(self.tools.values())
+        if total > tracked:
+            # Counted before labels were kept (an older file), so with no label.
+            by_client["untracked"] = {
+                "ok": sum(c for (_, ok), c in self.tools.items() if ok)
+                - sum(c["ok"] for c in by_client.values()),
+                "error": failed - sum(c["error"] for c in by_client.values()),
+            }
+        internal = by_client.get(CLIENT_INTERNAL, {"ok": 0, "error": 0})
         return {
             "counting_since": self.since.isoformat(),
             "persisted": self.path is not None,
             "note": (
                 "Tool names, outcomes, error codes (a fixed list such as not_found or "
-                "invalid_input, never the message), durations and result sizes (characters, "
+                "invalid_input, never the message), the kind of client that called (a fixed "
+                "list such as claude-code or python-fastmcp, or internal for the "
+                "maintainer's own calls; never the name it sent or an address), "
+                "durations and result sizes (characters, "
                 "and tokens estimated at four characters each), and upstream host names with "
                 f"their error counts, only, in memory; {kept}. Where GoatCounter is "
                 "configured, each call's tool name and outcome are also counted there."
             ),
-            "calls": sum(self.tools.values()),
+            "calls": total,
+            "calls_excluding_internal": total - internal["ok"] - internal["error"],
             "errors": failed,
             "error_codes": error_codes,
             "by_day": _by_day(self.days),
             "by_tool": dict(ordered),
             "by_error": _by_error(self.errors, order=[name for name, _ in ordered]),
+            "by_client": by_client,
+            "by_day_client": _by_day_client(self.client_days),
             "latency_ms": latency,
             "result_size": sizes,
         }
@@ -345,7 +460,7 @@ def _file_lock(path: Path) -> Iterator[None]:
         handle.close()  # closing releases the lock
 
 
-def _drop_old_days(days: dict[str, Counter[bool]]) -> None:
+def _drop_old_days(days: dict[str, Counter[Any]]) -> None:
     for old in sorted(days)[:-MAX_DAYS]:
         del days[old]
 
@@ -355,6 +470,23 @@ def _by_tool(tools: Counter[tuple[str, bool]]) -> dict[str, dict[str, int]]:
     for (name, ok), count in sorted(tools.items()):
         out.setdefault(name, {"ok": 0, "error": 0})["ok" if ok else "error"] += count
     return out
+
+
+def _by_client(clients: Counter[tuple[str, bool]]) -> dict[str, dict[str, int]]:
+    """Calls per client label, busiest first."""
+    out: dict[str, dict[str, int]] = {}
+    for (label, ok), count in clients.items():
+        out.setdefault(label, {"ok": 0, "error": 0})["ok" if ok else "error"] += count
+    return dict(
+        sorted(out.items(), key=lambda item: (-(item[1]["ok"] + item[1]["error"]), item[0]))
+    )
+
+
+def _by_day_client(client_days: dict[str, Counter[str]]) -> dict[str, dict[str, int]]:
+    return {
+        day: dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+        for day, counts in sorted(client_days.items())
+    }
 
 
 def _by_error(
@@ -406,8 +538,19 @@ def _parse(body: Any) -> _Saved:
             if not isinstance(code, str):
                 raise TypeError("error code is not text")
             errors[(name, code)] = _count(count)
+    # Absent from a file written before client labels were kept.
+    clients: Counter[tuple[str, bool]] = Counter()
+    for label, counts in body.get("by_client", {}).items():
+        if not isinstance(label, str):
+            raise TypeError("client label is not text")
+        clients[(label, True)] = _count(counts["ok"])
+        clients[(label, False)] = _count(counts["error"])
+    client_days: dict[str, Counter[str]] = {}
+    for day, counts in body.get("by_day_client", {}).items():
+        datetime.strptime(day, "%Y-%m-%d")
+        client_days[day] = Counter({str(label): _count(n) for label, n in counts.items()})
     # Zero entries are dropped so a tool with no failures shows as before.
-    return since, +tools, days, +errors
+    return since, +tools, days, +errors, +clients, client_days
 
 
 # True while a counted call runs. reproduce_code and reproduce_workbook call the
@@ -444,12 +587,15 @@ class UsageMiddleware(Middleware):
         if name == "call_tool" and isinstance(arguments, dict):
             target = arguments.get("name")
             name = target if isinstance(target, str) else "other"
+        client = caller_label(context)
         token = _inside_call.set(True)
         started = time.perf_counter()
         try:
             result = await call_next(context)
         except Exception as exc:
-            self.stats.record(str(name), False, time.perf_counter() - started, error_code(exc))
+            self.stats.record(
+                str(name), False, time.perf_counter() - started, error_code(exc), client
+            )
             raise
         finally:
             _inside_call.reset(token)
@@ -458,10 +604,35 @@ class UsageMiddleware(Middleware):
         # ToolResult(is_error=True) itself.
         ok = not getattr(result, "is_error", False)
         code = None if ok else leading_code(result)
-        self.stats.record(str(name), ok, time.perf_counter() - started, code)
+        self.stats.record(str(name), ok, time.perf_counter() - started, code, client)
         if ok:
             self.stats.record_size(str(name), result_chars(result))
         return result
+
+
+def caller_label(context: MiddlewareContext) -> str:
+    """The client label for this call: `internal` with the secret header, else the kind of client.
+
+    Never raises: a transport with no HTTP request (stdio, in-memory) or no
+    initialize yet is simply "unknown".
+    """
+    token = config.get_internal_token()
+    if token:
+        # Labelling must never fail a tool call, so a failure here means "not internal".
+        with suppress(Exception):
+            from fastmcp.server.dependencies import get_http_headers
+
+            if is_internal(get_http_headers(include={INTERNAL_HEADER}), token):
+                return CLIENT_INTERNAL
+    try:
+        params = context.fastmcp_context.session.client_params  # type: ignore[union-attr]
+        # `client_info` in the installed mcp SDK (confirmed 2026-11-16 with fastmcp 4.1.4,
+        # protocol 2026-07-28); `clientInfo` in the camelCase spelling of older ones.
+        info = getattr(params, "client_info", None) or getattr(params, "clientInfo", None)
+        announced = getattr(info, "name", None)
+    except Exception:  # noqa: BLE001
+        return CLIENT_UNKNOWN
+    return client_label(announced)
 
 
 _LEADING_CODE = re.compile(r"\[([a-z_]{1,40})\]")

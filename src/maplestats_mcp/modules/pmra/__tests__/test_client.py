@@ -95,6 +95,22 @@ def _clear_cache():
     yield
 
 
+def test_extra_trailing_columns_are_ignored():
+    """The live product extract has had 18 columns since 2026-11 (concentration, CAS number)."""
+    header = _PRODUCT_HEADER.rstrip("\r\n") + ",Active ingredient concentration,CAS number\r\n"
+    row = _ROUNDUP.rstrip("\r\n") + ",41.0 %,1071-83-6\r\n"
+    rows, skipped = client.parse_extract(
+        _csv(row, header=header), constants.PRODUCT_COLUMNS, "product"
+    )
+    assert skipped == 0
+    assert rows[0][0] == "31153" and rows[0][15] == "Current"
+    # A 16-cell row under the 18-column header is a malformed row, reported as skipped.
+    _, skipped = client.parse_extract(
+        _csv(row, _ROUNDUP, header=header), constants.PRODUCT_COLUMNS, "product"
+    )
+    assert skipped == 1
+
+
 def test_extract_parsing_and_layout_check():
     rows, skipped = client.parse_extract(_csv(_ROUNDUP), constants.PRODUCT_COLUMNS, "product")
     assert skipped == 0

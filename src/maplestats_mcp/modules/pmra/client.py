@@ -23,6 +23,11 @@ and /api/extract/product/{registration number}, with and without ?lang=fr:
    parenthesis and compares case-folded names.
 6. /product/{number} returns the one-row CSV, or HTTP 404 with a JSON
    body {"clientMessage":"Record not found"} for an unknown number.
+7. Re-checked 2026-11-16: the product extract (English and French, and the
+   one-row /product/{number}) now has 18 columns, not 16. The two new ones
+   come last: "Active ingredient concentration" and "CAS number". The first
+   16 are unchanged, so they are still read by position; the extra two are
+   ignored. The ingredient (4) and MRL (5) extracts are unchanged.
 """
 
 from __future__ import annotations
@@ -121,17 +126,21 @@ def parse_extract(
     """
     text = body.decode("cp1252", errors="replace").lstrip("﻿")
     rows = list(csv.reader(io.StringIO(text)))
-    if not rows or len(rows[0]) != columns:
+    # Columns are read by position, so a header with extra columns after the ones
+    # used is accepted (the product extract gained two at the end by 2026-11-16);
+    # one with fewer, or any change in the leading columns' count, is a layout change.
+    if not rows or len(rows[0]) < columns:
         found = len(rows[0]) if rows else 0
         _raise(
             UpstreamError,
-            f"pmra: the {what} extract has {found} columns, expected "
+            f"pmra: the {what} extract has {found} columns, expected at least "
             f"{columns}; its layout changed.",
-            f"pmra : l'extrait {what} a {found} colonnes au lieu de {columns} ; sa structure "
-            "a changé.",
+            f"pmra : l'extrait {what} a {found} colonnes au lieu d'au moins {columns} ; sa "
+            "structure a changé.",
             lang,
         )
-    kept = [[_clean(cell) for cell in row] for row in rows[1:] if len(row) == columns]
+    width = len(rows[0])
+    kept = [[_clean(cell) for cell in row] for row in rows[1:] if len(row) == width]
     return kept, len(rows) - 1 - len(kept)
 
 

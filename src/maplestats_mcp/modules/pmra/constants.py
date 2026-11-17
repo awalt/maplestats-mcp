@@ -22,7 +22,9 @@ MRL_MAX_LIMIT = 2000
 TRUNCATED_AT = 2000
 
 # Column counts of each extract, the same in English and French (only the
-# header text differs), checked against the header row on every read.
+# header text differs), checked against the header row on every read. These are
+# the columns the client uses, which come first; the product extract has two more
+# after them since 2026-11 (concentration, CAS number) that are ignored.
 PRODUCT_COLUMNS = 16
 INGREDIENT_COLUMNS = 4
 MRL_COLUMNS = 5
