@@ -66,7 +66,7 @@ _GUIDANCE = (
         "fiscal year, month vs quarter) and units, and say where they differ."
     ),
     ("Cite each figure's source; do not merge numbers from different sources into one series."),
-    "If a step finds nothing, use search_tools with the step's purpose as the query.",
+    "If a step finds nothing, use search_tools with its purpose as the query.",
     (
         "check_answer re-reads the StatCan and Bank of Canada figures you will cite, "
         "given the question, and returns only the problems."
