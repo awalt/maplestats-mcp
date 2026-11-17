@@ -113,6 +113,8 @@ SIDE_TRIPS: dict[str, tuple[str, ...]] = {
     "toronto_summarize_": (),
     "toronto_get_neighbourhood_profile": (),
     # Measured on the discovery benchmark: gating these cost no plan metric.
+    # A past release of a series, for a question about vintages and revisions, not a Delta File.
+    "wds_get_series_as_of": (),
     "boc_search_series": (),
     "cimt_": (),
     "sdmx_space_": (),

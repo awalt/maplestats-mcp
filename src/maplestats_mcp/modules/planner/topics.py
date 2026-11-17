@@ -2632,6 +2632,19 @@ STATCAN_UPDATES = Topic(
         PlanStep("statcan_delta_read_table", "that day's rows for one productId, by range"),
         PlanStep("statcan_delta_list_real_time_tables", "the 19 revision-history (vintage) tables"),
         PlanStep(
+            "wds_get_series_as_of",
+            "one series as published on a past date (as_of='YYYY-MM-DD'), only for the 16 tables "
+            "12-10-0163, 14-10-0220, 14-10-0223, 16-10-0012, 16-10-0013, 18-10-0256, "
+            "20-10-0003, 20-10-0056, 20-10-0067, 20-10-0076, 34-10-0035, 34-10-0036, "
+            "36-10-0018, 36-10-0103, 36-10-0104 and 36-10-0434; any other table, the Labour "
+            "Force Survey's 14-10-0287 included, is an error",
+            (
+                *("vintage*", "revision*", "revised", "as published", "as of", "first release"),
+                *("first estimate", "historical release", "real-time", "real time"),
+                *("millesime*", "revise*", "temps reel", "premiere estimation"),
+            ),
+        ),
+        PlanStep(
             "wds_get_changed_series_data", "changed series since a date, when the file is huge"
         ),
     ),
@@ -2641,8 +2654,9 @@ STATCAN_UPDATES = Topic(
             "values are raw, with the scalar factor not applied."
         ),
         (
-            "Only the 19 statistics with a real-time table have a revision history; the regular "
-            "table shows the latest revision."
+            "Only the 16 tables named in the wds_get_series_as_of step have a revision history in "
+            "WDS (19 statistics have a real-time table; three are not served); the regular table "
+            "shows the latest revision."
         ),
     ),
 )

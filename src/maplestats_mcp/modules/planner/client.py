@@ -51,8 +51,8 @@ from maplestats_mcp.shared.i18n import normalize_lang
 _MAX_TOPICS = 4
 _GUIDANCE = (
     (
-        "Run the steps in order within each topic; each result's provenance gives the source "
-        "URL and date to cite."
+        "Run the steps in order within each topic; each result's provenance gives the URL and "
+        "date to cite."
     ),
     (
         "Fetch the figures with these tools and report the reference period they return. Do "
@@ -65,11 +65,8 @@ _GUIDANCE = (
         "Before combining sources, align geography (province, CMA, city), period (calendar vs "
         "fiscal year, month vs quarter) and units, and say where they differ."
     ),
-    (
-        "Report each figure with its source; do not merge numbers from different sources "
-        "into one series."
-    ),
-    "If a step finds nothing, use search_tools with the step's purpose as the query.",
+    ("Cite each figure's source; do not merge numbers from different sources into one series."),
+    "If a step finds nothing, use search_tools with its purpose as the query.",
     (
         "check_answer re-reads the StatCan and Bank of Canada figures you will cite, "
         "given the question, and returns only the problems."
@@ -77,7 +74,7 @@ _GUIDANCE = (
     (
         "For a ratio, a ranking of places, compound annual growth or a count of changes "
         "(rate moves) across those series, call calc_ratio, calc_rank, calc_cagr or "
-        "calc_count_changes rather than doing the arithmetic yourself."
+        "calc_count_changes rather than doing the arithmetic."
     ),
 )
 # A step whose purpose names the place asked about ("Alberta fires...") moves

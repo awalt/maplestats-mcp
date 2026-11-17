@@ -1,9 +1,10 @@
 """plan_query's `call` field, the relevance rules that trim a plan, and the plan's size.
 
 The size numbers are plan_query's output over the discovery benchmark's 129 queries on
-origin/main before this change (text of the tool result, in characters, measured
-2026-11-17; the mean was 4159.11 before PR #294 and later merges added steps and notes):
-the plan must not grow past them, however many fields it gains.
+origin/main after PR #300 and the census-speed PR #298 (text of the tool result, in
+characters, measured 2026-11-17: mean 4547.24, max 10415). The mean was 4159.11 before
+`call`; later merges added steps and notes. The plan must not grow past the numbers of the
+main it is merged into, however many fields it gains.
 """
 
 from __future__ import annotations
@@ -22,8 +23,8 @@ from maplestats_mcp.modules.planner.topics import FALLBACK_STEPS, TOPICS, PlanSt
 from maplestats_mcp.server import mcp
 from tests.discovery_benchmark.runner import load_queries
 
-BASELINE_MEAN_CHARS = 4180.92
-BASELINE_MAX_CHARS = 9690
+BASELINE_MEAN_CHARS = 4547.24
+BASELINE_MAX_CHARS = 10415
 
 
 def _sample(spec: dict[str, Any]) -> Any:
@@ -193,3 +194,33 @@ def test_the_output_schema_gained_only_an_optional_call():
     schema = QueryPlan.model_json_schema()["$defs"]["StepOut"]
     assert set(schema["properties"]) == {"tool", "purpose", "call"}
     assert set(schema["required"]) == {"tool", "purpose"}
+
+
+def test_the_series_as_of_tables_in_the_plan_and_the_description_are_the_ones_it_serves():
+    from maplestats_mcp.modules.statcan.wds.vintage import REAL_TIME_FOR
+
+    def dashed(product_id: int) -> str:
+        text = str(product_id)
+        return f"{text[:2]}-{text[2:4]}-{text[4:]}"
+
+    served = {dashed(pid) for pid in REAL_TIME_FOR}
+    assert len(served) == 16
+    step = next(s for t in TOPICS for s in t.steps if s.tool == "wds_get_series_as_of")
+    named = set(re.findall(r"\d\d-10-\d{4}", step.purpose)) - {"14-10-0287"}
+    assert named == served
+    description = calls.schemas()  # the catalogue is built from the docstring
+    assert description
+    from maplestats_mcp.catalogue import read_catalogue
+
+    tools = {t["name"]: t for m in (read_catalogue() or {}).values() for t in m["tools"]}
+    text = tools["wds_get_series_as_of"]["description"]
+    assert served <= set(re.findall(r"\d\d-10-\d{4}", text))
+
+
+def test_a_vintage_question_plan_names_the_series_as_of_step_in_french_too():
+    for lang in ("en", "fr"):
+        plan = client.plan("revision history of GDP, first release versus revised", lang)
+        topic = next(t for t in plan.topics if t.topic == "statcan_updates")
+        step = next(s for s in topic.steps if s.tool == "wds_get_series_as_of")
+        assert "36-10-0434" in step.purpose
+        assert step.call is not None and '"as_of"' in step.call
