@@ -79,6 +79,8 @@ _Saved = tuple[
 
 # Header the maintainer's own clients send, with the secret MAPLE_INTERNAL_TOKEN holds.
 INTERNAL_HEADER = "x-maple-internal"
+# Query parameter a client can add to the endpoint URL to say what it is (see caller_label).
+CLIENT_HINT_PARAM = "client"
 
 # Kind of client, from the name it announces in the MCP `initialize` request. Each
 # entry is (text found in the lower-cased name, label); the first match wins, so
@@ -610,8 +612,20 @@ class UsageMiddleware(Middleware):
         return result
 
 
+def _url_hint() -> str | None:
+    """The `?client=` value of the HTTP request being served, None when there is none."""
+    with suppress(Exception):
+        from fastmcp.server.dependencies import get_http_request
+
+        return get_http_request().query_params.get(CLIENT_HINT_PARAM)
+    return None
+
+
 def caller_label(context: MiddlewareContext) -> str:
     """The client label for this call: `internal` with the secret header, else the kind of client.
+
+    The kind comes from a `?client=` hint on the URL when it names a known client, else
+    from the name the client announced at initialize.
 
     Never raises: a transport with no HTTP request (stdio, in-memory) or no
     initialize yet is simply "unknown".
@@ -624,6 +638,13 @@ def caller_label(context: MiddlewareContext) -> str:
 
             if is_internal(get_http_headers(include={INTERNAL_HEADER}), token):
                 return CLIENT_INTERNAL
+    # A URL hint, for callers that cannot set a client name or a header: Anthropic's MCP
+    # connector (the chat demo's default backend) is given `?client=maplestats-chat`.
+    # It goes through the same fixed list as an announced name, and counts only when it
+    # matches a known label, so a made-up value falls back to the announced name.
+    hinted = client_label(_url_hint())
+    if hinted not in (CLIENT_OTHER, CLIENT_UNKNOWN):
+        return hinted
     try:
         params = context.fastmcp_context.session.client_params  # type: ignore[union-attr]
         # `client_info` in the installed mcp SDK (confirmed 2026-11-16 with fastmcp 4.1.4,

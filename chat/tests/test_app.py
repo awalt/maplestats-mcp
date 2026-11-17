@@ -871,3 +871,14 @@ def test_the_counts_are_saved_at_shutdown(monkeypatch, tmp_path):
     with TestClient(chat_app.app) as client:  # runs the lifespan
         post(client, [{"role": "user", "content": "hi"}])
     assert usage.ChatStats(path).snapshot()["outcomes"] == {"answered": 1}
+
+
+def test_the_mcp_url_carries_the_chat_demo_label():
+    base = "https://mcp.example/mcp"
+    assert chat_app.labelled_url(base) == base + "?client=maplestats-chat"
+    # An existing query is kept and a client value already there is replaced, not doubled.
+    assert (
+        chat_app.labelled_url(base + "?a=1&client=x")
+        == base + "?a=1&client=maplestats-chat"
+    )
+    assert chat_app.MCP_CALL_URL.endswith("client=maplestats-chat")
