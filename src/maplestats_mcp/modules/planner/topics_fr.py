@@ -1036,10 +1036,23 @@ FR: dict[str, str] = {
         "Un fichier delta ne contient pas de suppressions et intègre les corrections le jour "
         "ouvrable suivant; les valeurs sont brutes, sans le facteur scalaire appliqué."
     ),
-    "Only the 19 statistics with a real-time table have a revision history; the regular "
-    "table shows the latest revision.": (
-        "Seules les 19 statistiques qui ont un tableau en temps réel ont un historique des "
-        "révisions; le tableau ordinaire affiche la dernière révision."
+    "Only the 16 tables named in the wds_get_series_as_of step have a revision history in "
+    "WDS (19 statistics have a real-time table; three are not served); the regular table "
+    "shows the latest revision.": (
+        "Seuls les 16 tableaux nommés à l'étape wds_get_series_as_of ont un historique des "
+        "révisions dans le SDW (19 statistiques ont un tableau en temps réel; trois ne sont "
+        "pas servis); le tableau ordinaire affiche la dernière révision."
+    ),
+    "one series as published on a past date (as_of='YYYY-MM-DD'), only for the 16 tables "
+    "12-10-0163, 14-10-0220, 14-10-0223, 16-10-0012, 16-10-0013, 18-10-0256, "
+    "20-10-0003, 20-10-0056, 20-10-0067, 20-10-0076, 34-10-0035, 34-10-0036, "
+    "36-10-0018, 36-10-0103, 36-10-0104 and 36-10-0434; any other table, the Labour "
+    "Force Survey's 14-10-0287 included, is an error": (
+        "une série telle que publiée à une date passée (as_of='AAAA-MM-JJ'), seulement pour "
+        "les 16 tableaux 12-10-0163, 14-10-0220, 14-10-0223, 16-10-0012, 16-10-0013, "
+        "18-10-0256, 20-10-0003, 20-10-0056, 20-10-0067, 20-10-0076, 34-10-0035, "
+        "34-10-0036, 36-10-0018, 36-10-0103, 36-10-0104 et 36-10-0434; tout autre tableau, "
+        "le 14-10-0287 de l'Enquête sur la population active compris, est une erreur"
     ),
     # The Daily
     "The Daily: StatCan's release articles, their text and PDFs": (
@@ -1782,7 +1795,7 @@ GUIDANCE_FR = tuple(
     for line in (
         (
             "Exécutez les étapes dans l'ordre pour chaque sujet ; la provenance de chaque résultat "
-            "donne l'URL et la date de la source à citer."
+            "donne l'URL et la date à citer."
         ),
         (
             "Obtenez les chiffres avec ces outils et indiquez la période de référence qu'ils "
@@ -1798,10 +1811,10 @@ GUIDANCE_FR = tuple(
             "écarts."
         ),
         (
-            "Citez la source de chaque chiffre ; ne fusionnez pas en une seule série des chiffres de "
-            "sources différentes."
+            "Citez la source de chaque chiffre ; ne fusionnez pas des chiffres de sources différentes "
+            "en une série."
         ),
-        "Si une étape ne trouve rien, utilisez search_tools avec l'objet de l'étape comme requête.",
+        "Si une étape ne trouve rien, utilisez search_tools avec son objet comme requête.",
         (
             "Avant de répondre, appelez check_answer avec la question et les chiffres de "
             "Statistique Canada et de la Banque du Canada que vous citerez."
