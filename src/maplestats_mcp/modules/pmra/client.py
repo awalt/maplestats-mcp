@@ -115,6 +115,27 @@ async def _get(url: str) -> bytes:
     return downloaded.body
 
 
+# English header names of the 16 product fields the client uses, in order.
+_PRODUCT_FIELDS = (
+    "Registration number",
+    "Product name - English",
+    "Product name - French",
+    "Registration Status",
+    "Expiry date",
+    "Marketing type",
+    "Date first registered",
+    "Exclusive period start date",
+    "Active ingredients - English",
+    "Active ingredients - French",
+    "Product Type",
+    "Registrant name",
+    "Use Site Category",
+    "Sites of Use",
+    "Pests",
+    "Current / Historical",
+)
+
+
 def parse_extract(
     body: bytes, columns: int, what: str, lang: str = "en"
 ) -> tuple[list[list[str]], int]:
@@ -126,21 +147,40 @@ def parse_extract(
     """
     text = body.decode("cp1252", errors="replace").lstrip("﻿")
     rows = list(csv.reader(io.StringIO(text)))
-    # Columns are read by position, so a header with extra columns after the ones
-    # used is accepted (the product extract gained two at the end by 2026-11-16);
-    # one with fewer, or any change in the leading columns' count, is a layout change.
-    if not rows or len(rows[0]) < columns:
-        found = len(rows[0]) if rows else 0
+    header = rows[0] if rows else []
+    # Extra columns after the ones used are accepted (the product extract gained
+    # two by 2026-11-16); fewer columns than expected is a layout change.
+    if len(header) < columns:
         _raise(
             UpstreamError,
-            f"pmra: the {what} extract has {found} columns, expected at least "
-            f"{columns}; its layout changed.",
-            f"pmra : l'extrait {what} a {found} colonnes au lieu d'au moins {columns} ; sa "
-            "structure a changé.",
+            f"pmra: the {what} extract has {len(header)} columns, expected at least "
+            f"{columns}; its layout changed. Header: {header!r}",
+            f"pmra : l'extrait {what} a {len(header)} colonnes au lieu d'au moins "
+            f"{columns} ; sa structure a changé. En-tête : {header!r}",
             lang,
         )
-    width = len(rows[0])
-    kept = [[_clean(cell) for cell in row] for row in rows[1:] if len(row) == width]
+    projection = list(range(columns))
+    # The English product header names its fields, so read them by name: a column
+    # inserted before Current / Historical must not shift status, ingredient or
+    # registrant values. The French header text is not known here, so French (and
+    # every other extract) is read by position over the leading columns.
+    if (
+        what == "product"
+        and len(header) > columns
+        and _fold(header[0]) == _fold(_PRODUCT_FIELDS[0])
+    ):
+        positions = {_fold(name): i for i, name in enumerate(header)}
+        if not all(_fold(name) in positions for name in _PRODUCT_FIELDS):
+            _raise(
+                UpstreamError,
+                "pmra: new product columns cannot be mapped to the 16 known fields; "
+                f"header: {header!r}",
+                "pmra : les nouvelles colonnes product ne correspondent pas aux 16 "
+                f"champs connus ; en-tête : {header!r}",
+                lang,
+            )
+        projection = [positions[_fold(name)] for name in _PRODUCT_FIELDS]
+    kept = [[_clean(row[i]) for i in projection] for row in rows[1:] if len(row) == len(header)]
     return kept, len(rows) - 1 - len(kept)
 
 

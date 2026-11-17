@@ -1,8 +1,8 @@
 {
  "question_id": "M-07",
  "version": "v1",
- "recorded_on": "2026-11-07",
- "server_commit": "d72372c",
+ "recorded_on": "2026-11-16",
+ "server_commit": "5c52b1b",
  "tool": "wds_get_data_from_vectors",
  "arguments": {
   "vector_ids": [
@@ -24,7 +24,7 @@
     "coordinate": "1.2.0.0.0.0.0.0.0.0",
     "vector_id": 108785714,
     "context": {
-     "citation": "Statistics Canada. Table 18-10-0256-01, Consumer Price Index (CPI) statistics, measures of core inflation and other related statistics - Bank of Canada definitions. Vector v108785714. Released 2026-10-19.",
+     "citation": "Statistics Canada. Table 18-10-0256-01, Consumer Price Index (CPI) statistics, measures of core inflation and other related statistics - Bank of Canada definitions. Vector v108785714. Released 2026-11-16.",
      "table_id": "18-10-0256-01",
      "table_title": "Consumer Price Index (CPI) statistics, measures of core inflation and other related statistics - Bank of Canada definitions",
      "table_url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1810025601",
@@ -45,14 +45,14 @@
        "member_id": 2
       }
      ],
-     "table_release_time": "2026-10-19T08:30",
+     "table_release_time": "2026-11-16T08:30",
      "first_period": "1949-01-01",
-     "last_period": "2026-09-01",
+     "last_period": "2026-10-01",
      "notes": []
     },
     "observations": [
      {
-      "ref_period": "2026-08-01",
+      "ref_period": "2026-09-01",
       "value": 2.0,
       "decimals": 1,
       "scalar_factor_code": 0,
@@ -60,21 +60,21 @@
       "symbol_code": 0,
       "status_code": 0,
       "security_level_code": 0,
-      "release_time": "2026-10-19T12:30:00Z",
+      "release_time": "2026-11-16T13:30:00Z",
       "symbol": "none",
       "status": "normal",
       "security_level": "public"
      },
      {
-      "ref_period": "2026-09-01",
-      "value": 1.9,
+      "ref_period": "2026-10-01",
+      "value": 2.0,
       "decimals": 1,
       "scalar_factor_code": 0,
       "scale_multiplier": 1,
       "symbol_code": 0,
       "status_code": 0,
       "security_level_code": 0,
-      "release_time": "2026-10-19T12:30:00Z",
+      "release_time": "2026-11-16T13:30:00Z",
       "symbol": "none",
       "status": "normal",
       "security_level": "public"
@@ -87,7 +87,7 @@
     "coordinate": "1.3.0.0.0.0.0.0.0.0",
     "vector_id": 108785715,
     "context": {
-     "citation": "Statistics Canada. Table 18-10-0256-01, Consumer Price Index (CPI) statistics, measures of core inflation and other related statistics - Bank of Canada definitions. Vector v108785715. Released 2026-10-19.",
+     "citation": "Statistics Canada. Table 18-10-0256-01, Consumer Price Index (CPI) statistics, measures of core inflation and other related statistics - Bank of Canada definitions. Vector v108785715. Released 2026-11-16.",
      "table_id": "18-10-0256-01",
      "table_title": "Consumer Price Index (CPI) statistics, measures of core inflation and other related statistics - Bank of Canada definitions",
      "table_url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1810025601",
@@ -108,14 +108,14 @@
        "member_id": 3
       }
      ],
-     "table_release_time": "2026-10-19T08:30",
+     "table_release_time": "2026-11-16T08:30",
      "first_period": "1949-01-01",
-     "last_period": "2026-09-01",
+     "last_period": "2026-10-01",
      "notes": []
     },
     "observations": [
      {
-      "ref_period": "2026-08-01",
+      "ref_period": "2026-09-01",
       "value": 1.9,
       "decimals": 1,
       "scalar_factor_code": 0,
@@ -123,13 +123,13 @@
       "symbol_code": 0,
       "status_code": 0,
       "security_level_code": 0,
-      "release_time": "2026-10-19T12:30:00Z",
+      "release_time": "2026-11-16T13:30:00Z",
       "symbol": "none",
       "status": "normal",
       "security_level": "public"
      },
      {
-      "ref_period": "2026-09-01",
+      "ref_period": "2026-10-01",
       "value": 1.8,
       "decimals": 1,
       "scalar_factor_code": 0,
@@ -137,7 +137,7 @@
       "symbol_code": 0,
       "status_code": 0,
       "security_level_code": 0,
-      "release_time": "2026-10-19T12:30:00Z",
+      "release_time": "2026-11-16T13:30:00Z",
       "symbol": "none",
       "status": "normal",
       "security_level": "public"

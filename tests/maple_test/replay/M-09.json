@@ -1,8 +1,8 @@
 {
  "question_id": "M-09",
  "version": "v1",
- "recorded_on": "2026-11-07",
- "server_commit": "d72372c",
+ "recorded_on": "2026-11-16",
+ "server_commit": "5c52b1b",
  "tool": "wds_get_data_from_vectors",
  "arguments": {
   "vector_ids": [

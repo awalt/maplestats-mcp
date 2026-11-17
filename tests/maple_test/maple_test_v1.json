@@ -1,6 +1,6 @@
 {
   "benchmark": "maple_test_v1",
-  "built_at": "2026-11-06T03:20:58+00:00",
+  "built_at": "2026-11-16T16:00:00+00:00",
   "sources": "Statistics Canada WDS and Bank of Canada Valet, read directly with httpx",
   "questions": [
     {
@@ -93,9 +93,9 @@
       "eval_type": "numeric",
       "question": "What was Canada's population on July 1, 2026, and how much did it grow over the previous year?",
       "expected": {
-        "population_jul_2026": 41798407.0,
-        "population_jul_2025": 41608982.0,
-        "growth_persons": 189425.0,
+        "population_jul_2026": 41798407,
+        "population_jul_2025": 41608982,
+        "growth_persons": 189425,
         "growth_pct": 0.5
       },
       "headline": [
@@ -109,7 +109,7 @@
           "series_title": "Canada",
           "reference_period": "2026-07",
           "coordinate": "1",
-          "value": 41798407.0,
+          "value": 41798407,
           "release_or_revision_date": "2026-09-23T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000901"
         },
@@ -119,7 +119,7 @@
           "series_title": "Canada",
           "reference_period": "2025-07",
           "coordinate": "1",
-          "value": 41608982.0,
+          "value": 41608982,
           "release_or_revision_date": "2026-09-23T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000901"
         }
@@ -151,7 +151,7 @@
           "series_title": "Alberta",
           "reference_period": "2026-07",
           "coordinate": "10",
-          "value": 5101050.0,
+          "value": 5101050,
           "release_or_revision_date": "2026-09-23T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000901"
         },
@@ -161,7 +161,7 @@
           "series_title": "Alberta",
           "reference_period": "2025-07",
           "coordinate": "10",
-          "value": 5024631.0,
+          "value": 5024631,
           "release_or_revision_date": "2026-09-23T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000901"
         },
@@ -171,7 +171,7 @@
           "series_title": "Ontario",
           "reference_period": "2026-07",
           "coordinate": "7",
-          "value": 16262121.0,
+          "value": 16262121,
           "release_or_revision_date": "2026-09-23T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000901"
         },
@@ -181,7 +181,7 @@
           "series_title": "Ontario",
           "reference_period": "2025-07",
           "coordinate": "7",
-          "value": 16216961.0,
+          "value": 16216961,
           "release_or_revision_date": "2026-09-23T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000901"
         }
@@ -196,9 +196,9 @@
       "eval_type": "numeric",
       "question": "How many non-permanent residents lived in Canada on July 1, 2026, and how did that compare with a year earlier?",
       "expected": {
-        "npr_jul_2026": 2779774.0,
-        "npr_jul_2025": 2934388.0,
-        "change_persons": -154614.0,
+        "npr_jul_2026": 2779774,
+        "npr_jul_2025": 2934388,
+        "change_persons": -154614,
         "change_pct": -5.3
       },
       "headline": [
@@ -213,7 +213,7 @@
           "series_title": "Canada;Total, non-permanent residents",
           "reference_period": "2026-07",
           "coordinate": "1.1",
-          "value": 2779774.0,
+          "value": 2779774,
           "release_or_revision_date": "2026-09-23T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710012101"
         },
@@ -223,7 +223,7 @@
           "series_title": "Canada;Total, non-permanent residents",
           "reference_period": "2025-07",
           "coordinate": "1.1",
-          "value": 2934388.0,
+          "value": 2934388,
           "release_or_revision_date": "2026-09-23T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710012101"
         }
@@ -279,8 +279,8 @@
       "eval_type": "numeric",
       "question": "What were the Bank of Canada's preferred core inflation measures, CPI-trim and CPI-median, in September 2026?",
       "expected": {
-        "cpi_trim_pct": 1.8,
-        "cpi_median_pct": 1.9
+        "cpi_trim_pct": 1.9,
+        "cpi_median_pct": 2
       },
       "headline": [
         "cpi_trim_pct",
@@ -294,8 +294,8 @@
           "series_title": "Canada;Measure of core inflation based on a trimmed mean approach, CPI-trim (year-over-year percent change)",
           "reference_period": "2026-09",
           "coordinate": "1.3",
-          "value": 1.8,
-          "release_or_revision_date": "2026-10-19T08:30",
+          "value": 1.9,
+          "release_or_revision_date": "2026-11-16T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1810025601"
         },
         {
@@ -304,8 +304,8 @@
           "series_title": "Canada;Measure of core inflation based on a weighted median approach, CPI-median (year-over-year percent change)",
           "reference_period": "2026-09",
           "coordinate": "1.2",
-          "value": 1.9,
-          "release_or_revision_date": "2026-10-19T08:30",
+          "value": 2,
+          "release_or_revision_date": "2026-11-16T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1810025601"
         }
       ],
@@ -320,9 +320,9 @@
       "eval_type": "numeric",
       "question": "By how much did Canada's real GDP change in August 2026, from July?",
       "expected": {
-        "change_pct": -0.0,
-        "gdp_aug_2026": 2371635.0,
-        "gdp_jul_2026": 2371788.0
+        "change_pct": 0,
+        "gdp_aug_2026": 2371635,
+        "gdp_jul_2026": 2371788
       },
       "headline": [
         "change_pct"
@@ -335,7 +335,7 @@
           "series_title": "Canada;Seasonally adjusted at annual rates;Chained (2017) dollars;All industries",
           "reference_period": "2026-08",
           "coordinate": "1.1.1.1",
-          "value": 2371635.0,
+          "value": 2371635,
           "release_or_revision_date": "2026-10-30T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3610043401"
         },
@@ -345,7 +345,7 @@
           "series_title": "Canada;Seasonally adjusted at annual rates;Chained (2017) dollars;All industries",
           "reference_period": "2026-07",
           "coordinate": "1.1.1.1",
-          "value": 2371788.0,
+          "value": 2371788,
           "release_or_revision_date": "2026-10-30T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3610043401"
         }

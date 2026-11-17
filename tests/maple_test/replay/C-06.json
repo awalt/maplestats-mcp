@@ -1,21 +1,21 @@
 {
  "question_id": "C-06",
  "version": "v2",
- "recorded_on": "2026-11-07",
- "server_commit": "d72372c",
+ "recorded_on": "2026-11-16",
+ "server_commit": "5c52b1b",
  "tool": "wds_get_data_from_vectors",
  "arguments": {
   "vector_ids": [
    41690973
   ],
-  "latest_n": 1,
+  "latest_n": 2,
   "transform": "yoy_pct_change"
  },
  "requests": [
   "5e3f34da23222465",
   "9cc55ee47fda0d20",
   "bdef00936ed4b92a",
-  "fe5b0838c40c395f"
+  "c7e5297ba61d2428"
  ],
  "result": {
   "series": [
@@ -24,7 +24,7 @@
     "coordinate": "2.2.0.0.0.0.0.0.0.0",
     "vector_id": 41690973,
     "context": {
-     "citation": "Statistics Canada. Table 18-10-0004-01, Consumer Price Index, monthly, not seasonally adjusted. Vector v41690973. Released 2026-10-19.",
+     "citation": "Statistics Canada. Table 18-10-0004-01, Consumer Price Index, monthly, not seasonally adjusted. Vector v41690973. Released 2026-11-16.",
      "table_id": "18-10-0004-01",
      "table_title": "Consumer Price Index, monthly, not seasonally adjusted",
      "table_url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1810000401",
@@ -45,9 +45,9 @@
        "member_id": 2
       }
      ],
-     "table_release_time": "2026-10-19T08:30",
+     "table_release_time": "2026-11-16T08:30",
      "first_period": "1914-01-01",
-     "last_period": "2026-09-01",
+     "last_period": "2026-10-01",
      "notes": [
       "Unit is an index (2002=100), not a price or dollar level: quote changes as percentages of the index."
      ]
@@ -63,6 +63,20 @@
       "status_code": 0,
       "security_level_code": 0,
       "release_time": "2026-10-19T12:30:00Z",
+      "symbol": "none",
+      "status": "normal",
+      "security_level": "public"
+     },
+     {
+      "ref_period": "2026-10-01",
+      "value": 170.4,
+      "decimals": 1,
+      "scalar_factor_code": 0,
+      "scale_multiplier": 1,
+      "symbol_code": 0,
+      "status_code": 0,
+      "security_level_code": 0,
+      "release_time": "2026-11-16T13:30:00Z",
       "symbol": "none",
       "status": "normal",
       "security_level": "public"
@@ -85,6 +99,12 @@
        "ref_date": "2026-09-01",
        "level": 170.0,
        "value": 3.0927835052
+      },
+      {
+       "period": "2026-10",
+       "ref_date": "2026-10-01",
+       "level": 170.4,
+       "value": 3.0852994555
       }
      ]
     }
@@ -96,7 +116,7 @@
    "url": "https://www150.statcan.gc.ca/t1/wds/rest/getDataFromVectorsAndLatestNPeriods",
    "as_of": null,
    "freshness": null,
-   "coverage": "Computed by MapleStats from the published values (see each series' transformed.formula); latestN=13 was fetched so the lag reaches back far enough, and only the requested window is returned.",
+   "coverage": "Computed by MapleStats from the published values (see each series' transformed.formula); latestN=14 was fetched so the lag reaches back far enough, and only the requested window is returned.",
    "limits": null,
    "cached": false,
    "lang": "en",

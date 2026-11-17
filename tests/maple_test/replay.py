@@ -121,7 +121,8 @@ CASES = (
         "C-06",
         "v2",
         "wds_get_data_from_vectors",
-        {"vector_ids": [41690973], "latest_n": 1, "transform": "yoy_pct_change"},
+        # Two months: October 2026 is out, and the key's figure is September's.
+        {"vector_ids": [41690973], "latest_n": 2, "transform": "yoy_pct_change"},
         cite=False,
         transformed={"allitems_yoy_pct": ("v41690973", "2026-09")},
     ),
@@ -131,15 +132,12 @@ CASES = (
         "boc_get_observations",
         {"series_names": ["V39079"], "start_date": "2026-10-23", "end_date": "2026-10-30"},
     ),
-    # October 2026 CPI is not out (key built 2026-11-03; it comes out mid-November): the
-    # latest observation must be September.
+    # October 2026 CPI came out on 2026-11-16: the key cites its level and October 2025's.
     Case(
         "C-22",
         "v2",
         "wds_get_data_from_vectors",
-        {"vector_ids": [41690973], "latest_n": 2},
-        absent=(("v41690973", "2026-10"),),
-        latest={"latest_month": "v41690973"},
+        {"vector_ids": [41690973], "latest_n": 13},
     ),
 )
 

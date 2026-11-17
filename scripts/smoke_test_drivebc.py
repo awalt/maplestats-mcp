@@ -81,10 +81,17 @@ async def main() -> int:
     by_area = await client.summarize_events("area")
     areas = await client.list_areas()
     check(len(areas.areas) == 11, f"{len(areas.areas)} districts")
+    # Area summaries include every upstream event area, including areas not in
+    # the 11 Ministry district registry. Compare registered districts individually;
+    # summing the entire summary would incorrectly include non-district areas.
+    summary_counts = {group.value: group.events for group in by_area.groups}
     check(
-        sum(a.active_events for a in areas.areas) == sum(g.events for g in by_area.groups),
-        "district counts in list_areas equal the area summary",
+        all(a.active_events == summary_counts.get(a.name, 0) for a in areas.areas),
+        "each Ministry district count agrees with the area summary",
     )
+    extra_areas = sorted(set(summary_counts) - {a.name for a in areas.areas})
+    if extra_areas:
+        print(f"INFO: {len(extra_areas)} event areas are not Ministry districts: {extra_areas}")
     check(
         all(
             "Open Government Licence - British Columbia" in (r.provenance.licence or "")
