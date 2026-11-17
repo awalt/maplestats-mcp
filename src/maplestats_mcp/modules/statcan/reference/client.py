@@ -821,6 +821,65 @@ async def _pdf(url: str, tool: str, lang: str) -> tuple[pdf.PdfText, bool]:
     )
 
 
+def _pages_where(numbers: list[int], fr_preposition: str | None = None) -> str:
+    """ "page 3" or "pages 1-3, 5" (French: "pages 1 à 3, 5"); with `fr_preposition` ("sur"
+    or "de"), the French "sur la page 3", "sur les pages 1 à 3", "de la page 3" or
+    "des pages 1 à 3"."""
+    many = len(set(numbers)) > 1
+    ranges = pdf.page_ranges(numbers, current_lang())
+    if fr_preposition and current_lang() == "fr":
+        article = {"sur": ("sur la", "sur les"), "de": ("de la", "des")}[fr_preposition]
+        return f"{article[many]} {'pages' if many else 'page'} {ranges}"
+    return f"{'pages' if many else 'page'} {ranges}"
+
+
+def _pages_read(read: int) -> tuple[str, str]:
+    """ "3 pages" and "3 pages lues", with the singular for one page."""
+    many = read != 1
+    return (
+        f"{read} page{'s' if many else ''}",
+        f"{read} page{'s' if many else ''} lue{'s' if many else ''}",
+    )
+
+
+def _no_text_note(document: pdf.PdfText) -> str:
+    """The pages that came out empty because the PDF holds only an image of them."""
+    where = _pages_where(document.no_text_pages)
+    where_fr = _pages_where(document.no_text_pages, "sur")
+    count, scanned = len(document.no_text_pages), len(document.scanned_pages)
+    read_en, read_fr = _pages_read(document.pages_read)
+    if scanned == count:
+        return say(
+            f"No text layer on {where} ({count} of {read_en} read): the PDF holds only an "
+            "image of each page (a scan), so the text comes back empty here. Open the PDF at "
+            "the page cited (#page=N) to read it.",
+            f"Pas de couche de texte {where_fr} ({count} sur {read_fr}) : le PDF n'en contient "
+            "qu'une image par page (numérisation), le texte revient donc vide ici. Ouvrez le "
+            "PDF à la page citée (#page=N) pour le lire.",
+        )
+    return say(
+        f"No text to read on {where} ({count} of {read_en} read): scans, blank pages or "
+        f"drawings ({scanned} hold an image the size of the page). The text comes back empty "
+        "here. Open the PDF at the page cited (#page=N) to read it.",
+        f"Pas de texte à lire {where_fr} ({count} sur {read_fr}) : numérisations, pages "
+        f"vierges ou dessins ({scanned} contiennent une image de la taille de la page). Le "
+        "texte revient donc vide ici. Ouvrez le PDF à la page citée (#page=N) pour le lire.",
+    )
+
+
+def _pdf_coverage(document: pdf.PdfText) -> str | None:
+    """What the PDF's text leaves out: the pages with no text to read."""
+    if not document.no_text_pages:
+        return None
+    read_en, read_fr = _pages_read(document.pages_read)
+    where = _pages_where(document.no_text_pages)
+    where_fr = _pages_where(document.no_text_pages, "de")
+    return say(
+        f"The text of {where} is not included (no text layer; {read_en} read).",
+        f"Le texte {where_fr} n'est pas inclus (pas de couche de texte ; {read_fr}).",
+    )
+
+
 def _pdf_note(document: pdf.PdfText) -> str:
     """What a caller should know about text taken from a PDF."""
     url = document.page.url
@@ -836,6 +895,8 @@ def _pdf_note(document: pdf.PdfText) -> str:
             "(l'url de chaque section se termine par #page=N).",
         )
     ]
+    if document.no_text_pages:
+        notes.append(_no_text_note(document))
     if document.bilingual_pages:
         notes.append(
             say(
@@ -1024,6 +1085,7 @@ async def get_publication(
                 url=resolved.edition_url,
                 cached=cached and resolved.cached,
                 as_of=_as_of(chosen.release_date if chosen else None),
+                coverage=_pdf_coverage(document),
                 limits=" ".join(notes),
                 schema_name="statcan_reference.Publication",
                 lang=current_lang(),
@@ -1549,11 +1611,13 @@ async def get_section_text(
         sections=results,
         subsections=subsections,
         pages_read=pages_read,
+        pages_without_text=len(document.no_text_pages) if document is not None else 0,
         provenance=make_provenance(
             source=constants.RATE_LIMIT_SOURCE,
             url=results[0].url if results else edition_url,
             cached=all_cached,
             as_of=_as_of(release),
+            coverage=_pdf_coverage(document) if document is not None else None,
             limits=" ".join(notes) or None,
             schema_name="statcan_reference.PublicationText",
             lang=current_lang(),
