@@ -30,13 +30,20 @@ Confirmed live 2026-09-20. Two real quirks handled:
    query parameter is rejected outright with "Unknown query
    parameter", confirmed live) -- every function here takes `lang` and
    translates it to that header.
+5. A request takes 33 to 47 s whatever its size, and StatCan serves parallel
+   requests in parallel (two took 37.5 s each, 37.5 s in all; 2026-11-16), so
+   `get_data` asks for each geography level at the same time and keeps every value
+   on its own (value_store.py, 14 days, 8 MB, on disk across restarts): a repeat
+   or an overlapping question costs no request for the values it already has.
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import re
 import unicodedata
-from typing import Any
+from typing import Any, NamedTuple
 
 import httpx
 
@@ -49,11 +56,16 @@ from maplestats_mcp.modules.statcan.census_profile.schemas import (
     GeographyMatch,
     GeographySearchResult,
 )
+from maplestats_mcp.modules.statcan.census_profile.value_store import (
+    ValueStore,
+    open_store,
+    value_key,
+)
 from maplestats_mcp.modules.statcan.lang import say
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import InvalidInput, UpstreamError, UpstreamUnavailable
-from maplestats_mcp.shared.http import api_get
+from maplestats_mcp.shared.http import api_get, is_recording
 from maplestats_mcp.shared.json_utils import list_or_empty
 from maplestats_mcp.shared.rate_limiter import get_limiter
 
@@ -62,6 +74,12 @@ from maplestats_mcp.shared.rate_limiter import get_limiter
 # "+" are deliberately not allowed: they separate the key's dimensions and
 # alternatives, so a code containing one would silently shift the key.
 _CODE = re.compile(r"[A-Za-z0-9_-]+")
+
+logger = logging.getLogger("maplestats_mcp.census_profile")
+
+# Writing the values file must not hold a tool result for long: past this the call
+# returns and the write finishes (or fails, logged) in its thread.
+_SAVE_TIMEOUT_SECONDS = 5.0
 
 _LIMITER = get_limiter(
     constants.RATE_LIMIT_SOURCE,
@@ -271,8 +289,280 @@ def _check_codes(name: str, codes: list[str], lang: str) -> None:
             )
 
 
-async def get_data(
+def _level_error(codes: list[str], lang: str) -> InvalidInput:
+    levels = sorted(constants.GEOGRAPHY_LEVEL_TO_DATAFLOW)
+    return InvalidInput(
+        say(
+            f"statcan_census_profile:get_data: cannot tell the geography level of "
+            f"{codes[0]!r} from its code (a DGUID such as 2021S0503915 starts with a "
+            f"year, A or S and four digits that name the level). Pass level, one of "
+            f"{levels}, or take the code from statcan_census_profile_search_geography.",
+            f"statcan_census_profile:get_data : impossible de déduire le niveau "
+            f"géographique de {codes[0]!r} d'après son code (un DGUID comme 2021S0503915 "
+            f"commence par une année, A ou S et quatre chiffres qui nomment le niveau). "
+            f"Indiquez level, l'une des valeurs {levels}, ou prenez le code dans "
+            f"statcan_census_profile_search_geography.",
+            lang,
+        )
+    )
+
+
+def level_of(code: str) -> str | None:
+    """The geography level a DGUID names, from its first nine characters; None if unknown."""
+    return constants.DGUID_PREFIX_TO_LEVEL.get(code[:9])
+
+
+def _group_by_level(level: str | None, codes: list[str], lang: str) -> dict[str, list[str]]:
+    """Each code under the level its DGUID names, in order of first appearance.
+
+    A code whose structure names a level goes there, whatever `level` says: no code
+    is in two dataflows (checked on the live codelists), so the structure is the
+    answer and a wrong `level` costs nothing. `level` is the fallback for a code the
+    map does not know (a new vintage); with no `level` such a code is refused.
+    """
+    groups: dict[str, list[str]] = {}
+    unknown: list[str] = []
+    for code in dict.fromkeys(codes):
+        chosen = level_of(code) or level
+        if chosen is None:
+            unknown.append(code)
+            continue
+        groups.setdefault(chosen, []).append(code)
+    if unknown:
+        raise _level_error(unknown, lang)
+    return groups
+
+
+async def _get_payload(url: str, api_lang: str, lang: str) -> Any:
+    await _LIMITER.acquire()
+    try:
+        return await api_get(
+            url,
+            params={"format": "jsondata"},
+            headers={"Accept-Language": api_lang},
+            timeout=60.0,
+        )
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        detail = exc.response.text[:200]
+        if status == 429 or status >= 500:
+            raise UpstreamUnavailable(
+                say(
+                    f"statcan_census_profile:get_data failed with HTTP {status} after "
+                    "retries. Try again shortly.",
+                    f"statcan_census_profile:get_data a échoué (HTTP {status}) après "
+                    "plusieurs tentatives. Réessayez sous peu.",
+                    lang,
+                )
+            ) from exc
+        returned = say(
+            f"statcan_census_profile:get_data returned HTTP {status}: {detail}",
+            f"statcan_census_profile:get_data a renvoyé HTTP {status} : {detail}",
+            lang,
+        )
+        if 400 <= status < 500:
+            raise InvalidInput(returned) from exc
+        raise UpstreamError(returned) from exc
+    except httpx.HTTPError as exc:
+        raise UpstreamUnavailable(
+            say(
+                "statcan_census_profile:get_data did not respond in time "
+                "(already retried by shared/http.py). Try again shortly.",
+                "statcan_census_profile:get_data n'a pas répondu à temps "
+                "(nouvelles tentatives déjà faites). Réessayez sous peu.",
+                lang,
+            )
+        ) from exc
+
+
+class _Row(NamedTuple):
+    """One value as read from a response or from the store, with the release it came from."""
+
+    value: CensusProfileValue
+    release_date: str | None
+
+
+def _parse_rows(payload: Any, lang: str) -> list[_Row]:
+    data = (payload or {}).get("data") or {}
+    datasets = data.get("dataSets") or []
+    structures = data.get("structures") or []
+    if not datasets or not structures:
+        raise UpstreamError(
+            say(
+                "statcan_census_profile:get_data: unexpected response shape "
+                "(missing dataSets/structures).",
+                "statcan_census_profile:get_data : réponse de forme inattendue "
+                "(dataSets ou structures absents).",
+                lang,
+            )
+        )
+
+    dims = structures[0]["dimensions"]["series"]
+    attr_defs = structures[0].get("attributes") or {}
+    series_attr_defs = list_or_empty(attr_defs, "series")
+    obs_attr_defs = list_or_empty(attr_defs, "observation")
+
+    rows: list[_Row] = []
+    for series_key, series_obj in (datasets[0].get("series") or {}).items():
+        idx_list = [int(x) for x in series_key.split(":")]
+        dim_values: dict[str, dict[str, Any]] = {}
+        for defn, idx in zip(dims, idx_list, strict=False):
+            defn_values = defn.get("values") or []
+            dim_values[defn["id"]] = defn_values[idx] if 0 <= idx < len(defn_values) else {}
+
+        series_attrs = _decode_attrs(series_attr_defs, series_obj.get("attributes") or [])
+        geography_name = series_attrs.get("GEO_DESC") or dim_values.get("REF_AREA", {}).get(
+            "name", ""
+        )
+        topic = series_attrs.get("TOPIC")
+
+        for obs_arr in (series_obj.get("observations") or {}).values():
+            if not obs_arr:
+                continue
+            value_raw = obs_arr[0]
+            obs_attrs = _decode_attrs(obs_attr_defs, obs_arr[1:])
+            value = CensusProfileValue(
+                geography_code=dim_values.get("REF_AREA", {}).get("id", ""),
+                geography_name=geography_name,
+                characteristic_code=dim_values.get("CHARACTERISTIC", {}).get("id", ""),
+                characteristic_name=dim_values.get("CHARACTERISTIC", {}).get("name", ""),
+                topic=topic,
+                gender=dim_values.get("GENDER", {}).get("name", ""),
+                statistic=dim_values.get("STATISTIC", {}).get("name", ""),
+                value=_to_float(value_raw),
+                value_raw=str(value_raw) if value_raw is not None else None,
+                flag=obs_attrs.get("FLAG"),
+                confidence_interval_low=_to_float(obs_attrs.get("CI_LOW")),
+                confidence_interval_high=_to_float(obs_attrs.get("CI_HIGH")),
+            )
+            rows.append(_Row(value, series_attrs.get("RELEASE_DATE")))
+    return rows
+
+
+def _record(row: _Row) -> list[Any]:
+    v = row.value
+    return [
+        v.geography_name,
+        v.characteristic_name,
+        v.topic,
+        v.gender,
+        v.statistic,
+        v.value_raw,
+        v.flag,
+        v.confidence_interval_low,
+        v.confidence_interval_high,
+        row.release_date,
+    ]
+
+
+def _row_from_record(geography: str, characteristic: str, record: list[Any]) -> _Row:
+    (geo_name, char_name, topic, gender, statistic, raw, flag, ci_low, ci_high, release) = record
+    value = CensusProfileValue(
+        geography_code=geography,
+        geography_name=geo_name,
+        characteristic_code=characteristic,
+        characteristic_name=char_name,
+        topic=topic,
+        gender=gender,
+        statistic=statistic,
+        value=_to_float(raw),
+        value_raw=raw,
+        flag=flag,
+        confidence_interval_low=ci_low,
+        confidence_interval_high=ci_high,
+    )
+    return _Row(value, release)
+
+
+class _LevelData(NamedTuple):
+    level: str
+    rows: list[_Row]
+    url: str
+    from_upstream: bool
+    from_store: int
+    stored: int
+
+
+async def _get_level(
     level: str,
+    geography_codes: list[str],
+    characteristic_codes: list[str],
+    gender_code: str,
+    statistic_code: str,
+    lang: str,
+    store: ValueStore,
+) -> _LevelData:
+    """One level's values: what the store holds, plus one request for what it lacks."""
+    dataflow_id, _ = constants.GEOGRAPHY_LEVEL_TO_DATAFLOW[level]
+    api_lang = _LANG_TO_API.get(lang, "en")
+
+    def key_of(geography: str, characteristic: str) -> str:
+        return value_key(
+            api_lang, dataflow_id, geography, characteristic, gender_code, statistic_code
+        )
+
+    def url_for(geographies: list[str], characteristics: list[str]) -> str:
+        key = (
+            f"A5.{'+'.join(geographies)}.{gender_code}.{'+'.join(characteristics)}.{statistic_code}"
+        )
+        return f"{constants.BASE_URL}/data/{constants.AGENCY},{dataflow_id}/{key}"
+
+    # While reproduce_code records a tool's requests, a stored value would hide them.
+    held: dict[tuple[str, str], _Row] = {}
+    if not is_recording():
+        for geography in geography_codes:
+            for characteristic in characteristic_codes:
+                record = store.get(key_of(geography, characteristic))
+                if record is not None:
+                    held[(geography, characteristic)] = _row_from_record(
+                        geography, characteristic, record
+                    )
+    missing = [
+        (geography, characteristic)
+        for geography in geography_codes
+        for characteristic in characteristic_codes
+        if (geography, characteristic) not in held
+    ]
+    if not missing:
+        rows = [held[(g, c)] for g in geography_codes for c in characteristic_codes]
+        return _LevelData(
+            level, rows, url_for(geography_codes, characteristic_codes), False, len(rows), 0
+        )
+
+    # The key is a cross product, and a request costs the same whatever its size, so ask
+    # for every geography and characteristic with something missing.
+    wanted_geographies = [g for g in geography_codes if any(m[0] == g for m in missing)]
+    wanted_characteristics = [c for c in characteristic_codes if any(m[1] == c for m in missing)]
+    url = url_for(wanted_geographies, wanted_characteristics)
+    cache_key = f"statcan-census-profile:data:{dataflow_id}:{url.rsplit('/', 1)[-1]}:{api_lang}"
+    payload, was_cached = await cached_fetch(
+        cache_key,
+        constants.CACHE_TTL_DATA_SECONDS,
+        lambda: _get_payload(url, api_lang, lang),
+    )
+    fetched = _parse_rows(payload, lang)
+    stored = store.put_many(
+        (key_of(r.value.geography_code, r.value.characteristic_code), _record(r))
+        for r in fetched
+        if r.value.geography_code and r.value.characteristic_code
+    )
+    by_pair = {(r.value.geography_code, r.value.characteristic_code): r for r in fetched}
+    rows: list[_Row] = []
+    used: set[tuple[str, str]] = set()
+    for geography in geography_codes:
+        for characteristic in characteristic_codes:
+            pair = (geography, characteristic)
+            row = by_pair.get(pair) or held.get(pair)
+            if row is not None:
+                rows.append(row)
+                used.add(pair)
+    # A value the response carried under a code that is not exactly as asked is kept.
+    rows.extend(r for pair, r in by_pair.items() if pair not in used)
+    return _LevelData(level, rows, url, not was_cached, len(held), stored)
+
+
+async def get_data(
+    level: str | None,
     geography_codes: list[str],
     characteristic_codes: list[str],
     *,
@@ -280,14 +570,19 @@ async def get_data(
     statistic: str = "counts",
     lang: str = "en",
 ) -> CensusProfileDataResult:
-    """Fetch census profile values for one or more geographies and characteristics."""
-    dataflow = constants.GEOGRAPHY_LEVEL_TO_DATAFLOW.get(level)
-    if dataflow is None:
+    """Fetch census profile values for one or more geographies and characteristics.
+
+    Geographies of different levels are fetched at the same time, one request per
+    level (StatCan answers parallel requests in parallel: two took 37.5 s each, 37.5 s
+    in all, measured 2026-11-16), and each value is kept on its own (value_store.py),
+    so only the values not already held cost a request.
+    """
+    if level is not None and level not in constants.GEOGRAPHY_LEVEL_TO_DATAFLOW:
         raise InvalidInput(
             say(
                 f"statcan_census_profile:get_data: level must be one of "
                 f"{sorted(constants.GEOGRAPHY_LEVEL_TO_DATAFLOW)}, got {level!r}.",
-                f"statcan_census_profile:get_data\u00a0: level doit être l'une des valeurs "
+                f"statcan_census_profile:get_data : level doit être l'une des valeurs "
                 f"{sorted(constants.GEOGRAPHY_LEVEL_TO_DATAFLOW)}, reçu {level!r}.",
                 lang,
             )
@@ -296,7 +591,7 @@ async def get_data(
         raise InvalidInput(
             say(
                 "statcan_census_profile:get_data: geography_codes must not be empty.",
-                "statcan_census_profile:get_data\u00a0: geography_codes ne doit pas être vide.",
+                "statcan_census_profile:get_data : geography_codes ne doit pas être vide.",
                 lang,
             )
         )
@@ -304,8 +599,7 @@ async def get_data(
         raise InvalidInput(
             say(
                 "statcan_census_profile:get_data: characteristic_codes must not be empty.",
-                "statcan_census_profile:get_data\u00a0: characteristic_codes ne doit pas "
-                "être vide.",
+                "statcan_census_profile:get_data : characteristic_codes ne doit pas être vide.",
                 lang,
             )
         )
@@ -317,7 +611,7 @@ async def get_data(
             say(
                 f"statcan_census_profile:get_data: gender must be one of "
                 f"{sorted(constants.GENDER_TO_CODE)}, got {gender!r}.",
-                f"statcan_census_profile:get_data\u00a0: gender doit être l'une des valeurs "
+                f"statcan_census_profile:get_data : gender doit être l'une des valeurs "
                 f"{sorted(constants.GENDER_TO_CODE)}, reçu {gender!r}.",
                 lang,
             )
@@ -328,132 +622,97 @@ async def get_data(
             say(
                 f"statcan_census_profile:get_data: statistic must be one of "
                 f"{sorted(constants.STATISTIC_TO_CODE)}, got {statistic!r}.",
-                f"statcan_census_profile:get_data\u00a0: statistic doit être l'une des valeurs "
+                f"statcan_census_profile:get_data : statistic doit être l'une des valeurs "
                 f"{sorted(constants.STATISTIC_TO_CODE)}, reçu {statistic!r}.",
                 lang,
             )
         )
 
-    dataflow_id, _ = dataflow
-    key = (
-        f"A5.{'+'.join(geography_codes)}.{gender_code}."
-        f"{'+'.join(characteristic_codes)}.{statistic_code}"
+    groups = _group_by_level(level, geography_codes, lang)
+    characteristics = list(dict.fromkeys(characteristic_codes))
+    store = await open_store()
+    outcomes = await asyncio.gather(
+        *(
+            _get_level(name, codes, characteristics, gender_code, statistic_code, lang, store)
+            for name, codes in groups.items()
+        ),
+        return_exceptions=True,
     )
-    url = f"{constants.BASE_URL}/data/{constants.AGENCY},{dataflow_id}/{key}"
-    api_lang = _LANG_TO_API.get(lang, "en")
-
-    async def fetch() -> Any:
-        await _LIMITER.acquire()
+    # Every level has finished, so what the others fetched is kept even when one failed.
+    failed = [
+        (name, o) for name, o in zip(groups, outcomes, strict=True) if isinstance(o, Exception)
+    ]
+    if failed:
+        name, error = failed[0]
+        # A call with several levels says which one failed (a level with no record for a
+        # code answers HTTP 404, after 38 to 41 s, measured 2026-11-17).
+        if len(groups) > 1 and isinstance(
+            error, (InvalidInput, UpstreamError, UpstreamUnavailable)
+        ):
+            raise type(error)(f"{name}: {error}") from error
+        raise error
+    for outcome in outcomes:
+        if isinstance(outcome, BaseException):
+            raise outcome  # a cancellation: nothing to add
+    levels = [o for o in outcomes if not isinstance(o, BaseException)]
+    if any(o.stored for o in levels):
         try:
-            return await api_get(
-                url,
-                params={"format": "jsondata"},
-                headers={"Accept-Language": api_lang},
-                timeout=60.0,
-            )
-        except httpx.HTTPStatusError as exc:
-            status = exc.response.status_code
-            detail = exc.response.text[:200]
-            if status == 429 or status >= 500:
-                raise UpstreamUnavailable(
-                    say(
-                        f"statcan_census_profile:get_data failed with HTTP {status} after "
-                        "retries. Try again shortly.",
-                        f"statcan_census_profile:get_data a échoué (HTTP {status}) après "
-                        "plusieurs tentatives. Réessayez sous peu.",
-                        lang,
-                    )
-                ) from exc
-            returned = say(
-                f"statcan_census_profile:get_data returned HTTP {status}: {detail}",
-                f"statcan_census_profile:get_data a renvoyé HTTP {status}\u00a0: {detail}",
-                lang,
-            )
-            if 400 <= status < 500:
-                raise InvalidInput(returned) from exc
-            raise UpstreamError(returned) from exc
-        except httpx.HTTPError as exc:
-            raise UpstreamUnavailable(
-                say(
-                    "statcan_census_profile:get_data did not respond in time "
-                    "(already retried by shared/http.py). Try again shortly.",
-                    "statcan_census_profile:get_data n'a pas répondu à temps "
-                    "(nouvelles tentatives déjà faites). Réessayez sous peu.",
-                    lang,
-                )
-            ) from exc
+            await asyncio.wait_for(store.save(), timeout=_SAVE_TIMEOUT_SECONDS)
+        except (TimeoutError, OSError) as exc:
+            logger.warning("Census values not saved: %s", exc or "timed out")
 
-    cache_key = f"statcan-census-profile:data:{dataflow_id}:{key}:{api_lang}"
-    payload, was_cached = await cached_fetch(cache_key, constants.CACHE_TTL_DATA_SECONDS, fetch)
-
-    data = (payload or {}).get("data") or {}
-    datasets = data.get("dataSets") or []
-    structures = data.get("structures") or []
-    if not datasets or not structures:
-        raise UpstreamError(
-            say(
-                "statcan_census_profile:get_data: unexpected response shape "
-                "(missing dataSets/structures).",
-                "statcan_census_profile:get_data\u00a0: réponse de forme inattendue "
-                "(dataSets ou structures absents).",
-                lang,
-            )
-        )
-
-    dims = structures[0]["dimensions"]["series"]
-    attr_defs = structures[0].get("attributes") or {}
-    series_attr_defs = list_or_empty(attr_defs, "series")
-    obs_attr_defs = list_or_empty(attr_defs, "observation")
-
-    release_date: str | None = None
-    values: list[CensusProfileValue] = []
-    for series_key, series_obj in (datasets[0].get("series") or {}).items():
-        idx_list = [int(x) for x in series_key.split(":")]
-        dim_values: dict[str, dict[str, Any]] = {}
-        for defn, idx in zip(dims, idx_list, strict=False):
-            defn_values = defn.get("values") or []
-            dim_values[defn["id"]] = defn_values[idx] if 0 <= idx < len(defn_values) else {}
-
-        series_attrs = _decode_attrs(series_attr_defs, series_obj.get("attributes") or [])
-        if release_date is None and series_attrs.get("RELEASE_DATE"):
-            release_date = series_attrs["RELEASE_DATE"]
-
-        geography_name = series_attrs.get("GEO_DESC") or dim_values.get("REF_AREA", {}).get(
-            "name", ""
-        )
-        topic = series_attrs.get("TOPIC")
-
-        for obs_arr in (series_obj.get("observations") or {}).values():
-            if not obs_arr:
-                continue
-            value_raw = obs_arr[0]
-            obs_attrs = _decode_attrs(obs_attr_defs, obs_arr[1:])
-            values.append(
-                CensusProfileValue(
-                    geography_code=dim_values.get("REF_AREA", {}).get("id", ""),
-                    geography_name=geography_name,
-                    characteristic_code=dim_values.get("CHARACTERISTIC", {}).get("id", ""),
-                    characteristic_name=dim_values.get("CHARACTERISTIC", {}).get("name", ""),
-                    topic=topic,
-                    gender=dim_values.get("GENDER", {}).get("name", ""),
-                    statistic=dim_values.get("STATISTIC", {}).get("name", ""),
-                    value=_to_float(value_raw),
-                    value_raw=str(value_raw) if value_raw is not None else None,
-                    flag=obs_attrs.get("FLAG"),
-                    confidence_interval_low=_to_float(obs_attrs.get("CI_LOW")),
-                    confidence_interval_high=_to_float(obs_attrs.get("CI_HIGH")),
-                )
-            )
-
+    rows = [row for o in levels for row in o.rows]
+    from_store = sum(o.from_store for o in levels)
     return CensusProfileDataResult(
-        level=level,
-        values=values,
-        release_date=release_date,
+        level=levels[0].level if len(levels) == 1 else "mixed",
+        levels=[o.level for o in levels],
+        values=[row.value for row in rows],
+        release_date=next((row.release_date for row in rows if row.release_date), None),
         provenance=make_provenance(
             source=constants.RATE_LIMIT_SOURCE,
-            url=url,
-            cached=was_cached,
+            url=levels[0].url,
+            cached=not any(o.from_upstream for o in levels),
+            limits=(
+                say(
+                    f"{from_store} of {len(rows)} values come from values this server read "
+                    f"earlier (kept up to {constants.VALUE_TTL_SECONDS // 86400} days; the "
+                    "2021 Census Profile is a fixed release).",
+                    f"{from_store} des {len(rows)} valeurs proviennent de valeurs que ce "
+                    f"serveur a lues plus tôt (conservées jusqu'à "
+                    f"{constants.VALUE_TTL_SECONDS // 86400} jours ; le Profil du "
+                    "recensement de 2021 est une diffusion fixe).",
+                    lang,
+                )
+                if from_store
+                else None
+            ),
             schema_name="statcan_census_profile.CensusProfileDataResult",
             lang=lang,
         ),
     )
+
+
+async def open_values() -> None:
+    """Read the stored values' file now; a failure is logged, never raised."""
+    try:
+        await open_store()
+    except Exception as exc:  # noqa: BLE001 - a warm-up must never fail the server
+        logger.warning("Census warm-up: the stored values were not read: %s", exc)
+
+
+async def warm_codelists() -> None:
+    """Read the codelists the first census questions use, and the stored values' file.
+
+    Run in the background when the hosted server starts (asgi.py), so the first
+    question does not wait for them (a characteristic search read 530 KB, 0.8 s,
+    and a first search at a level took 0.5 to 1.9 s, with one 23.5 s outlier). It
+    never raises: a failure is logged and the first question simply reads the list.
+    """
+
+    async def read(codelist_id: str) -> None:
+        try:
+            await _fetch_codelist(codelist_id, "en")
+        except Exception as exc:  # noqa: BLE001 - a warm-up must never fail the server
+            logger.warning("Census warm-up: %s not read: %s", codelist_id, exc)
+
+    await asyncio.gather(open_values(), *(read(c) for c in constants.WARM_CODELISTS))

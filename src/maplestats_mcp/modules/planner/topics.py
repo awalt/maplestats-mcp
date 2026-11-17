@@ -294,6 +294,59 @@ _TIDE_TERMS = ("tide", "water level", "maree", "niveau d'eau")
 _FIRE_TERMS = ("wildfire", "fire", "forest fire", "feu de foret", "feux de foret", "incendie")
 
 
+# Census figures for Canada, provinces, metro areas and agglomerations (and, where the
+# step says so, municipalities, census divisions and tracts) are on the WDS as the
+# 98-10 tables, which answer in under a second where the census profile takes 33 to
+# 47 s. Each table, coordinate position and member id below was read with
+# getCubeMetadata, and every figure was compared with the census profile's value for the
+# same place on 2026-11-17 (all exactly equal): population and dwelling counts, average and
+# median age, household income and shelter cost for Canada, six provinces and seven metro areas or
+# agglomerations; the municipality and division tables for four municipalities and three
+# divisions; the tract income medians for six tracts and two metro areas. NOT routed,
+# because they differ from the profile by rounding: the counts and shares in 98-10-0252
+# (households by shelter-cost-to-income ratio, Kamloops 36,700 against 36,695) and the
+# household counts of 98-10-0058 (Vancouver 1,043,315 against 1,043,320).
+# 98-10-0005, 98-10-0020 and 98-10-0061 list the same 174 geographies in the same order.
+CENSUS_GEOGRAPHY_IDS = (
+    "Canada 1, NL 2, PE 7, NS 10, NB 16, QC 26, ON 56, MB 104, SK 111, AB 121, BC 141, "
+    "YT 170, NT 172, NU 174"
+)
+CENSUS_COUNTS_STEP = (
+    "2021 Census population and dwellings for Canada, provinces, metro areas and "
+    "agglomerations (under 1 s): product_id=98-10-0005, coordinate=<geography id>.<count id> "
+    "(count id 1 population 2021, 2 population 2016, 3 change, 4 private dwellings, 7 occupied "
+    "dwellings, 10 land area, 11 density; geography ids as in the household income step); "
+    "municipalities and census divisions: 98-10-0004 (count ids 1 to 4 as above, 5 occupied "
+    "dwellings, 6 land area, 7 density)"
+)
+CENSUS_AGE_STEP = (
+    "2021 Census average and median age for Canada, provinces, metro areas and agglomerations: "
+    "product_id=98-10-0020, coordinate=<geography id>.1.<age id>.1 (age id 127 average age, 128 "
+    "median age; geography ids as in the household income step); municipalities and census "
+    "divisions: 98-10-0022 with the same coordinate"
+)
+CENSUS_INCOME_STEP = (
+    "2021 Census household income (income year 2020) for Canada, provinces, metro areas and "
+    "agglomerations (under 1 s): product_id=98-10-0061, coordinate=<geography id>.1.1.<statistic "
+    "id> (statistic id 2 median total, 3 median after-tax, 5 average total, 7 average "
+    "after-tax; geography ids: " + CENSUS_GEOGRAPHY_IDS + "; a metro area or agglomeration: "
+    "wds_get_cube_metadata with dimension=1 and member_query=<name> gives its id); "
+    "municipalities and census divisions: 98-10-0060, same coordinate, id by member_query; census tracts: "
+    "98-10-0058 with coordinate=<tract id>.1.1.<statistic id> (3 median total, 5 median "
+    "after-tax)"
+)
+CENSUS_SHELTER_STEP = (
+    "2021 Census median and average monthly shelter cost by tenure for Canada, provinces, "
+    "metro areas and agglomerations (under 1 s): product_id=98-10-0253, "
+    "coordinate=<geography id>.1.1.1.1.<cost id>.<tenure id> (cost id 12 median, 11 average; "
+    "tenure id 2 owner, 5 renter); geography ids in this table: Canada 1, NL 2, PE 7, NS 10, "
+    "NB 16, QC 24, ON 54, MB 98, SK 105, AB 115, BC 133, YT 162, NT 164, NU 166; a metro area or "
+    "agglomeration: wds_get_cube_metadata with dimension=1 and member_query=<name> gives its id. "
+    "The share of households spending 30% or more of income on shelter is in the census "
+    "profile only (the 98-10-0252 counts are rounded differently)"
+)
+
+
 TOPICS: tuple[Topic, ...] = (
     Topic(
         "housing",
@@ -309,9 +362,11 @@ TOPICS: tuple[Topic, ...] = (
             "housing starts",
             "affordab*",
             "dwelling",
+            "shelter cost",
             "condo",
             "building permit",
             "logement",
+            "frais de logement",
             "loyer",
             "hypothe*",
             "mises en chantier",
@@ -369,9 +424,16 @@ TOPICS: tuple[Topic, ...] = (
                 ("mls", "crea", "resale", "home price", "house price", "prix des maisons"),
             ),
             PlanStep(
+                "wds_get_data_from_cube_coord",
+                CENSUS_SHELTER_STEP,
+                ("shelter cost", "frais de logement"),
+            ),
+            PlanStep(
                 "statcan_census_profile_get_data",
-                "census shelter cost and tenure: level, geography_codes (DGUIDs from "
-                "statcan_census_profile_search_geography) and characteristic_codes",
+                "census tenure and the share of households spending 30% or more of income on "
+                "shelter (characteristics 1470 owners, 1478 tenants), or shelter cost for small "
+                "areas: geography_codes (DGUIDs from statcan_census_profile_search_geography) "
+                "and characteristic_codes",
             ),
             PlanStep(
                 "toronto_summarize_apartment_scores",
@@ -1024,8 +1086,21 @@ TOPICS: tuple[Topic, ...] = (
         ),
         (
             PlanStep(
+                "wds_get_data_from_cube_coord",
+                CENSUS_COUNTS_STEP,
+                ("dwelling*", "land area", "density", "logement*", "superficie", "densite"),
+            ),
+            PlanStep(
+                "wds_get_data_from_cube_coord",
+                CENSUS_AGE_STEP,
+                ("median age", "average age", "mean age", "age median", "age moyen"),
+            ),
+            PlanStep("wds_get_data_from_cube_coord", CENSUS_INCOME_STEP, ("income", "revenu*")),
+            PlanStep(
                 "statcan_census_profile_search_geography",
-                "find the census area's DGUID: level='census_subdivisions' (a municipality), "
+                "find the census area's DGUID for what the tables above lack (other "
+                "characteristics, dissemination areas, forward sortation areas, health "
+                "regions...): level='census_subdivisions' (a municipality), "
                 "'census_metro_areas' or 'canada_provinces_territories', and query=<place>",
             ),
             PlanStep(
@@ -1034,7 +1109,8 @@ TOPICS: tuple[Topic, ...] = (
             ),
             PlanStep(
                 "statcan_census_profile_get_data",
-                "2021 values: the same level, geography_codes and characteristic_codes",
+                "2021 values (30 to 45 s, then kept): geography_codes of any levels in one call, "
+                "and characteristic_codes",
             ),
             PlanStep(
                 "toronto_get_neighbourhood_profile",
@@ -3228,6 +3304,11 @@ INCOME = Topic(
             "income of individuals (per person aged 15 and over): table 11-10-0239 or "
             "11-10-0238; other income tables by title words",
             ("income of individuals", "individual income", "revenu des particuliers"),
+        ),
+        PlanStep(
+            "wds_get_data_from_cube_coord",
+            CENSUS_INCOME_STEP,
+            ("census", "recensement"),
         ),
         PlanStep(
             "statcan_census_profile_get_data",

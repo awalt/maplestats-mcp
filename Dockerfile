@@ -20,9 +20,11 @@ RUN uv sync --locked --no-dev
 # volumes mounted here inherit this owner. docker-compose.yml points
 # MAPLE_CBSA_TARIFF_CACHE_DIR at /data/cbsa_tariff, which a root-owned /data made
 # unwritable for appuser, so every cbsa_tariff_ tool failed there.
-# /data/usage holds the /stats counts when MAPLE_USAGE_STATS_FILE points there.
-RUN mkdir -p /data/pumf /data/ip_horizons /data/lode /data/cbsa_tariff /data/usage \
-    && chown appuser:appuser /data/pumf /data/ip_horizons /data/lode /data/cbsa_tariff /data/usage
+# /data/usage holds the /stats counts when MAPLE_USAGE_STATS_FILE points there, and
+# /data/census the census profile's values when MAPLE_CENSUS_CACHE_DIR does.
+RUN mkdir -p /data/pumf /data/ip_horizons /data/lode /data/cbsa_tariff /data/usage /data/census \
+    && chown appuser:appuser /data/pumf /data/ip_horizons /data/lode /data/cbsa_tariff /data/usage \
+        /data/census
 
 USER appuser
 

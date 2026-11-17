@@ -131,6 +131,62 @@ async def test_a_failed_preload_still_starts_the_server(caplog: pytest.LogCaptur
     assert "Preloading the modules failed" in caplog.text
 
 
+async def test_background_warmups_start_after_preload_and_never_block_startup():
+    from maplestats_mcp.asgi import with_startup_preload
+
+    seen: list[str] = []
+    inner, receive, send = _lifespan_app(seen)
+
+    async def preload():
+        seen.append("preload")
+
+    app = with_startup_preload(inner, preload, after=lambda: seen.append("warm-up started"))
+    await app({"type": "lifespan"}, receive, send)
+    assert seen == ["preload", "warm-up started", "lifespan.startup", "lifespan.shutdown"]
+
+
+async def test_a_warmup_that_cannot_start_still_starts_the_server(caplog: pytest.LogCaptureFixture):
+    from maplestats_mcp.asgi import with_startup_preload
+
+    seen: list[str] = []
+    inner, receive, send = _lifespan_app(seen)
+
+    async def preload():
+        raise RuntimeError("boom")
+
+    def after():
+        raise RuntimeError("no warm-up")
+
+    app = with_startup_preload(inner, preload, after=after)
+    with caplog.at_level(logging.ERROR, logger="maplestats_mcp.asgi"):
+        await app({"type": "lifespan"}, receive, send)
+    # The warm-up hook runs even when preload failed, and its own failure is only logged.
+    assert seen == ["lifespan.startup", "lifespan.shutdown"]
+    assert "Starting the background warm-ups failed" in caplog.text
+
+
+async def test_the_census_warmup_is_fire_and_forget(monkeypatch: pytest.MonkeyPatch):
+    import asyncio
+
+    from maplestats_mcp import asgi
+    from maplestats_mcp.modules.statcan.census_profile import client as census
+
+    release = asyncio.Event()
+    finished: list[str] = []
+
+    async def slow_warm_up() -> None:
+        await release.wait()
+        finished.append("done")
+
+    monkeypatch.setattr(census, "warm_codelists", slow_warm_up)
+    asgi.start_background_warmups()
+    # It returned while the warm-up is still waiting: startup is not delayed by it.
+    assert finished == [] and len(asgi._warmups) == 1
+    release.set()
+    await asyncio.gather(*asgi._warmups)
+    assert finished == ["done"] and not asgi._warmups
+
+
 async def test_a_module_that_fails_to_import_says_so(monkeypatch):
     # fastmcp logs a provider's error and answers "Unknown tool", which reached the
     # caller as "Unknown tool: 'call_tool'" (a missing pypdf, 2026-11-10).

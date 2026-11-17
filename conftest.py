@@ -11,6 +11,10 @@ from tenacity import BaseRetrying, wait_none
 # Importing maplestats_mcp.asgi marks the process as an HTTP server, which would
 # change how the server module describes its export tools for every test after it.
 os.environ.setdefault("MAPLE_TRANSPORT", "stdio")
+# The census profile keeps its values in a file between runs; a test must neither read a
+# file a past run left in the temp folder nor leave one (census tests that want the file
+# set the folder to their own tmp_path).
+os.environ.setdefault("MAPLE_CENSUS_CACHE_DIR", "off")
 
 from maplestats_mcp.shared import cache, file_download
 from maplestats_mcp.shared.breaker import BREAKER
@@ -75,6 +79,15 @@ def _empty_response_cache() -> None:
     """
     cache._caches.clear()
     cache._inflight.clear()
+
+
+@pytest.fixture(autouse=True)
+def _empty_census_values() -> None:
+    """The census profile's value store is process-wide (14 days in production); a test
+    must not see a value another test stored."""
+    from maplestats_mcp.modules.statcan.census_profile import value_store
+
+    value_store.reset_store()
 
 
 @pytest.fixture(autouse=True)

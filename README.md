@@ -395,6 +395,7 @@ error that says when to retry, instead of waiting for another timeout. The
 | `MAPLE_LODE_MAX_DOWNLOAD_MB` | `300` | Largest open-database archive one call may download; `0` turns downloads off |
 | `MAPLE_IP_HORIZONS_CACHE_DIR`, `MAPLE_IP_HORIZONS_CACHE_MAX_GB` | system temp, `3` | CIPO patent table cache |
 | `MAPLE_CBSA_TARIFF_CACHE_DIR` | system temp | Customs Tariff editions as Parquet (under 1 MB each, newest 12 kept) |
+| `MAPLE_CENSUS_CACHE_DIR` | system temp | Census profile values kept between restarts: one file of at most 8 MB, each value 14 days (a census request takes 33 to 47 s); `off` keeps them in memory only; use a persistent volume when hosted |
 | `MAPLE_ON_FIR_CACHE_DIR`, `MAPLE_ON_FIR_CACHE_MAX_MB` | system temp, `500` | Ontario FIR years kept as Parquet (about 3 MB each); use a persistent volume when hosted |
 | `MAPLE_EXPORT_DIR` | unset (no files saved) | Folder where `reproduce_workbook` saves Excel workbooks on a local server. Unset, the workbook comes back as base64 and every tool is read-only |
 | `MAPLE_SEARCH`, `MAPLE_SEMANTIC_DIR` | `bm25`, unset | `hybrid` fuses BM25 with a local multilingual-e5-small index (needs the `[semantic]` extra and `python -m maplestats_mcp.shared.semantic build`); off by default, see `tests/discovery_benchmark/phase2.md` |

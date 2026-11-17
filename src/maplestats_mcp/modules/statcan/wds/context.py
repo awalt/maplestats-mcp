@@ -194,14 +194,18 @@ def citation(series: VectorSeries, title: str | None, table_release: str | None,
     releases = [o.release_time for o in series.observations if o.release_time is not None]
     released = max(releases).date().isoformat() if releases else (table_release or "")[:10]
     number = table_number(series.product_id)
+    # WDS gives vectorId 0 to a cell of a table that has no vectors (the 98-10 census
+    # tables, checked live 2026-11-17): citing "Vector v0" names a series that does not
+    # exist, so the vector clause is left out and the table alone is cited.
+    has_vector = series.vector_id > 0
     if lang == "fr":
         text = f"Statistique Canada. Tableau {number}"
         text += f", {title}" if title else ""
-        text += f". Vecteur v{series.vector_id}."
+        text += f". Vecteur v{series.vector_id}." if has_vector else "."
         return text + (f" Diffusé le {released}." if released else "")
     text = f"Statistics Canada. Table {number}"
     text += f", {title}" if title else ""
-    text += f". Vector v{series.vector_id}."
+    text += f". Vector v{series.vector_id}." if has_vector else "."
     return text + (f" Released {released}." if released else "")
 
 

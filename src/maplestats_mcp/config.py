@@ -496,6 +496,20 @@ def get_on_fir_cache_max_bytes() -> int:
     return int(max(50.0, value) * 1024**2)
 
 
+def get_census_cache_dir() -> Path | None:
+    """Where the census profile's values are kept between restarts (one small file).
+
+    Defaults to the system temp folder; "off" keeps them in memory only. A hosted
+    deployment points it at a persistent volume (/data/census on the Azure share), or
+    every restart starts the store empty and the 35 s census calls come back. The size
+    is fixed in the module (statcan/census_profile/constants.py: 8 MB), not a setting.
+    """
+    raw = os.environ.get("MAPLE_CENSUS_CACHE_DIR", "").strip()
+    if raw.lower() in {"0", "off", "false", "no"}:
+        return None
+    return Path(raw) if raw else Path(tempfile.gettempdir()) / "maplestats-mcp" / "census_profile"
+
+
 def get_lode_max_download_bytes(default_mb: float) -> int:
     """Largest LODE archive one call may download (MAPLE_LODE_MAX_DOWNLOAD_MB; 0 turns downloads off)."""
     value = _env_float("MAPLE_LODE_MAX_DOWNLOAD_MB", float(default_mb))
