@@ -18,7 +18,7 @@ serving this process; the failure is logged and the next request tries again.
 
 Caps (constants.py): values older than VALUE_TTL_SECONDS (14 days) count as absent and
 are dropped when met or at load; the record text, in memory and in the file, never passes
-VALUE_STORE_MAX_BYTES (8 MB, about 20,000 values), the least recently used values
+VALUE_STORE_MAX_BYTES (8 MB, 20,000 to 40,000 values), the least recently used values
 going first. A rollout runs the old and the new revision side by side for a few minutes,
 both writing the file: the later save wins, which at worst drops the other's newest
 values (it is a cache, not a record).

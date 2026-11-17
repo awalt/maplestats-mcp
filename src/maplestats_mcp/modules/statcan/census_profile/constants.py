@@ -37,8 +37,9 @@ CACHE_TTL_DATA_SECONDS = 60 * 60
 # overlapping question across restarts and quiet weeks is instant, short enough that a
 # correction reaches the server within two weeks.
 VALUE_TTL_SECONDS = 14 * 24 * 60 * 60
-# Size: at most 8 MB of record text (a value is about 400 bytes, so about 20,000 values),
-# in memory and in the file alike, so about 10 MB resident and at most 8 MB on disk.
+# Size: at most 8 MB of record text (a value is 200 to 400 bytes, measured 2026-11-17: 205
+# for six income and population values, so 20,000 to 40,000 values), in memory and in the
+# file alike, so about 10 to 16 MB resident and at most 8 MB on disk.
 # The least recently used values go first. The file sits beside the siblings' caches
 # (config.get_census_cache_dir(); /data/census on the hosted server).
 VALUE_STORE_MAX_BYTES = 8 * 1024 * 1024
