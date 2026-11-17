@@ -6,9 +6,11 @@
 #          Two backends, chosen by CHAT_PROVIDER: "anthropic" (Anthropic's MCP
 #          connector runs the tool loop) or "openai" (any OpenAI-compatible API,
 #          such as DeepSeek, GLM or Kimi; this app runs the tool loop).
-# Inputs:  POST /api/chat with the conversation so far
+# Inputs:  POST /api/chat (or /api/chat/stream) with the conversation so far
 # Outputs: JSON with the answer, the MCP tool calls the model made, and the
-#          series and sources those calls returned (drawn by the page)
+#          series and sources those calls returned (drawn by the page); the
+#          stream route sends the same result as newline-delimited JSON events,
+#          after progress events (a tool call started, a piece of the answer)
 # ============================================================
 
 import asyncio
@@ -22,7 +24,7 @@ import os
 import re
 import time
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -35,7 +37,7 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import ClientDisconnect, Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
 import results
@@ -347,7 +349,56 @@ class BackendFailure(Exception):
         self.billed = billed
 
 
-async def ask_anthropic(messages: list[dict[str, str]]) -> dict[str, Any]:
+Emit = Callable[[dict[str, Any]], None]
+
+
+def stream_progress(event: Any) -> dict[str, Any] | None:
+    """The progress a stream event tells a visitor, or None when it tells nothing.
+
+    A tool call is reported once its arguments are complete (its real name is
+    inside call_tool's arguments), and the answer as it is written.
+    """
+    kind = getattr(event, "type", "")
+    if kind == "text":
+        return {"type": "text", "delta": str(event.text)}
+    block = getattr(event, "content_block", None)
+    if kind == "content_block_stop" and getattr(block, "type", "") == "mcp_tool_use":
+        call = describe_call(block.name, block.input)
+        return {"type": "tool", "name": call["name"]}
+    return None
+
+
+async def anthropic_response(
+    client: Any, conversation: list[dict[str, Any]], emit: Emit | None
+) -> Any:
+    """One model call; streamed, with progress sent to `emit`, when `emit` is given.
+
+    The stream is only for the visitor's wait: the finished message is read the
+    same way either way, so billing, counts and the answer do not depend on it.
+    """
+    request: dict[str, Any] = {
+        "model": MODEL,
+        "max_tokens": MAX_OUTPUT_TOKENS,
+        "betas": ["mcp-client-2025-11-20"],
+        "system": SYSTEM_PROMPT,
+        "output_config": {"effort": EFFORT},
+        "mcp_servers": [{"type": "url", "url": MCP_CALL_URL, "name": "maplestats"}],
+        "tools": [{"type": "mcp_toolset", "mcp_server_name": "maplestats"}],
+        "messages": conversation,
+    }
+    if emit is None:
+        return await client.beta.messages.create(**request)
+    async with client.beta.messages.stream(**request) as stream:
+        async for event in stream:
+            progress = stream_progress(event)
+            if progress is not None:
+                emit(progress)
+        return await stream.get_final_message()
+
+
+async def ask_anthropic(
+    messages: list[dict[str, str]], emit: Emit | None = None
+) -> dict[str, Any]:
     """Let Anthropic's MCP connector call the public MapleStats server."""
     conversation: list[dict[str, Any]] = list(messages)
     tools_used: list[dict[str, Any]] = []
@@ -362,18 +413,7 @@ async def ask_anthropic(messages: list[dict[str, str]]) -> dict[str, Any]:
         # The client owns an HTTP connection pool, so close it when the request ends.
         async with AsyncAnthropic(api_key=API_KEY or None) as client:
             for _ in range(max(1, MAX_TOOL_STEPS)):
-                response = await client.beta.messages.create(
-                    model=MODEL,
-                    max_tokens=MAX_OUTPUT_TOKENS,
-                    betas=["mcp-client-2025-11-20"],
-                    system=SYSTEM_PROMPT,
-                    output_config={"effort": EFFORT},
-                    mcp_servers=[
-                        {"type": "url", "url": MCP_CALL_URL, "name": "maplestats"}
-                    ],
-                    tools=[{"type": "mcp_toolset", "mcp_server_name": "maplestats"}],
-                    messages=conversation,
-                )
+                response = await anthropic_response(client, conversation, emit)
                 billed = True
                 add_tokens(getattr(response, "usage", None))
                 STATS.model_call(getattr(response, "stop_reason", None))
@@ -448,7 +488,9 @@ async def load_openai_tools(mcp: Client) -> list[dict[str, Any]]:
     return _openai_tools
 
 
-async def ask_openai_compatible(messages: list[dict[str, str]]) -> dict[str, Any]:
+async def ask_openai_compatible(
+    messages: list[dict[str, str]], emit: Emit | None = None
+) -> dict[str, Any]:
     """Run the tool loop here, against any OpenAI-compatible chat API."""
     conversation: list[dict[str, Any]] = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -490,6 +532,8 @@ async def ask_openai_compatible(messages: list[dict[str, str]]) -> dict[str, Any
                     arguments = parse_arguments(call.function.arguments)
                     described = describe_call(call.function.name, arguments)
                     tools_used.append(described)
+                    if emit is not None:
+                        emit({"type": "tool", "name": described["name"]})
                     result = await mcp.call_tool(
                         call.function.name, arguments, raise_on_error=False
                     )
@@ -519,11 +563,13 @@ async def ask_openai_compatible(messages: list[dict[str, str]]) -> dict[str, Any
         raise BackendFailure(billed) from error
 
 
-async def ask_model(messages: list[dict[str, str]]) -> dict[str, Any]:
+async def ask_model(
+    messages: list[dict[str, str]], emit: Emit | None = None
+) -> dict[str, Any]:
     """Dispatch to the backend chosen by CHAT_PROVIDER."""
     if PROVIDER == "openai":
-        return await ask_openai_compatible(messages)
-    return await ask_anthropic(messages)
+        return await ask_openai_compatible(messages, emit)
+    return await ask_anthropic(messages, emit)
 
 
 # 3. HTTP routes ----
@@ -561,7 +607,14 @@ def validate_messages(payload: Any) -> list[dict[str, str]] | str:
     return messages
 
 
-async def chat(request: Request) -> JSONResponse:
+async def read_chat_request(
+    request: Request,
+) -> tuple[list[dict[str, str]], str] | JSONResponse:
+    """The cleaned conversation and the caller's address, or the error to send.
+
+    Every guard (content type, size, shape, limits) runs here, before any model
+    call, for the plain route and the stream route alike.
+    """
     # A page on any other site can send a "simple" cross-site POST (text/plain,
     # no preflight) from its visitors' browsers; CORSMiddleware only withholds
     # response headers and never rejects the request. A JSON content type is not
@@ -609,23 +662,36 @@ async def chat(request: Request) -> JSONResponse:
     if reason:
         STATS.outcome(LIMIT_OUTCOMES.get(reason, "limited_address"))
         return JSONResponse({"error": reason}, status_code=429)
+    return messages, address
 
+
+async def run_turn(
+    messages: list[dict[str, str]],
+    address: str,
+    emit: Emit | None = None,
+) -> tuple[int, dict[str, Any]]:
+    """Ask the model and return (HTTP status, body), counting the turn.
+
+    `emit` receives progress events while the model works (the stream route).
+    """
     STATS.turn(sum(1 for m in messages if m["role"] == "user"))
     started = time.perf_counter()
     try:
-        result = await ask_model(messages)
+        # Only a watched turn passes `emit`, so a replaced ask_model that takes
+        # just the messages keeps working for the plain route.
+        result = await (
+            ask_model(messages) if emit is None else ask_model(messages, emit)
+        )
         # Keep our own answers valid when the browser sends them back on the next turn.
         answer = str(result.get("answer") or "").strip()
         if not answer:
             # The model call completed and was billed, so the request stays counted.
             STATS.outcome("empty")
-            return JSONResponse(
-                {"error": "The model returned no answer. Try again."}, status_code=502
-            )
+            return 502, {"error": "The model returned no answer. Try again."}
         result["answer"] = answer[:MAX_ASSISTANT_CHARS]
         STATS.outcome("answered")
         STATS.answered_in(time.perf_counter() - started)
-        return JSONResponse(result)
+        return 200, result
     except Exception as error:  # noqa: BLE001 - any backend failure is a 502
         failure = error if isinstance(error, BackendFailure) else None
         cause = error.__cause__ if failure and error.__cause__ else error
@@ -644,17 +710,77 @@ async def chat(request: Request) -> JSONResponse:
         # deployment, not a blip: "try again" would send people into a loop.
         if getattr(cause, "status_code", None) in (401, 403, 404):
             STATS.outcome("unavailable")
-            return JSONResponse(
-                {
-                    "error": "The demo is temporarily unavailable. Please try again later."
-                },
-                status_code=503,
-            )
+            return 503, {
+                "error": "The demo is temporarily unavailable. Please try again later."
+            }
         STATS.outcome("failed")
-        return JSONResponse(
-            {"error": "The model or the data server did not answer. Try again."},
-            status_code=502,
-        )
+        return 502, {"error": "The model or the data server did not answer. Try again."}
+
+
+async def chat(request: Request) -> JSONResponse:
+    prepared = await read_chat_request(request)
+    if isinstance(prepared, JSONResponse):
+        return prepared
+    messages, address = prepared
+    status, body = await run_turn(messages, address)
+    return JSONResponse(body, status_code=status)
+
+
+# A quiet stretch of this many seconds sends a ping, so no proxy decides the
+# connection is idle while the model thinks or a data call is slow.
+STREAM_PING_SECONDS = float(os.environ.get("CHAT_STREAM_PING_SECONDS", "10"))
+
+
+async def chat_stream(request: Request) -> Response:
+    """The same turn as /api/chat, sent as newline-delimited JSON as it happens.
+
+    Events: {"type": "tool", "name"} when a tool call starts, {"type": "text",
+    "delta"} for a piece of the model's text, {"type": "ping"} while quiet, and
+    last either {"type": "final", ...the /api/chat body} or {"type": "error",
+    "status", "error"}. A request the guards refuse is an ordinary JSON error
+    with its status, before any stream starts.
+    """
+    prepared = await read_chat_request(request)
+    if isinstance(prepared, JSONResponse):
+        return prepared
+    messages, address = prepared
+    queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+    async def work() -> None:
+        try:
+            status, body = await run_turn(messages, address, queue.put_nowait)
+        except Exception as error:  # noqa: BLE001 - the stream must always end with an event
+            # The type only: exception text can echo the question.
+            logger.error("Stream turn failed (%s)", type(error).__name__)
+            status, body = 500, {"error": "The demo failed. Try again."}
+        if status == 200:
+            queue.put_nowait({"type": "final", **body})
+        else:
+            queue.put_nowait(
+                {"type": "error", "status": status, "error": body.get("error", "")}
+            )
+
+    async def events() -> AsyncIterator[bytes]:
+        task = asyncio.create_task(work())
+        try:
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), STREAM_PING_SECONDS)
+                except TimeoutError:
+                    event = {"type": "ping"}
+                yield (json.dumps(event, separators=(",", ":")) + "\n").encode()
+                if event["type"] in ("final", "error"):
+                    return
+        finally:
+            # A visitor who closes the page stops the wait for the model too.
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(
+        events(),
+        media_type="application/x-ndjson",
+        headers={"cache-control": "no-store", "x-accel-buffering": "no"},
+    )
 
 
 async def health(request: Request) -> JSONResponse:
@@ -800,6 +926,7 @@ app = Starlette(
         Route("/", index),
         Route("/health", health),
         Route("/api/chat", chat, methods=["POST"]),
+        Route("/api/chat/stream", chat_stream, methods=["POST"]),
         *([Route("/stats", stats)] if USAGE_STATS else []),
     ],
     middleware=[

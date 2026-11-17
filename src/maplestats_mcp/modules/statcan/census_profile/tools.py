@@ -49,7 +49,8 @@ async def statcan_census_profile_search_geography(
     municipality, census metro area, census tract, dissemination area,
     forward sortation area, health region, economic region, federal
     electoral district, population centre, designated place). An empty
-    query returns every geography at that level. Keywords: census,
+    query returns every geography at that level. The first search at a
+    level takes about 20 s. Keywords: census,
     geography, DGUID, place name, municipality, province, census
     subdivision, census tract, forward sortation area, FSA.
     Mots-clés : recensement, profil du recensement, géographie, DGUID, nom
@@ -105,7 +106,8 @@ async def statcan_census_profile_get_data(
     characteristics (by code, from
     statcan_census_profile_search_characteristic), for a given gender
     breakdown. Multiple geography_codes or characteristic_codes are
-    combined (every geography x every characteristic). Returns each
+    combined (every geography x every characteristic). Slow: 30 to 45 s a
+    call, so make one call per level with everything in it. Returns each
     value alongside its data-quality flag and confidence interval when
     the upstream API supplies one -- do not drop a flagged or
     interval-bounded value silently. Keywords: census, population,
