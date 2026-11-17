@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import importlib
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextvars import ContextVar
 from typing import Any
 
@@ -194,6 +194,35 @@ def apply_budget(
     if not changed:
         return result
     # A wrapped result's text block is the bare value, not the {"result": ...} envelope.
+    wrapped = ((result.meta or {}).get("fastmcp") or {}).get("wrap_result")
+    body = payload.get("result") if wrapped else payload
+    text = pydantic_core.to_json(body, fallback=str).decode()
+    return ToolResult(
+        content=[TextContent(type="text", text=text)],
+        structured_content=payload,
+        meta=result.meta,
+    )
+
+
+def add_caveats(result: ToolResult, notes: Sequence[str]) -> ToolResult:
+    """`result` with `notes` added to its provenance caveats, after the ones already there.
+
+    For a note about the call itself (call_tool read an alias as the real argument)
+    rather than the data. Like apply_budget, only a result whose content is the one
+    text block FastMCP writes from the structured content, and that has a provenance
+    block, is changed (the text is rebuilt from it); anything else passes through.
+    """
+    payload = result.structured_content
+    if not notes or result.is_error or not isinstance(payload, dict):
+        return result
+    if len(result.content) != 1 or not isinstance(result.content[0], TextContent):
+        return result
+    provenance = _provenance(payload)
+    if provenance is None:
+        return result
+    existing = provenance.get("caveats")
+    current = [str(n) for n in existing] if isinstance(existing, list) else []
+    provenance["caveats"] = list(dict.fromkeys([*current, *notes]))
     wrapped = ((result.meta or {}).get("fastmcp") or {}).get("wrap_result")
     body = payload.get("result") if wrapped else payload
     text = pydantic_core.to_json(body, fallback=str).decode()
