@@ -3,6 +3,12 @@ SERVICES_ROOT = "https://services9.arcgis.com/pkzvt2xlZJnPgk1Z/arcgis/rest/servi
 
 # Dataset key -> hosted feature service; see the module docstring for
 # the coverage confirmed live for each.
+#
+# The "30DAY" in the "current" layer's name is misleading: the layer holds a
+# rolling year, so the coverage text below is right and must not be "fixed" to
+# match the name. Re-checked live on 2026-11-16: 80,158 rows with Reported_Date
+# from 2025-11-16 to 2026-11-14 (a year, not 30 days), and FME_Load_Date at
+# 15/11/2026.
 DATASETS = {
     "current": f"{SERVICES_ROOT}/EPS_OCC_30DAY/FeatureServer/0",
     "2023": f"{SERVICES_ROOT}/Historic_Occurrences_CSDP_2_view/FeatureServer/0",
