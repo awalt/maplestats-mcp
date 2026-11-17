@@ -154,6 +154,8 @@ async def statcan_reference_get_section_text(
     start_char: int = 0,
     max_chars: int = constants.TEXT_MAX_CHARS_DEFAULT,
     limit: int = constants.QUERY_MATCHES_DEFAULT,
+    ocr: Literal["auto", "off", "force"] = "auto",
+    pages: str | None = None,
 ) -> PublicationText:
     """Read the text of a StatCan guide or methodology publication: a section, or a search.
 
@@ -175,10 +177,12 @@ async def statcan_reference_get_section_text(
     carries its own URL to cite, and the result the edition's release
     date. PDF-only editions (and a PDF URL as publication) are read from
     the PDF, a page per section (section='page=192'), with the same
-    query and paging; tables may come out imperfect. A PDF page with no
-    text layer (a scan) comes back empty and counted in pages_without_text.
-    On bilingual pages
-    printed in two columns (15-203-X) only the column in lang is kept. Covers the
+    query and paging; tables may come out imperfect. A scanned PDF page
+    (no text layer) is read by OCR where the server enables it (ocr='auto'
+    reads the first 5 pages of a mostly scanned PDF; pages='6-10' picks
+    pages, 10 at most), else it comes back empty and counted in
+    pages_without_text. On bilingual pages printed in two columns
+    (15-203-X) only the column in lang is kept. Covers the
     Guide to the Labour Force Survey (71-543-G: exclusions, involuntary
     part-time, quality and release rules), the CPI Reference Paper
     (62-553-X: Lowe index, basket updates, owned accommodation, quality
@@ -194,13 +198,14 @@ async def statcan_reference_get_section_text(
     text, LFS guide, CPI reference paper, hedonic adjustment, owned
     accommodation, basket update, involuntary part-time, national
     accounts methodology, gross output, provincial GDP allocation, PDF
-    text, read guide.
+    text, read guide, scanned PDF, OCR, image-only PDF.
     Mots-clés : Statistique Canada, définition, concept, méthodologie,
     texte du guide, guide de l'EPA, document de référence de l'IPC,
     ajustement hédonique, logement en propriété, mise à jour du panier,
     temps partiel involontaire, méthodologie des comptes nationaux,
     ajustement hédonique des indices de prix, répartition provinciale du
-    PIB, production brute, texte d'un PDF.
+    PIB, production brute, texte d'un PDF, PDF numérisé, reconnaissance
+    optique de caractères, PDF image.
     """
     use_lang(lang)
     return await client.get_section_text(
@@ -211,5 +216,7 @@ async def statcan_reference_get_section_text(
         start_char=start_char,
         max_chars=max_chars,
         limit=limit,
+        ocr=ocr,
+        page_selector=pages,
         lang=lang,
     )

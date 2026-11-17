@@ -398,7 +398,8 @@ def _benchmark_plans(profile: str):
 def test_the_default_plans_do_name_pure_tools():
     # The sweep below proves nothing unless some plan would have named one.
     named = [qid for qid, (tools, _) in _benchmark_plans(DEFAULT) if set(tools) & PURE_GIS_TOOLS]
-    assert len(named) >= 10, named
+    # 10 before plan_query stopped listing the boundary maps unless a question asks for them.
+    assert len(named) >= 5, named
 
 
 def test_a_hidden_tool_is_never_planned():

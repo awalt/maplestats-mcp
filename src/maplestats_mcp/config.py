@@ -435,6 +435,29 @@ def get_query_max_concurrent() -> int:
     return min(64, max(1, value))
 
 
+def get_ocr_enabled() -> bool:
+    """Whether pages of a scanned PDF may be read by OCR (MAPLE_OCR, default off).
+
+    Off unless set to 1, true, yes or on: reading a page starts the system's tesseract
+    program and uses about 125 MB for a second or two, so each deployment chooses
+    (the Azure server turns it on, the 512 MB Render backup leaves it off). It also needs
+    the `ocr` extra (pypdfium2) and the tesseract program; shared/ocr.status() says
+    which is missing.
+    """
+    raw = os.environ.get("MAPLE_OCR", "0").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def get_ocr_memory_mb() -> int:
+    """Address space the tesseract child may use, in MB (MAPLE_OCR_MEMORY_MB, default 1024).
+
+    Enforced on Linux only (RLIMIT_AS, set by a launcher that then runs tesseract); 0 or
+    less turns the cap off, and anything else is held to 256 to 8192.
+    """
+    value = _env_int("MAPLE_OCR_MEMORY_MB", 1024)
+    return 0 if value <= 0 else min(8192, max(256, value))
+
+
 def get_ip_horizons_cache_dir() -> Path:
     """Where CIPO IP Horizons patent tables are kept as Parquet for queries.
 

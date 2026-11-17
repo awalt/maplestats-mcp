@@ -252,6 +252,18 @@ client session. Keep tests independent of order (each one mocks or
 resets the module-level state it reads), so a run with
 `uv run --with pytest-randomly pytest` passes too.
 
+The `ocr` extra (pypdfium2) and the system's `tesseract` program, with its
+English and French data, are not part of a default install, like `semantic`.
+`shared/ocr.py` imports pypdfium2 only when a page is read, so the server and
+every other test run without them. The unit tests of `shared/ocr.py` and of the
+StatCan reader's OCR path replace the render-and-read step with canned text and
+a fake child program. The tests marked `ocr` (`tests/test_shared_ocr_engine.py`)
+read a scan built in the test with the real engine; run them with
+`uv sync --extra ocr` and `uv run pytest -m ocr` (set `TESSDATA_PREFIX` when the
+language data are not where tesseract looks). They skip without the extra, the
+program or the data; CI's `ocr` job installs all three and sets
+`MAPLE_REQUIRE_OCR=1` (`conftest.py`), which turns a skip there into a failure.
+
 ### Changelog
 
 **Do not edit the Unreleased section of `CHANGELOG.md`.** Each change

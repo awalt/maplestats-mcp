@@ -1,8 +1,9 @@
 """plan_query's `call` field, the relevance rules that trim a plan, and the plan's size.
 
-The size numbers are plan_query's output over the discovery benchmark's 129 queries
-before this change (text of the tool result, in characters, measured 2026-11-17): the
-plan must not grow past them, however many fields it gains.
+The size numbers are plan_query's output over the discovery benchmark's 129 queries on
+origin/main before this change (text of the tool result, in characters, measured
+2026-11-17; the mean was 4159.11 before PR #294 and later merges added steps and notes):
+the plan must not grow past them, however many fields it gains.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from maplestats_mcp.modules.planner.topics import FALLBACK_STEPS, TOPICS, PlanSt
 from maplestats_mcp.server import mcp
 from tests.discovery_benchmark.runner import load_queries
 
-BASELINE_MEAN_CHARS = 4159.11
+BASELINE_MEAN_CHARS = 4180.92
 BASELINE_MAX_CHARS = 9690
 
 
@@ -35,7 +36,7 @@ def _sample(spec: dict[str, Any]) -> Any:
     kind = spec.get("type")
     if kind == "array":
         return [_sample(spec.get("items") or {})]
-    return {"string": "x", "integer": 1, "number": 1.0, "boolean": True}.get(kind, {})
+    return {"string": "x", "integer": 1, "number": 1.0, "boolean": True}.get(str(kind), {})
 
 
 def _fill(value: Any, spec: dict[str, Any]) -> Any:

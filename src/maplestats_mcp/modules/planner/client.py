@@ -109,6 +109,7 @@ _PROVINCE_TOOLS = {
     "bc_lobbyists_": "British Columbia",
     "ab_wildfire_": "Alberta",
     "aer_": "Alberta",
+    "bcer_": "British Columbia",
 }
 _PROVINCE_LABELS = frozenset(label for label, _ in PROVINCES.values())
 
