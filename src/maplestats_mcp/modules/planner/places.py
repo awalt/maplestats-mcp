@@ -35,6 +35,9 @@ PROVINCES: dict[str, tuple[str, tuple[PlanStep, ...]]] = {
             PlanStep("bc_stats_list_files", "BC Stats Excel tables (labour, GDP, population)"),
             PlanStep("bcgw_query_layer", "BC Geographic Warehouse layers: type_name"),
             _arcgis("bc_energy_regulator"),
+            PlanStep(
+                "bcer_get_production", "BC Energy Regulator wells, production and drilling files"
+            ),
         ),
     ),
     "alberta": (
