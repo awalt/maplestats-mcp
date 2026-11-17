@@ -14,3 +14,8 @@
   question uses their words; an Edmonton rent question no longer lists Edmonton Police, Transit
   and EPCOR; a permit, licence, inspection or planning question that names a city lists only that
   city's (or its province's) records. The plan's output is not larger on average than before.
+- `wds_get_series_as_of` and `plan_query` name the 16 tables that have revision history
+  (12-10-0163, 14-10-0220, 14-10-0223, 16-10-0012, 16-10-0013, 18-10-0256, 20-10-0003,
+  20-10-0056, 20-10-0067, 20-10-0076, 34-10-0035, 34-10-0036, 36-10-0018, 36-10-0103,
+  36-10-0104, 36-10-0434), so a model asks for a vintage only on those; the live chat
+  demo's 21 `wds_get_series_as_of` calls all failed because the table had none.
