@@ -213,6 +213,32 @@ async def _publications() -> bool:
     ok &= "Méthode de la production brute" in page_fr.sections[0].text
     ok &= "gross output approach" not in page_fr.sections[0].text.lower()
 
+    # Pages with no text layer are counted and named, not returned empty without a word:
+    # 15-203-X has 8 of 277 (5 of them image pages the size of the page), checked live
+    # 2026-11-17. OCR is off unless MAPLE_OCR=1 with the ocr extra and tesseract, so these
+    # calls ask for ocr="off" and the result does not depend on the machine.
+    untexted = await client.get_section_text("15-203-X", section="192", ocr="off", max_chars=300)
+    print(
+        f"OK: 15-203-X section '192', ocr='off' -> {untexted.pages_without_text} pages without "
+        f"text of {untexted.pages_read}: {untexted.provenance.coverage}"
+    )
+    ok &= untexted.pages_without_text >= 1 and untexted.ocr_pages == []
+    ok &= "is not included (no text layer" in (untexted.provenance.coverage or "")
+    ok &= "OCR was switched off" in (untexted.provenance.limits or "")
+    # pages= and ocr='force' read PDF pages: an HTML edition refuses them.
+    try:
+        await client.get_section_text("71-543-G", page_selector="3")
+        print("FAIL: expected InvalidInput for pages= on an HTML edition")
+        ok = False
+    except InvalidInput:
+        print("OK: pages= on an HTML edition raises InvalidInput")
+    try:
+        await client.get_section_text("15-203-X", page_selector="500", ocr="off")
+        print("FAIL: expected InvalidInput for a page past the end of the PDF")
+        ok = False
+    except InvalidInput as exc:
+        print(f"OK: pages='500' on a 277-page PDF raises InvalidInput ({exc})")
+
     # 13-017-X's 2008 edition links its whole PDF from the side menu only.
     ok &= iea.pdf_url == "https://www150.statcan.gc.ca/n1/pub/13-017-x/13-017-x2008001-eng.pdf"
 

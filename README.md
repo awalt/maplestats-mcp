@@ -376,6 +376,7 @@ error that says when to retry, instead of waiting for another timeout. The
 | `MAPLE_CACHE_MAX_MB` | `128` | Estimated memory cap for the response cache, all buckets together |
 | `MAPLE_PARSE_WORKERS` / `MAPLE_PARSE_TIMEOUT_SECONDS` | `4` / `60` | Threads for parsing Excel and CSV files, and the time one parse may take |
 | `MAPLE_TOOL_TIMEOUT_SECONDS` | `120` | Longest a tool call may run |
+| `MAPLE_OCR`, `MAPLE_OCR_MEMORY_MB` | `0`, `1024` | `1` lets `statcan_reference_get_section_text` read the pages of a scanned PDF (no text layer) by OCR: the `[ocr]` extra (`pip install "maplestats-mcp[ocr]"`, pypdfium2) and the system's `tesseract` program with its English and French data (the Docker image has both) must be installed; otherwise those pages come back empty with a note. One page is read at a time, 10 pages at most per call (5 by default), within the 40 s PDF budget, at up to 12 megapixels a page. The memory value caps the tesseract child's address space (enforced on Linux only; `0` turns it off) |
 | `MAPLE_BREAKER` | `1` | Pause requests to an upstream host after repeated failures; `0` sends every request |
 | `MAPLE_BREAKER_FAILURES` / `MAPLE_BREAKER_WINDOW_SECONDS` / `MAPLE_BREAKER_COOLDOWN_SECONDS` | `5` / `300` / `60` | Failures in a row, within the window, that pause a host, and how long before one probe request is sent |
 | `MAPLE_PUMF_TABULATE` | `1` | `0` hides `statcan_pumf_tabulate` (it downloads whole PUMF ZIPs); search, listings and codebooks stay |
