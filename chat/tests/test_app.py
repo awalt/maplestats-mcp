@@ -519,13 +519,19 @@ def test_third_party_scripts_carry_integrity_hashes():
 
 
 def _fake_anthropic(monkeypatch, responses):
-    """Make ask_anthropic see these responses, one per model call."""
+    """Make ask_anthropic see these responses, one per model call.
+
+    Returns the list of keyword arguments each request was sent with.
+    """
     from types import SimpleNamespace
 
     queue = list(responses)
+    sent: list[dict] = []
 
     class FakeMessages:
         async def create(self, **kwargs):
+            # The conversation list grows between requests; keep what this one saw.
+            sent.append({**kwargs, "messages": list(kwargs["messages"])})
             return queue.pop(0)
 
     class FakeClient:
@@ -538,6 +544,7 @@ def _fake_anthropic(monkeypatch, responses):
             return False
 
     monkeypatch.setattr(chat_app, "AsyncAnthropic", lambda **kwargs: FakeClient())
+    return sent
 
 
 def _ask():
@@ -585,6 +592,429 @@ def test_tool_errors_with_no_answer_point_to_the_data_server(monkeypatch):
     assert _ask()["answer"] == chat_app.DATA_SERVER_ANSWER
 
 
+# Step budget, wrap-up and prompt caching ----
+
+
+def _tool_pause():
+    """A response the connector ended with pause_turn after one tool call."""
+    return SimpleNamespace(
+        content=[
+            SimpleNamespace(type="mcp_tool_use", name="search_tools", input={}, id="t")
+        ],
+        stop_reason="pause_turn",
+    )
+
+
+def _finished(text="Answer"):
+    return SimpleNamespace(
+        content=[SimpleNamespace(type="text", text=text)], stop_reason="end_turn"
+    )
+
+
+def _system_of(request):
+    """The system prompt of a request as one string, whichever shape it has."""
+    system = request["system"]
+    if isinstance(system, str):
+        return system
+    return "\n\n".join(block["text"] for block in system)
+
+
+def test_the_step_budget_and_cache_flag_defaults_and_overrides(monkeypatch):
+    import importlib
+
+    names = ("CHAT_MAX_TOOL_STEPS", "CHAT_MAX_TOOL_ROUNDS", "CHAT_PROMPT_CACHE")
+    for name in names:
+        monkeypatch.delenv(name, raising=False)
+    try:
+        defaults = importlib.reload(chat_app)
+        # 12 to 2: a request is up to about 10 model steps inside the connector.
+        assert defaults.MAX_TOOL_STEPS == 2
+        # The openai path keeps the old 12: each round is one model call.
+        assert defaults.MAX_TOOL_ROUNDS == 12
+        assert defaults.PROMPT_CACHE is False
+        monkeypatch.setenv("CHAT_MAX_TOOL_STEPS", "5")
+        monkeypatch.setenv("CHAT_MAX_TOOL_ROUNDS", "7")
+        monkeypatch.setenv("CHAT_PROMPT_CACHE", " On ")
+        changed = importlib.reload(chat_app)
+        assert (changed.MAX_TOOL_STEPS, changed.MAX_TOOL_ROUNDS) == (5, 7)
+        assert changed.PROMPT_CACHE is True
+        monkeypatch.setenv("CHAT_PROMPT_CACHE", "0")
+        assert importlib.reload(chat_app).PROMPT_CACHE is False
+    finally:
+        for name in names:
+            monkeypatch.delenv(name, raising=False)
+        importlib.reload(chat_app)
+
+
+def test_the_first_system_prompt_asks_for_batching_and_has_no_wrap_up():
+    assert "small budget of steps" in chat_app.SYSTEM_PROMPT
+    assert "same step" in chat_app.SYSTEM_PROMPT
+    assert chat_app.WRAP_UP_PROMPT not in chat_app.SYSTEM_PROMPT
+
+
+def test_only_the_last_request_is_told_to_wrap_up(monkeypatch):
+    monkeypatch.setattr(chat_app, "MAX_TOOL_STEPS", 3)
+    sent = _fake_anthropic(
+        monkeypatch, [_tool_pause(), _tool_pause(), _finished("Done")]
+    )
+    assert _ask()["answer"] == "Done"
+    wrap_ups = [chat_app.WRAP_UP_PROMPT in _system_of(request) for request in sent]
+    assert wrap_ups == [False, False, True]
+    # The first request carries the plain prompt, and the wrap-up adds to it.
+    assert sent[0]["system"] == chat_app.SYSTEM_PROMPT
+    assert _system_of(sent[2]).startswith(chat_app.SYSTEM_PROMPT)
+
+
+def test_a_question_that_finishes_in_one_request_never_sees_the_wrap_up(monkeypatch):
+    sent = _fake_anthropic(monkeypatch, [_finished("Done")])
+    assert _ask()["answer"] == "Done"
+    assert len(sent) == 1
+    assert sent[0]["system"] == chat_app.SYSTEM_PROMPT
+
+
+def test_a_one_request_budget_stays_free_to_call_tools(monkeypatch):
+    monkeypatch.setattr(chat_app, "MAX_TOOL_STEPS", 1)
+    sent = _fake_anthropic(monkeypatch, [_tool_pause()])
+    assert _ask()["answer"] == chat_app.STEP_LIMIT_ANSWER
+    assert len(sent) == 1
+    assert sent[0]["system"] == chat_app.SYSTEM_PROMPT
+
+
+def test_the_wrap_up_resumes_the_paused_turn_and_its_answer_is_returned(monkeypatch):
+    paused = _tool_pause()
+    sent = _fake_anthropic(monkeypatch, [paused, _finished("Partial figures")])
+    result = _ask()
+    assert result["answer"] == "Partial figures"
+    assert len(sent) == 2  # a third request would have raised: none was queued
+    assert sent[1]["messages"][-1] == {"role": "assistant", "content": paused.content}
+
+
+def test_a_wrap_up_that_still_pauses_is_the_step_limit_answer(monkeypatch):
+    sent = _fake_anthropic(monkeypatch, [_tool_pause(), _tool_pause()])
+    result = _ask()
+    assert result["answer"] == chat_app.STEP_LIMIT_ANSWER
+    assert len(sent) == 2  # never a third request
+    assert len(result["tools_used"]) == 2
+
+
+def test_a_wrap_up_that_writes_nothing_is_the_step_limit_answer(monkeypatch):
+    nothing = SimpleNamespace(content=[], stop_reason="end_turn")
+    _fake_anthropic(monkeypatch, [_tool_pause(), nothing])
+    assert _ask()["answer"] == chat_app.STEP_LIMIT_ANSWER
+
+
+def test_an_empty_first_request_is_still_an_empty_reply(monkeypatch):
+    # Only a wrap-up that was cut short is a "spent budget"; this is a model fault.
+    _fake_anthropic(monkeypatch, [SimpleNamespace(content=[], stop_reason="end_turn")])
+    assert _ask()["answer"] == ""
+
+
+def test_a_spent_budget_is_an_answered_question_and_hides_its_size(monkeypatch):
+    _fake_anthropic(monkeypatch, [_tool_pause(), _tool_pause()])
+    monkeypatch.setattr(chat_app, "ask_model", chat_app.ask_anthropic)
+    client = TestClient(chat_app.app)
+    response = post(client, [{"role": "user", "content": "hi"}])
+    assert response.status_code == 200
+    body = response.json()
+    assert body["answer"] == chat_app.STEP_LIMIT_ANSWER
+    assert "work" not in body  # the size of the turn is for /stats, not the visitor
+    snap = client.get("/stats").json()
+    assert snap["outcomes"] == {"answered": 1}
+    per_answer = snap["per_answer"]
+    assert per_answer["model_requests"]["counts"] == {"2": 1}
+    assert per_answer["tool_calls"]["counts"] == {"2": 1}
+    assert per_answer["model_steps"]["counts"] == {"2": 1}
+
+
+def test_the_stream_route_hides_the_size_of_the_turn_too(monkeypatch):
+    async def sized_model(messages, emit):
+        work = {"model_requests": 2, "model_steps": 14, "tool_calls": 9}
+        return {"answer": "ok", "tools_used": [], "work": work}
+
+    monkeypatch.setattr(chat_app, "ask_model", sized_model)
+    client = TestClient(chat_app.app)
+    events = _stream_events(_post_stream(client, [{"role": "user", "content": "GDP?"}]))
+    assert events[-1]["type"] == "final"
+    assert "work" not in events[-1]
+    counts = client.get("/stats").json()["per_answer"]
+    assert counts["model_steps"]["counts"] == {"14": 1}
+    assert counts["tool_calls"]["counts"] == {"9": 1}
+
+
+def test_sampling_steps_reads_the_connectors_iterations():
+    def step():
+        return SimpleNamespace(type="message")
+
+    reported = SimpleNamespace(
+        iterations=[step(), step(), SimpleNamespace(type="compaction"), step()]
+    )
+    assert chat_app.sampling_steps(reported) == 3
+    # No list, an empty one, or no usage at all: one step (a lower bound).
+    assert chat_app.sampling_steps(SimpleNamespace()) == 1
+    assert chat_app.sampling_steps(SimpleNamespace(iterations=[])) == 1
+    assert chat_app.sampling_steps(SimpleNamespace(iterations=None)) == 1
+    assert chat_app.sampling_steps(None) == 1
+
+
+def test_model_steps_are_summed_across_requests(monkeypatch):
+    def with_steps(response, steps):
+        response.usage = SimpleNamespace(
+            input_tokens=1,
+            output_tokens=1,
+            iterations=[SimpleNamespace(type="message")] * steps,
+        )
+        return response
+
+    _fake_anthropic(
+        monkeypatch,
+        [with_steps(_tool_pause(), 10), with_steps(_finished(), 2)],
+    )
+    work = _ask()["work"]
+    assert work == {"model_requests": 2, "model_steps": 12, "tool_calls": 1}
+
+
+def _plain_request(conversation):
+    return {
+        "model": chat_app.MODEL,
+        "max_tokens": chat_app.MAX_OUTPUT_TOKENS,
+        "betas": ["mcp-client-2025-11-20"],
+        "system": chat_app.SYSTEM_PROMPT,
+        "output_config": {"effort": chat_app.EFFORT},
+        "mcp_servers": [
+            {"type": "url", "url": chat_app.MCP_CALL_URL, "name": "maplestats"}
+        ],
+        "tools": [{"type": "mcp_toolset", "mcp_server_name": "maplestats"}],
+        "messages": conversation,
+    }
+
+
+def test_the_request_has_no_cache_fields_when_the_flag_is_off(monkeypatch):
+    monkeypatch.setattr(chat_app, "PROMPT_CACHE", False)
+    conversation = [{"role": "user", "content": "hi"}]
+    request = chat_app.anthropic_request(conversation)
+    assert request == _plain_request(conversation)
+    assert "cache_control" not in json.dumps(request)
+    wrapped = chat_app.anthropic_request(conversation, wrap_up=True)
+    # Still a plain string: the wrap-up is added to it, not put in a block.
+    assert wrapped["system"] == f"{chat_app.SYSTEM_PROMPT}\n\n{chat_app.WRAP_UP_PROMPT}"
+    assert "cache_control" not in json.dumps(wrapped)
+
+
+def test_the_request_marks_the_system_prompt_and_toolset_when_the_flag_is_on(
+    monkeypatch,
+):
+    monkeypatch.setattr(chat_app, "PROMPT_CACHE", True)
+    conversation = [{"role": "user", "content": "hi"}]
+    request = chat_app.anthropic_request(conversation)
+    ephemeral = {"type": "ephemeral"}
+    assert request["system"] == [
+        {"type": "text", "text": chat_app.SYSTEM_PROMPT, "cache_control": ephemeral}
+    ]
+    assert request["tools"] == [
+        {
+            "type": "mcp_toolset",
+            "mcp_server_name": "maplestats",
+            "cache_control": ephemeral,
+        }
+    ]
+    # Nothing else differs from the flag-off request, the beta header included.
+    plain = _plain_request(conversation)
+    for key in ("model", "max_tokens", "betas", "output_config", "mcp_servers"):
+        assert request[key] == plain[key]
+    assert request["betas"] == ["mcp-client-2025-11-20"]
+    # The wrap-up follows the cached block, so the cached prefix does not change.
+    wrapped = chat_app.anthropic_request(conversation, wrap_up=True)
+    assert wrapped["system"][0] == request["system"][0]
+    assert wrapped["system"][1] == {"type": "text", "text": chat_app.WRAP_UP_PROMPT}
+    assert wrapped["tools"] == request["tools"]
+
+
+def test_the_cache_fields_are_ones_the_installed_sdk_defines(monkeypatch):
+    from anthropic.types.beta import BetaMCPToolsetParam, BetaTextBlockParam
+    from pydantic import TypeAdapter
+
+    monkeypatch.setattr(chat_app, "PROMPT_CACHE", True)
+    request = chat_app.anthropic_request(
+        [{"role": "user", "content": "hi"}], wrap_up=True
+    )
+    for block in request["system"]:
+        TypeAdapter(BetaTextBlockParam).validate_python(block)
+    TypeAdapter(BetaMCPToolsetParam).validate_python(request["tools"][0])
+
+
+@pytest.mark.parametrize("flag", [False, True])
+def test_the_sdk_puts_the_cache_fields_on_the_wire_only_when_asked(monkeypatch, flag):
+    from anthropic import AsyncAnthropic
+
+    try:  # the SDK's own HTTP package (httpx2 from anthropic 2.x, httpx before)
+        import httpx2 as httpx
+    except ImportError:
+        import httpx
+
+    monkeypatch.setattr(chat_app, "PROMPT_CACHE", flag)
+    seen: dict = {}
+
+    def handler(request):
+        seen["body"] = json.loads(request.content)
+        seen["beta"] = request.headers.get("anthropic-beta")
+        return httpx.Response(
+            200,
+            json={
+                "id": "msg_test",
+                "type": "message",
+                "role": "assistant",
+                "model": chat_app.MODEL,
+                "content": [{"type": "text", "text": "Hi"}],
+                "stop_reason": "end_turn",
+                "stop_sequence": None,
+                "usage": {
+                    "input_tokens": 20,
+                    "output_tokens": 5,
+                    "cache_creation_input_tokens": 1800 if flag else 0,
+                    "cache_read_input_tokens": 0,
+                    "iterations": [
+                        {
+                            "type": "message",
+                            "input_tokens": 20,
+                            "output_tokens": 5,
+                            "cache_creation_input_tokens": 1800 if flag else 0,
+                            "cache_read_input_tokens": 0,
+                        },
+                        {
+                            "type": "message",
+                            "input_tokens": 30,
+                            "output_tokens": 5,
+                            "cache_creation_input_tokens": 0,
+                            "cache_read_input_tokens": 1800 if flag else 0,
+                        },
+                    ],
+                },
+            },
+        )
+
+    async def run():
+        # A mock transport: nothing leaves the process and no key is used.
+        http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        async with AsyncAnthropic(
+            api_key="test-key", http_client=http_client
+        ) as client:
+            return await chat_app.anthropic_response(
+                client, [{"role": "user", "content": "hi"}], None, wrap_up=True
+            )
+
+    response = asyncio.run(run())
+    body = seen["body"]
+    assert seen["beta"] == "mcp-client-2025-11-20"
+    assert ("cache_control" in json.dumps(body)) is flag
+    if flag:
+        assert body["tools"][0]["cache_control"] == {"type": "ephemeral"}
+        assert body["system"][0]["cache_control"] == {"type": "ephemeral"}
+        assert "cache_control" not in body["system"][1]
+    else:
+        assert isinstance(body["system"], str)
+        assert chat_app.WRAP_UP_PROMPT in body["system"]
+    # The parsed response keeps the per-step usage the stats read.
+    assert chat_app.sampling_steps(response.usage) == 2
+
+
+def test_cache_tokens_are_counted_and_count_against_the_daily_budget(monkeypatch):
+    first = _tool_pause()
+    first.usage = _usage(
+        input_tokens=200,
+        output_tokens=50,
+        cache_creation_input_tokens=1500,
+        cache_read_input_tokens=0,
+    )
+    second = _finished()
+    second.usage = _usage(
+        input_tokens=100,
+        output_tokens=40,
+        cache_creation_input_tokens=0,
+        cache_read_input_tokens=1500,
+    )
+    _fake_anthropic(monkeypatch, [first, second])
+    assert _ask()["answer"] == "Answer"
+    snap = chat_app.STATS.snapshot()
+    assert snap["tokens"] == {
+        "cache_read": 1500,
+        "cache_write": 1500,
+        "input": 300,
+        "output": 90,
+    }
+    assert chat_app._daily_tokens["n"] == 1500 + 1500 + 300 + 90
+
+
+def _no_op_tool_result():
+    return SimpleNamespace(
+        content=[SimpleNamespace(text="{}")], is_error=False, structured_content=None
+    )
+
+
+def test_the_openai_path_has_its_own_round_limit(monkeypatch):
+    # MAX_TOOL_STEPS (2) belongs to the Anthropic path: three tool rounds fit here.
+    tool_round = _openai_reply(None, [_tool_call()])
+    _fake_openai(
+        monkeypatch, [tool_round, tool_round, tool_round, _openai_reply("Done")]
+    )
+    result = asyncio.run(
+        chat_app.ask_openai_compatible([{"role": "user", "content": "hi"}])
+    )
+    assert result["answer"] == "Done"
+    assert result["work"] == {"model_requests": 4, "model_steps": 4, "tool_calls": 3}
+
+
+def test_only_the_last_openai_round_is_told_to_wrap_up(monkeypatch):
+    monkeypatch.setattr(chat_app, "MAX_TOOL_ROUNDS", 3)
+    tool_round = _openai_reply(None, [_tool_call()])
+    sent = _fake_openai(monkeypatch, [tool_round, tool_round, _openai_reply("Done")])
+    result = asyncio.run(
+        chat_app.ask_openai_compatible([{"role": "user", "content": "hi"}])
+    )
+    assert result["answer"] == "Done"
+    systems = [call["messages"][0] for call in sent]
+    assert [message["role"] for message in systems] == ["system"] * 3
+    assert [message["content"] for message in systems] == [
+        chat_app.SYSTEM_PROMPT,
+        chat_app.SYSTEM_PROMPT,
+        f"{chat_app.SYSTEM_PROMPT}\n\n{chat_app.WRAP_UP_PROMPT}",
+    ]
+
+
+def test_a_last_openai_round_that_asks_for_tools_runs_none_of_them(monkeypatch):
+    monkeypatch.setattr(chat_app, "MAX_TOOL_ROUNDS", 2)
+    ran: list = []
+
+    def call_tool(name, arguments):
+        ran.append(arguments)
+        return _no_op_tool_result()
+
+    tool_round = _openai_reply(None, [_tool_call()])
+    _fake_openai(monkeypatch, [tool_round, tool_round], call_tool=call_tool)
+    emitted: list = []
+    result = asyncio.run(
+        chat_app.ask_openai_compatible(
+            [{"role": "user", "content": "hi"}], emitted.append
+        )
+    )
+    assert result["answer"] == chat_app.STEP_LIMIT_ANSWER
+    assert len(ran) == 1  # the first round's call; the wrap-up's was not run
+    assert len(result["tools_used"]) == 1
+    assert emitted == [{"type": "tool", "name": "x"}]
+
+
+def test_an_openai_wrap_up_that_writes_nothing_is_the_step_limit_answer(monkeypatch):
+    monkeypatch.setattr(chat_app, "MAX_TOOL_ROUNDS", 2)
+    _fake_openai(monkeypatch, [_openai_reply(None, [_tool_call()]), _openai_reply("")])
+    asked = [{"role": "user", "content": "hi"}]
+    assert (
+        asyncio.run(chat_app.ask_openai_compatible(asked))["answer"]
+        == chat_app.STEP_LIMIT_ANSWER
+    )
+    # An empty first round is still an empty reply, not a spent budget.
+    _fake_openai(monkeypatch, [_openai_reply("")])
+    assert asyncio.run(chat_app.ask_openai_compatible(asked))["answer"] == ""
+
+
 # Token budget ----
 
 
@@ -611,11 +1041,16 @@ def test_anthropic_calls_add_their_tokens(monkeypatch):
 
 
 def _fake_openai(monkeypatch, responses, call_tool=None):
-    """Make ask_openai_compatible see these responses and a fake MCP server."""
+    """Make ask_openai_compatible see these responses and a fake MCP server.
+
+    Returns the list of keyword arguments each model call was sent with.
+    """
     queue = list(responses)
+    sent: list[dict] = []
 
     class FakeCompletions:
         async def create(self, **kwargs):
+            sent.append(kwargs)
             return queue.pop(0)
 
     class FakeOpenAI:
@@ -649,6 +1084,7 @@ def _fake_openai(monkeypatch, responses, call_tool=None):
     monkeypatch.setattr(chat_app, "_openai_tools", [])
     monkeypatch.setattr(chat_app, "AsyncOpenAI", lambda **kwargs: FakeOpenAI())
     monkeypatch.setattr(chat_app, "Client", lambda url: FakeMcp())
+    return sent
 
 
 def _openai_reply(content, tool_calls=None, usage=None):
@@ -746,7 +1182,9 @@ def test_anthropic_failure_reading_the_answer_is_billed(monkeypatch):
 
 
 def test_openai_failure_after_the_step_limit_is_billed(monkeypatch):
-    monkeypatch.setattr(chat_app, "MAX_TOOL_STEPS", 1)
+    # The openai path's own limit is CHAT_MAX_TOOL_ROUNDS since the Anthropic one
+    # (MAX_TOOL_STEPS) was lowered to 2; this test always meant "one round".
+    monkeypatch.setattr(chat_app, "MAX_TOOL_ROUNDS", 1)
     _fake_openai(monkeypatch, [_openai_reply(None, [_tool_call()])])
 
     def broken_collect(returned):

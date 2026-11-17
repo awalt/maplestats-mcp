@@ -36,13 +36,13 @@ import time
 import unicodedata
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import fastmcp
-from fastmcp import Client
+from fastmcp import Client, FastMCP
 from fastmcp.exceptions import ToolError
 from mcp.shared.exceptions import MCPError
 
@@ -177,13 +177,13 @@ class Registry:
     portal_keys: frozenset[str]
 
 
-async def read_registry() -> Registry:
+async def read_registry(server: FastMCP = mcp) -> Registry:
     from maplestats_mcp.modules.arcgis_hub.constants import PORTALS as ARCGIS_PORTALS
     from maplestats_mcp.modules.ckan.constants import PORTALS as CKAN_PORTALS
     from maplestats_mcp.modules.planner.topics import TOPICS
     from maplestats_mcp.modules.socrata.constants import PORTALS as SOCRATA_PORTALS
 
-    tools = await mcp._list_tools()
+    tools = await server._list_tools()
     sources = {}
     for tool in tools:
         module = tool_module(tool)
@@ -196,6 +196,34 @@ async def read_registry() -> Registry:
         portal_keys=frozenset(
             (*CKAN_PORTALS, *ARCGIS_PORTALS, *SOCRATA_PORTALS),
         ),
+    )
+
+
+def without_tools(q: Query, hidden: frozenset[str]) -> Query:
+    """The question as asked of a server that hides `hidden` (the MAPLE_GIS=0 profile).
+
+    A hidden tool is no longer an answer, so it leaves every accepted list; when the
+    expected tools were all hidden the alternatives that remain take their place. A system
+    left with nothing accepted is not asked: its list is empty, as for a question that
+    never expected it. Fixtures stay sound against the whole registry (validate_queries
+    runs on the originals); this only changes what a profile is scored on.
+    """
+
+    def split(
+        expected: tuple[str, ...], alternatives: tuple[str, ...]
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        expected = tuple(name for name in expected if name not in hidden)
+        alternatives = tuple(name for name in alternatives if name not in hidden)
+        return (expected, alternatives) if expected else (alternatives, ())
+
+    search_expected, search_alternatives = split(q.search_expected, q.search_alternatives)
+    plan_expected, plan_alternatives = split(q.plan_expected, q.plan_alternatives)
+    return replace(
+        q,
+        search_expected=search_expected,
+        search_alternatives=search_alternatives,
+        plan_expected=plan_expected,
+        plan_alternatives=plan_alternatives,
     )
 
 
@@ -433,12 +461,14 @@ async def run_plan(client: Client, q: Query, registry: Registry) -> PlanOutcome:
     )
 
 
-async def run_all(queries: Sequence[Query], registry: Registry) -> tuple[list[QueryResult], dict]:
+async def run_all(
+    queries: Sequence[Query], registry: Registry, server: FastMCP = mcp
+) -> tuple[list[QueryResult], dict]:
     """Ask every query of both systems over one client session."""
-    tools = [tool for tool in await mcp._list_tools() if tool.name not in ALWAYS_VISIBLE]
+    tools = [tool for tool in await server._list_tools() if tool.name not in ALWAYS_VISIBLE]
     ranker = AnnotatedBM25SearchTransform(max_results=SEARCH_DEPTH)
     results: list[QueryResult] = []
-    async with Client(mcp) as client:
+    async with Client(server) as client:
         # The first search builds the BM25 index of the whole catalogue; time it apart.
         started = time.perf_counter()
         await client.call_tool("search_tools", {"query": "warm up"})
@@ -740,20 +770,25 @@ class Benchmark:
     problems: list[str]
 
 
-def run_benchmark(strict: bool = True) -> Benchmark:
+def run_benchmark(
+    strict: bool = True, server: FastMCP = mcp, hidden: frozenset[str] = frozenset()
+) -> Benchmark:
     """Load, validate and run the fixtures.
 
     Strict (the command line) raises when a fixture names a tool that does not exist; the
-    tests ask for the problems instead, so one bad fixture is one clear failure.
+    tests ask for the problems instead, so one bad fixture is one clear failure. `server`
+    and `hidden` run a profile that hides tools (MAPLE_GIS=0): the fixtures are checked
+    against the whole registry, then scored without the hidden tools as answers.
     """
 
     async def go() -> Benchmark:
         queries = load_queries()
-        registry = await read_registry()
-        problems = validate_queries(queries, registry)
+        problems = validate_queries(queries, await read_registry())
         if problems and strict:
             raise ValueError("invalid fixtures:\n" + "\n".join(problems))
-        rows, meta = await run_all(queries, registry)
+        registry = await read_registry(server)
+        queries = [without_tools(q, hidden) for q in queries]
+        rows, meta = await run_all(queries, registry, server)
         return Benchmark(build_report(rows, queries, registry, meta), queries, registry, problems)
 
     return asyncio.run(go())

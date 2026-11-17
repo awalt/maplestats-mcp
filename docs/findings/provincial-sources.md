@@ -737,6 +737,47 @@ Health ministry since 2025-01-01; the Member(s) of the Legislative Assembly (11,
 reports), Office of the Premier (4,929) and Health (3,838) are the most-named
 agencies; Deputy Minister appears in 13,767 reports.
 
+## BC Energy Regulator bulk files (IRIS)
+
+**Status:** Shipped 2026-11-17 as `modules/bcer/` (8 tools, issue #250), approved by the
+owner with the reuse terms unresolved.
+
+**Access (checked live 2026-11-17).** The files sit under `https://iris.bcogc.ca/download/`
+and answer HEAD, whole GET and 206 ranges without an account (Oracle HTTP Server, no
+redirects, `Accept-Ranges: bytes`, `Last-Modified`, `ETag`); the directory listing itself is
+403. The BCER Data Centre page (bc-er.ca/data-reports/data-centre/) no longer lists the file
+links in its HTML on this date; the Legacy Well Lookup & Data Downloads page links an
+application at reports.bc-er.ca/plogc/Ext_Accnt.Logon (a logon page, not opened: credentialed
+reports are out of scope); BCER's own "Data Downloads"
+system updates (Dec 2023, Jan 2024, Aug 2024) name `drill_csv.zip`, `hydraulic_fracture_csv.zip`
+and their members. Files: `well_index.csv` (14.9 MB, 49,384 rows of 301 bytes for 39,964
+wells, header on line 1, 25 columns with `Mode`, `Fluid` and `Oper` twice), `prod_csv.zip`
+(124 MB: `zone_prd_1954_to_2006`, `_2007_to_2015`, `_2016_to_2024`, `_2025_to_present` and
+`zone_prd.csv`, 3,077,888 rows, which the four period files add up to), `drill_csv.zip` (42
+CSVs and a readme), `hydraulic_fracture_csv.zip`, `dir_survey_csv.zip` (2,039,621 stations),
+`facindex.csv`, `facility_capacity.csv`, fixed-width `.txt` copies and three PDF indexes (listed,
+not read). The hydraulic fracture zip also contains server files (logs, `prefs.ora`,
+inventories): never read.
+
+**Layout facts that mattered.** Every well-keyed table is sorted by well authorization number
+(`Wa_num`, spelled five ways), and each row count equals BCER's readme count (for example
+compl_wo 420,897, hydraulic_fracture 179,470): the scanner stops at the well's last row and
+checks the order on every block. Coordinates in the wells table are DDMMSSss digits (49085314 is
+49 deg 08' 53.14" N), not decimal millionths: checked against the UTM columns of the same rows.
+The well index holds no operator: it comes from the wells table's `Oper Id` and `clients.csv`.
+`Mode`/`Fluid`/`Oper` are the WMOD/WFLU/OPNT code tables of `codes.csv`. The "R" column is not
+expanded by BCER. Only the 2025-and-later fracture stages carry saline and nonsaline fluid
+pumped. Speed from a home line: about 2 to 3 MB/s per range request; one well's whole
+production history (four members) reads about 1 MB when the well is early in the files.
+
+**Terms (read 2026-11-17).** No licence is stated for these files. bc-er.ca/terms/ says the
+material is owned by the Government of British Columbia and may not be reproduced or
+redistributed without the Province's prior written permission; the BCER Open Data Licence
+(based on OGL - BC) is stated only for the GIS Open Data Portal. Results carry
+`commercial_use: unknown`, that text in `provenance.licence` and a caveat to check with BCER.
+BCER could be asked in writing whether the files are under the Open Data Licence; a BC Data
+Catalogue entry under OGL - BC would settle it.
+
 ## Permits, licences and inspections on provincial catalogues
 
 Checked live 2026-10-27 with the municipal sweep (see

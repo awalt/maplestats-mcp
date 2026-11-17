@@ -88,6 +88,15 @@ a module defines only under a setting (`statcan_pumf_tabulate` with
 the same test fails without it. Code that needs a tool's module should call
 `catalogue.tool_module(tool)`: listed tools have no `fn` until loaded.
 
+A tool in a geospatial module (ArcGIS, WFS, OGC API, boundaries, geocoding) also has a
+class in `gis_profile.py`: PURE (geometry, a layer, a grid or geocoding is the product;
+`MAPLE_GIS=0` hides it) or HYBRID (rows or figures from a map service; never hidden).
+`tests/test_gis_profile.py` fails for a tool of those modules with no class, and for any
+text the statistics-only profile still shows that names a PURE tool (the server
+instructions, a module description, a docs page, a plan): add a cut for it in
+`gis_profile.py`. The default profile never changes: keep every cut to the words that name
+the hidden tool.
+
 ### Response contract
 
 Every tool's return type annotation is a Pydantic `BaseModel` (never

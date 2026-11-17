@@ -10,6 +10,7 @@ status of each source is in [`ROADMAP.md`](../ROADMAP.md).
 - [Competition Bureau Canada](competition-bureau.md)
 - [Disclaimer claim check, 2026-10-27](disclaimer-audit.md)
 - [Federal sources](federal-sources.md)
+- [GIS tools: one server, with a switch (decided 2026-11-17)](gis-handling.md)
 - [Municipal sources](municipal-sources.md)
 - [Provincial sources](provincial-sources.md)
 - [Elected officials and districts (Open North Represent)](represent-open-north.md)

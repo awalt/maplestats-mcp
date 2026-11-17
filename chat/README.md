@@ -90,7 +90,13 @@ page.
 - model calls, tool calls and tool errors, the tools by name, and the model's stop
   reasons;
 - the turn number of each question, and the p50 and p95 time to an answer;
-- the same outcomes, tokens and calls per UTC day (400 days kept);
+- `per_answer`: how many model requests, tool calls and model steps each answered question
+  took, as p50, p95 and a histogram (a count of 30 or more is one bin, `30+`, reported as
+  30). A model step is one sampling step: Anthropic's connector runs several inside one
+  request and lists them in `usage.iterations`; a response that does not report them counts
+  as one step, so the steps are then a lower bound. This is what to read to see what a
+  question costs in time and steps (see "The step budget" and "Prompt caching" below);
+- the same outcomes, tokens, calls and answer sizes per UTC day (400 days kept);
 - `today`: questions and tokens counted against `CHAT_DAILY_LIMIT` and
   `CHAT_DAILY_TOKENS`, with the provider and model.
 
@@ -116,14 +122,66 @@ The endpoint is public and every call costs money. Defaults, all overridable by
 environment variable: 20 questions per address per hour (`CHAT_RATE_PER_HOUR`), 500
 per day in total (`CHAT_DAILY_LIMIT`), 1,000 characters per user message,
 16,000 per assistant reply, 120,000 per conversation, a 512 KiB request body,
-8 user turns per conversation, 4,000 output tokens per model call, 12 tool steps, and
-3,000,000 tokens per day in total (`CHAT_DAILY_TOKENS`: input plus output tokens,
-cached input included, summed from the usage of every model call on both backends).
-The question caps count questions, not cost: on the Anthropic path the connector
-passes tool results to the model uncut, so one question can use far more input
-tokens than its text suggests. The token budget is checked before each request (a
-spent budget answers 429 with a message) and grows after each model call, so the
-request that crosses it still finishes.
+8 user turns per conversation, 4,000 output tokens per model call, a step budget per
+question (next section), and 3,000,000 tokens per day in total (`CHAT_DAILY_TOKENS`:
+input plus output tokens, cached input included, summed from the usage of every model
+call on both backends). The question caps count questions, not cost: on the Anthropic
+path the connector passes tool results to the model uncut, so one question can use far
+more input tokens than its text suggests. The token budget is checked before each
+request (a spent budget answers 429 with a message) and grows after each model call, so
+the request that crosses it still finishes.
+
+### The step budget
+
+A question is bounded by requests to the model, and on the Anthropic path one request is
+not one model call: Anthropic's MCP connector runs the tool loop on its own side, takes
+up to about 10 model steps inside a single request, and ends the request with
+`pause_turn` when it reaches that limit, and this app then resumes it. The old default of
+12 requests therefore allowed about 120 model steps for one question (a vague question
+made 17 tool calls over 93 to 158 s).
+
+- `CHAT_MAX_TOOL_STEPS` (Anthropic path, default **2**, was 12): the first request plus
+  one resume, so about 20 model steps at most. The resume is the last request, and its
+  system prompt gets a wrap-up instruction: do not call any more tools, answer now with
+  the figures already in hand, say plainly what could not be got. If that request still
+  ends in `pause_turn`, or writes no answer, the visitor gets the step-limit message ("I
+  could not finish within the demo's tool-call limit. Try a narrower question..."). A
+  budget of 1 has no resume, so it has no wrap-up: the first request is never told to
+  stop calling tools. The first request's prompt says only that the model has a small
+  budget of steps and should put independent calls in the same step.
+- `CHAT_MAX_TOOL_ROUNDS` (`openai` path, default **12**, unchanged): there this app runs
+  the loop, and a round is one model call plus its tool calls, so 12 rounds are at most
+  12 model steps, fewer than the 20 above. A lower number would leave no room for the
+  plan, a search and a data call, which follow one another, before the answer. The last
+  round gets the same wrap-up instruction; a tool call asked for in it is not run, and
+  the answer is the step-limit message.
+
+Before changing either number, read `per_answer` in `/stats` to see what questions
+actually take.
+
+### Prompt caching
+
+`CHAT_PROMPT_CACHE=1` (also `true`, `yes` or `on`; default off) puts
+`cache_control: {"type": "ephemeral"}` (the 5-minute cache) on the system prompt, sent as
+a list of one text block, and on the `mcp_toolset` entry of the Anthropic request. The
+cached prefix is then the tool list plus the system prompt, about 1,800 tokens (the three
+tool definitions are about 1,460 and the prompt about 360), above Haiku 5.5's 512-token
+minimum; a shorter prefix is silently not cached. Cache reads cost a tenth of the input
+price and writes 1.25 times it (Anthropic's prompt-caching page for Haiku 5.5 at the
+5-minute TTL: $0.01 and $0.125 per million tokens, against $0.10 for plain input), and
+the tokens count as `cache_read` and `cache_write` in `/stats` and against the daily
+token budget, as before. The wrap-up instruction goes in a second system block after the
+cached one, so the cached prefix is the same on every request. With the flag off the
+request has no cache fields at all.
+
+It is off so it can be tried on the Render backup first: ask one question twice within
+five minutes and read `/stats`. `tokens.cache_write` should grow on the first and
+`tokens.cache_read` on the second. Anthropic's pages do not say whether the connector
+reuses the cache between the steps of its own tool loop, so `cache_read` on the first
+question is also worth a look. The MCP beta header stays `mcp-client-2025-11-20`.
+Anthropic also lists `mcp-client-2026-09-15`, which records the server's tool list in
+`mcp_tool_listing` blocks and lets a toolset pin it with `tools`; it is not used here, so
+that a problem with it cannot hide a result about caching.
 
 All these counters live in memory and reset whenever the service restarts (a deploy,
 or a free instance waking from sleep), so they are not a hard cap. **The real
