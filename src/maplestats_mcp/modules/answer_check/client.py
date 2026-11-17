@@ -692,6 +692,31 @@ def _value_problems(
             ]
     if latest is not None and latest[1] is not None and latest[0] != period:
         other_full = latest[1] * multiplier
+        # Both mistakes at once: Alberta employment cited as 2660 "persons" for
+        # 2026-09 is 2,659.9 thousand, the 2026-10 value; it was reported as a plain
+        # value mismatch (live 2026-11-15).
+        if word is None and multiplier != 1 and _close(cited, latest[1], tolerance):
+            scale_text = scale or f"x{_fmt(multiplier)}"
+            return [
+                _problem(
+                    index,
+                    "period",
+                    pick(
+                        lang,
+                        f"{_fmt(cited)} is the value for {latest[0]}, not {period}, and it is "
+                        f"in {scale_text}: the full figure is {_fmt(other_full)}.",
+                        f"{_fmt(cited)} est la valeur de {latest[0]}, pas de {period}, et elle "
+                        f"est en {scale_text} : le chiffre entier est {_fmt(other_full)}.",
+                    ),
+                    pick(
+                        lang,
+                        f"Cite {_fmt(other_full)} for {latest[0]}, or use {_fmt(full)} for "
+                        f"{period}.",
+                        f"Citez {_fmt(other_full)} pour {latest[0]}, ou utilisez {_fmt(full)} "
+                        f"pour {period}.",
+                    ),
+                )
+            ]
         if _close(cited_full, other_full, tolerance):
             return [
                 _problem(
