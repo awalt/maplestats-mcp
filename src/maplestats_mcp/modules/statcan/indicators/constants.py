@@ -31,6 +31,25 @@ CACHE_TTL_SECONDS = 6 * 60 * 60
 SEARCH_LIMIT_DEFAULT = 20
 SEARCH_LIMIT_MAX = 300
 
+# Some indicators come with no level: the feed's `value` is {"en": "", "fr": ""} and only
+# `growth` is filled (issue #272). Confirmed live 2026-11-16 against the raw feeds: 119 of
+# 2,378 indicators in ind-all.json, 26 of 230 in ind-econ.json and 3 of 116 in ind-hp.json,
+# among them the Consumer Price Index and its components, the price indexes, real GDP
+# and the quarterly labour productivity; each of them has a `growth`. The client reads that
+# as it is (the empty text is upstream, not a parsing gap) and names the indicators in
+# `provenance.limits` instead. At most this many titles are named, the rest are counted.
+EMPTY_VALUE_TITLES_MAX = 5
+
+# Where to read the level of an indicator whose `value` is empty, keyed by
+# (registry_number, indicator_number, geo_code); each entry is the WDS vector id and what it
+# is, in English and in French. Only vectors checked against the indicator belong here: for
+# the Consumer Price Index (3665/1, Canada, source table 18100004), getSeriesInfoFromVector
+# answered "Canada;All-items" for 41690973 on 2026-11-16. The note points to the source
+# table for every other indicator.
+LEVEL_VECTORS = {
+    (3665, 1, 0): (41690973, "the all-items CPI for Canada", "l'IPC d'ensemble du Canada"),
+}
+
 # Province/territory SGC codes -> the feed's own 0-13 numbering (verified live
 # 2026-10-02 against the "geo" lookup of ind-all.json). 10-13 are not listed:
 # they are valid feed codes (BC, YT, NT, NU) and collide with SGC 10-13.

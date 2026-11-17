@@ -9,6 +9,13 @@ absolute URL. `geo_code` is an int on each indicator but a string in
 the response's own `geo` lookup array -- this client matches them by
 string value to build a geo_code -> name map, then looks up each
 indicator's name from it.
+
+For some indicators (the Consumer Price Index, real GDP, the price
+indexes) the feed's own `value` is an empty string and only `growth` is
+filled; confirmed live 2026-11-16 against the raw ind-all.json,
+ind-econ.json and ind-hp.json (see constants.EMPTY_VALUE_TITLES_MAX).
+`value` stays a plain string, as the output schema says, and
+`provenance.limits` names the affected indicators of each result.
 """
 
 from __future__ import annotations
@@ -26,6 +33,7 @@ from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import InvalidInput, UpstreamError, UpstreamUnavailable
 from maplestats_mcp.shared.http import api_get
+from maplestats_mcp.shared.limits import join_limits
 from maplestats_mcp.shared.rate_limiter import get_limiter
 
 _LIMITER = get_limiter(
@@ -295,9 +303,55 @@ async def get_indicators(
             url=url,
             cached=was_cached,
             schema_name="statcan_indicators.IndicatorList",
-            limits="; ".join(notes) or None,
+            limits=join_limits("; ".join(notes) or None, _no_level_note(page, lang)),
             lang=lang,
         ),
+    )
+
+
+def _no_level_note(indicators: list[Indicator], lang: str) -> str | None:
+    """Name the indicators whose `value` is empty and say where their level is.
+
+    The feed publishes no level for them (issue #272), only `growth`; a reader
+    that took `value` for the figure would find nothing and might fall back on
+    memory. Each title is named once (the same title comes back for several
+    places), and the note is None when every indicator has a value.
+    """
+    empty = [item for item in indicators if not item.value.strip()]
+    if not empty:
+        return None
+    titles = list(dict.fromkeys(item.title for item in empty))
+    shown = titles[: constants.EMPTY_VALUE_TITLES_MAX]
+    names = "; ".join(shown)
+    if len(titles) > len(shown):
+        more = len(titles) - len(shown)
+        names += say(f"; and {more} more", f"; et {more} autres", lang)
+
+    # A vector is named only for an indicator checked against it (constants.LEVEL_VECTORS).
+    known = [
+        constants.LEVEL_VECTORS[key]
+        for item in empty
+        if (key := (item.registry_number, item.indicator_number, item.geo_code))
+        in constants.LEVEL_VECTORS
+    ]
+    vector_en = vector_fr = ""
+    if known:
+        vector_id, what_en, what_fr = known[0]
+        vector_en = f" (v{vector_id} is {what_en})"
+        vector_fr = f" (v{vector_id} est {what_fr})"
+
+    return say(
+        f"In this result the feed gives no level (value is empty) for: {names}. Only growth "
+        "is given (see growth_details for what it measures). For the level, read the series "
+        "behind the indicator: its source_table with wds_get_cube_metadata and "
+        "wds_get_data_from_cube_coord, or wds_get_data_from_vectors when you know the "
+        f"vector{vector_en}",
+        f"Dans ce résultat, le fil ne donne pas de niveau (value est vide) pour : {names}. "
+        "Seule growth est fournie (voir growth_details pour ce qu'elle mesure). Pour le "
+        "niveau, lisez la série sous-jacente de l'indicateur : son source_table avec "
+        "wds_get_cube_metadata et wds_get_data_from_cube_coord, ou wds_get_data_from_vectors "
+        f"si vous connaissez le vecteur{vector_fr}",
+        lang,
     )
 
 
