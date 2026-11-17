@@ -7,15 +7,14 @@ RUN groupadd -r appuser && useradd -r -g appuser -m appuser
 WORKDIR /app
 
 # OCR for scanned PDFs (MAPLE_OCR=1, shared/ocr.py): the tesseract program with its English
-# and French data, from Debian. Without recommended packages it is about 105 MB installed
-# (79 packages, 35 MB to download) and Debian ships Tesseract 5.5 with the "fast" models.
-# Those sizes are read from the Debian package index (2026-11-16), not from a build: no
-# Docker was available where this was written. The base image is pinned by digest but
-# apt installs what Debian holds on the day of the build, so the version is not
-# reproducible (pinning tesseract-ocr=5.5.0-1+b1 would fail the day Debian replaces it,
-# and snapshot.debian.org is the way to freeze it if that ever matters): the build prints
-# the version, and fails if the English or French data are missing. A 512 MB host that
-# leaves MAPLE_OCR off never starts the program.
+# and French data, from Debian. Without recommended packages the CI build of 2026-11-17
+# installed 71 packages (33.6 MB to download, 107 MB on disk): Tesseract 5.5.0 and
+# Leptonica 1.84.1, with Debian's tessdata 4.1.0 files for eng, fra and osd. The base image
+# is pinned by digest but apt installs what Debian holds on the day of the build, so the
+# version is not reproducible (pinning tesseract-ocr=5.5.0-1+b1 would fail the day Debian
+# replaces it, and snapshot.debian.org is the way to freeze it if that ever matters): the
+# build prints the version, and fails if the English or French data are missing. A 512 MB
+# host that leaves MAPLE_OCR off never starts the program.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-fra \
     && rm -rf /var/lib/apt/lists/* \
