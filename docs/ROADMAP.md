@@ -511,6 +511,25 @@ Implications:
 - Adopt OpenMCP's `catalog_meta` guard: the index records the embedding model, its dimension and a prompt version (and, per `implementation.md`, build time and sources), and the server refuses an index built with a different model than the one it would query with.
 - Memory: the `google/embeddinggemma-2` text backbone has 270 million parameters (`implementation.md`), about 1.1 GB in fp32 (270 million × 4 bytes), against 512 MB on Render's free tier (to confirm). Measure memory and cold start in Phase 2 before any hosted use.
 
+## GIS tools
+
+**Decided 2026-11-17: keep one server.** The geospatial tools stay in MapleStats MCP, behind one reversible switch instead of a second package. The analysis (2026-11-16: classification, coupling, costs, options, what was measured and what was only read) is in [`findings/gis-handling.md`](findings/gis-handling.md).
+
+- **Two classes.** PURE tools return geometry, a layer, a grid, a boundary file or a geocoding result: 14 of 463 tools (3.0%). HYBRID tools serve rows or figures from a GIS endpoint (ArcGIS REST, WFS, OGC API) or carry coordinates: 40 tools (8.6%). The checked-in class map is `src/maplestats_mcp/gis_profile.py`.
+- **Usage.** The PURE class received 0 of 3,190 data-tool calls on the hosted `/stats` counters from 2026-11-07 to 2026-11-17; the HYBRID class received 139 (4.4%). That is ten days, almost all from clients labelled "untracked", and it cannot tell users from the maintainer's own testing: read the counters again before relying on it.
+- **Hybrids stay.** ArcGIS Hub carries building permits, planning applications, business licences and food inspections, and is the only local portal the planner lists for 61 of its 87 place entries; ECCC GeoMet observations (`eccc_query_items`) had 81 of those 139 calls. `shared/arcgis.py` stays shared: five modules import it, and three of them (`arcgis_hub`, `ised/spectrum`, `eps`) are hybrid.
+- **The switch.** `MAPLE_GIS`, on by default (`0`, `false`, `no` or `off` run the statistics-only profile): the PURE tools leave `search_tools`, `plan_query`, `call_tool` (a call by name reads as an unknown tool), the server instructions and `docs://catalogue`, and the three modules that hold only such tools (`bcgw`, `nrcan_nbac`, `nrcan_geo`) are not registered, so preload does not import them. Nothing is hidden unless it is set, so the tool surface does not change. Implemented in [#292](https://github.com/dsanchezp18/maplestats-mcp/pull/292).
+- **No second package yet.** It would need a shared core (637 of 1,232 Python files import `maplestats_mcp.shared`), a second release and deploy path, and would remove tools from the catalogue, which `tests/test_tool_surface.py` counts as breaking; the planner is not driven by the catalogue, so 14.7% of the benchmark plans (19 of 129) would name a removed tool. The analysis estimates 8 to 15 engineer-days for a package in the repository, against 1 to 1.5 for the switch (estimates, not measurements).
+- **Caps stay as they are.** The 200,000-byte response budget (`MAPLE_RESPONSE_MAX_BYTES`), row limits, geometry byte budgets and timeouts are not raised to serve geometry better.
+
+**Revisit this decision when any of these holds:**
+
+1. A feature needs shapely, pyproj, rasterio or geopandas, or raster or tile output. There is no geometry-processing dependency today (`pyproject.toml`; LODE hand-codes its projection), so an image gains nothing from a split now.
+2. The PURE tools exceed about 10% of data-tool calls over a 60-day window of `/stats` (the 10% is a suggested figure, not a measured one), or `/stats` shows latency or `result_size` problems on geometry calls.
+3. A listing (the Claude directory, a registry) asks for a narrower scope.
+
+If one holds, plan the split starting from `shared/wfs.py` (imported only by `bcgw`, `cwfis` and `nrcan_nbac`) and the three wholly PURE modules; make the planner, the instructions and `search_tools` profile-aware in the same change, and do not re-baseline the discovery floors to absorb it.
+
 ## Open candidates
 
 Nothing below is started. Ordered by expected value.
