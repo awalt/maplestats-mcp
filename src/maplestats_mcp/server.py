@@ -1072,7 +1072,8 @@ def build_server() -> FastMCP:
     @mcp.resource("docs://status")
     def upstream_status_doc() -> str:
         """Upstream hosts MapleStats has paused after repeated failures (EN/FR),
-        with when each is tried again. Read it when tools for one source keep
+        with the cause (a Cloudflare challenge, timeouts, ...), since when, and
+        when each is tried again. Read it when tools for one source keep
         failing with UpstreamUnavailable."""
         return render_status()
 

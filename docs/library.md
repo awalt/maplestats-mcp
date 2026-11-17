@@ -252,7 +252,11 @@ every client calls:
   repeated failures a host is paused for a cooldown and calls to it raise
   `UpstreamUnavailable` at once (`MAPLE_BREAKER=0` turns this off;
   `MAPLE_BREAKER_FAILURES`, `MAPLE_BREAKER_WINDOW_SECONDS` and
-  `MAPLE_BREAKER_COOLDOWN_SECONDS` tune it).
+  `MAPLE_BREAKER_COOLDOWN_SECONDS` tune it). A Cloudflare challenge raises
+  `CloudflareChallenge` (an `UpstreamUnavailable`) whose message says not to
+  retry, since when the host has been challenging, and what still works; while
+  it lasts the probes are spaced 1, 5, 15 and then 30 times the cooldown apart,
+  at most 30 minutes (or the cooldown, if longer).
 - **File parsing.** `MAPLE_PARSE_WORKERS` and `MAPLE_PARSE_TIMEOUT_SECONDS`
   bound the threads that read Excel and CSV files; the cache folders
   (`MAPLE_PUMF_CACHE_DIR`, `MAPLE_LODE_CACHE_DIR`, ...) and

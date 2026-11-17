@@ -67,6 +67,24 @@ def cloudflare_challenge() -> dict:
     }
 
 
+@pytest.fixture
+def statcan_security_check(cloudflare_challenge: dict) -> dict:
+    """`httpx_mock.add_response` kwargs for the page StatCan's www150 served from 2026-11-17.
+
+    Measured that day: HTTP 403, `Server: cloudflare`, `Cf-Mitigated: challenge`, a
+    managed challenge (`cType: 'managed'`) titled "Vérification de sécurité / Security
+    Check", with no "Just a moment" in it. Its headers are the same as the www12 page's.
+    """
+    return {
+        **cloudflare_challenge,
+        "text": (
+            '<!DOCTYPE html><html lang="en-US"><head><meta charset="UTF-8">'
+            "<title>Vérification de sécurité / Security Check</title></head>"
+            "<body><script>window._cf_chl_opt = {cType: 'managed'};</script></body></html>"
+        ),
+    }
+
+
 @pytest.fixture(autouse=True)
 def _empty_file_cache() -> None:
     """Downloaded files are cached by URL; a test must not see another test's bytes."""

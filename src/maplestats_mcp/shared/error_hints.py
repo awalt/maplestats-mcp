@@ -25,6 +25,7 @@ from fastmcp.exceptions import NotFoundError, ToolError
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 
 from maplestats_mcp.shared.errors import (
+    CloudflareChallenge,
     DataLocked,
     InvalidInput,
     ModuleUnavailable,
@@ -39,7 +40,7 @@ from maplestats_mcp.shared.validation import argument_error_code, call_arguments
 # inner call (call_tool runs its target through the middleware again).
 _MARKERS = ("Fix:", "Solution :", "Solution :")
 
-# Most specific first: DataLocked and UpstreamUnavailable before their bases.
+# Most specific first: DataLocked and CloudflareChallenge before UpstreamUnavailable, their base.
 _HINTS: tuple[tuple[type[BaseException], str, str], ...] = (
     (
         DataLocked,
@@ -51,6 +52,25 @@ _HINTS: tuple[tuple[type[BaseException], str, str], ...] = (
             "Solution : réessayez après 8 h 30 (heure de l'Est), à la fin de la mise à jour "
             "quotidienne de Statistique Canada ; d'ici là, dites que les données sont "
             "verrouillées plutôt que de répondre de mémoire."
+        ),
+    ),
+    (
+        # A challenge is a policy block that lasts hours, not a blip: "retry in a minute" would
+        # send the caller into a loop (StatCan's www150, 2026-11-17). shared/http.py's own
+        # message already carries a fuller fix naming the sources that still work; this covers
+        # a challenge raised with a message that has none.
+        CloudflareChallenge,
+        (
+            "Fix: do not retry; the publisher's host is challenging automated clients, which "
+            "usually lasts hours, not minutes. Say the source is blocking automated access and "
+            "why, name another source for the same data if search_tools or plan_query lists "
+            "one, and do not answer from memory."
+        ),
+        (
+            "Solution : ne réessayez pas ; l'hôte de l'éditeur bloque les clients automatisés, "
+            "ce qui dure en général des heures et non des minutes. Dites que la source bloque "
+            "l'accès automatisé et pourquoi, nommez une autre source pour les mêmes données si "
+            "search_tools ou plan_query en liste une, et ne répondez pas de mémoire."
         ),
     ),
     (
