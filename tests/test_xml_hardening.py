@@ -17,7 +17,7 @@ import json
 
 import pytest
 
-from maplestats_mcp.modules.oeb import records
+from maplestats_mcp.modules.oeb import client as oeb
 from maplestats_mcp.modules.ourcommons import client as ourcommons
 from maplestats_mcp.modules.recalls import client as recalls
 from maplestats_mcp.modules.recalls import constants as recalls_constants
@@ -50,17 +50,17 @@ def test_sdmx_xml_with_entities_is_a_bad_body_error():
 
 def test_oeb_xml_with_entities_is_an_upstream_error():
     with pytest.raises(UpstreamError, match="not readable XML"):
-        list(records.xml_records(BOMB))
+        list(oeb._rows(BOMB, "xml", None))
 
 
 def test_oeb_malformed_xml_is_an_upstream_error():
     with pytest.raises(UpstreamError, match="not readable XML"):
-        list(records.xml_records(UNCLOSED))
+        list(oeb._rows(UNCLOSED, "xml", None))
 
 
 def test_oeb_well_formed_xml_still_reads():
     body = b"<root><row><a>1</a><b>x</b><c>2</c></row><row><a>3</a><b>y</b><c>4</c></row></root>"
-    assert [record for _, record in records.xml_records(body)] == [
+    assert list(oeb._rows(body, "xml", None)) == [
         {"a": 1, "b": "x", "c": 2},
         {"a": 3, "b": "y", "c": 4},
     ]

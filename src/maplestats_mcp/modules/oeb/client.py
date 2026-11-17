@@ -21,6 +21,8 @@ from typing import Any
 from urllib.parse import quote, urljoin, urlparse
 
 import httpx
+from defusedxml import DefusedXmlException
+from defusedxml.ElementTree import ParseError
 
 from maplestats_mcp.modules.oeb import constants, pages, records
 from maplestats_mcp.modules.oeb.schemas import (
@@ -39,6 +41,7 @@ from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance, raise_localized
 from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
 from maplestats_mcp.shared.executor import run_parse
+from maplestats_mcp.shared.fr_typography import call_error
 from maplestats_mcp.shared.http import new_client, send_with_retry
 from maplestats_mcp.shared.i18n import pick
 from maplestats_mcp.shared.models import Provenance
@@ -543,9 +546,24 @@ async def _download(file: OebFile, lang: str) -> tuple[bytes, bool]:
     return body, cached
 
 
+def _xml_rows(body: bytes) -> Iterator[dict[str, Cell]]:
+    """The records of an XML file. A file that is not well-formed XML, or that declares a
+    DTD or entities (refused by defusedxml), is an UpstreamError: the parser's own errors
+    are a SyntaxError and a ValueError subclass that would reach the client untyped."""
+    try:
+        for _, record in records.xml_records(body):
+            yield record
+    except (ParseError, DefusedXmlException) as exc:
+        raise call_error(
+            UpstreamError,
+            f"the file is not readable XML ({exc}).",
+            f"le fichier n'est pas du XML lisible ({exc}).",
+        ) from exc
+
+
 def _rows(body: bytes, fmt: str, sheet: str | None) -> Iterator[dict[str, Cell]]:
     if fmt == "xml":
-        return (record for _, record in records.xml_records(body))
+        return _xml_rows(body)
     return records.xlsx_records(body, sheet or "")
 
 

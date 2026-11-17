@@ -28,12 +28,9 @@ from collections.abc import Iterator
 from datetime import date, datetime, time
 from typing import Any
 
-from defusedxml import DefusedXmlException
-from defusedxml.ElementTree import ParseError, iterparse
+from defusedxml.ElementTree import iterparse
 
-from maplestats_mcp.shared.errors import UpstreamError
 from maplestats_mcp.shared.executor import check_deadline
-from maplestats_mcp.shared.fr_typography import call_error
 
 _ESCAPE = re.compile(r"_x([0-9A-Fa-f]{4})_")
 _SPACES = re.compile(r"\s+")
@@ -78,23 +75,7 @@ def to_cell(text: str | None) -> Cell:
 
 
 def xml_records(body: bytes) -> Iterator[tuple[str, dict[str, Cell]]]:
-    """(record tag, record) for every record element in document order.
-
-    A file that is not well-formed XML, or that declares a DTD or entities (refused by
-    defusedxml), is an UpstreamError: the parser's own errors are a SyntaxError and a
-    ValueError subclass that would reach the client untyped.
-    """
-    try:
-        yield from _scan_xml(body)
-    except (ParseError, DefusedXmlException) as exc:
-        raise call_error(
-            UpstreamError,
-            f"the file is not readable XML ({exc}).",
-            f"le fichier n'est pas du XML lisible ({exc}).",
-        ) from exc
-
-
-def _scan_xml(body: bytes) -> Iterator[tuple[str, dict[str, Cell]]]:
+    """(record tag, record) for every record element in document order."""
     stack: list[Any] = []
     # Per open element: whether a record was read inside it. Records are
     # removed once read, so without this an emptied <LIST_G_...> would look
