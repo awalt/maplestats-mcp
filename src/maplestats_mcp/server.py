@@ -779,7 +779,9 @@ Sources, by tool-name prefix:
   gc_infobase_ (federal spending, FTEs), disclosure_ (proactive disclosure:
   contracts over $10,000, grants and contributions, ministers' and senior
   officials' travel and hospitality; search and totals),
-  cihi_ (health-system indicators), phac_infobase_ (surveillance files),
+  cihi_ (health-system indicators), cihi_workforce_ (CIHI health workforce
+  tables: physicians, nurses, pharmacists, therapists), phac_infobase_
+  (surveillance files),
   nrcan_geo_ (geocoding, place names), nrcan_energy_use_, nrcan_nbac_
   (burned areas), nrcan_minerals_ (annual mineral production by
   province), cer_ (Canada Energy Regulator), cgc_ (Canadian Grain

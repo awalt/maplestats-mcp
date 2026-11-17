@@ -959,6 +959,11 @@ SOURCES: dict[str, Source] = {
 # Sub-API folders (modules/<key>/<family>/tools.py), keyed "<key>/<family>".
 # Tools in a module's own tools.py belong to the "<key>/" entry.
 FAMILIES: dict[str, tuple[str, str]] = {
+    "cihi/": ("Indicator Library", "Répertoire des indicateurs"),
+    "cihi/workforce": (
+        "Health workforce data tables",
+        "Tableaux de données sur la main-d'œuvre de la santé",
+    ),
     "cmhc/": (
         "Housing Market Information Portal",
         "Portail de l'information sur le marché de l'habitation",

@@ -435,6 +435,59 @@ FR: dict[str, str] = {
     "a drug's PMPRB price review status": "état de l'examen du prix d'un médicament par le CEPMB",
     "public drug program spending (CIHI)": "dépenses des régimes publics d'assurance médicaments (ICIS)",
     "StatCan CPI for prescribed medicines": "IPC des médicaments d'ordonnance de Statistique Canada",
+    # Health workforce
+    "Health workforce: physicians, nurses, pharmacists, therapists, support workers": (
+        "Main-d'œuvre de la santé : médecins, infirmières, pharmaciens, thérapeutes, préposés"
+    ),
+    "CIHI's workbook for the profession (physicians, nurses, pharmacists, "
+    "physiotherapists, occupational therapists, personal support workers in Alberta, "
+    "National Physician Database)": (
+        "classeur de l'ICIS pour la profession (médecins, infirmières, pharmaciens, "
+        "physiothérapeutes, ergothérapeutes, préposés aux services de soutien à la personne "
+        "en Alberta, Base de données nationale sur les médecins)"
+    ),
+    "the workbook's tables: ids, titles, label and value columns": (
+        "les tableaux du classeur : identifiants, titres, colonnes d'identification et de valeurs"
+    ),
+    "rows by jurisdiction, year, specialty or age; marks such as '—' are not zero": (
+        "lignes par province ou territoire, année, spécialité ou âge ; un symbole comme « — » "
+        "n'est pas un zéro"
+    ),
+    "CIHI's definitions, methodology and how to cite the workbook": (
+        "définitions et méthodologie de l'ICIS, et comment citer le classeur"
+    ),
+    "CIHI indicators on the workforce: physicians per 100,000, nurses entering and "
+    "leaving the workforce": (
+        "indicateurs de l'ICIS sur la main-d'œuvre : médecins pour 100 000 habitants, "
+        "infirmières qui entrent dans la profession et la quittent"
+    ),
+    "StatCan labour force and census tables on health occupations (survey-based)": (
+        "tableaux de Statistique Canada sur la population active et le recensement pour les "
+        "professions de la santé (fondés sur des enquêtes)"
+    ),
+    "CIHI's terms of use limit commercial use and use inside software applications "
+    "without its written authorization: say so when passing these figures on, and "
+    "credit CIHI as the source.": (
+        "Les conditions d'utilisation de l'ICIS limitent l'usage commercial et l'usage dans "
+        "des applications logicielles sans son autorisation écrite : dites-le en transmettant "
+        "ces chiffres, et citez l'ICIS comme source."
+    ),
+    "CIHI counts regulated providers from registries (Scott's Medical Database, the "
+    "Health Workforce Database); StatCan's labour force and census occupation counts "
+    "come from surveys. They differ in definition: do not mix them in one series.": (
+        "L'ICIS dénombre les fournisseurs réglementés à partir de registres (Base de données "
+        "médicales Scott's, Base de données sur la main-d'œuvre de la santé) ; les effectifs "
+        "par profession de la population active et du recensement de Statistique Canada "
+        "viennent d'enquêtes. Les définitions diffèrent : ne les mêlez pas dans une même série."
+    ),
+    "A '—' in a CIHI table means no data, not zero: in the 2025 physician tables the "
+    "Ontario column is '—' (data release delayed), so the Canada totals are '—' too. "
+    "Read the table's notes.": (
+        "Un « — » dans un tableau de l'ICIS signifie aucune donnée, et non zéro : dans les "
+        "tableaux de 2025 sur les médecins, la colonne de l'Ontario est à « — » (diffusion "
+        "des données retardée), de sorte que les totaux du Canada sont aussi « — ». Lisez "
+        "les notes du tableau."
+    ),
     "Public health surveillance: respiratory viruses, overdoses, infectious disease": (
         "Surveillance de la santé publique : virus respiratoires, surdoses, maladies infectieuses"
     ),
