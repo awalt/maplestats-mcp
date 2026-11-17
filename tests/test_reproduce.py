@@ -9,9 +9,12 @@ scripts/smoke_test_modules.py's reproduce steps.
 from __future__ import annotations
 
 import ast
+import asyncio
+import itertools
 import json
 import re
 
+import httpx
 import pytest
 
 from maplestats_mcp.modules.reproduce import client, probe
@@ -381,6 +384,120 @@ def test_choose_skips_count_only_requests():
     # A tool that only counts still gets its one request.
     chosen, _ = probe.choose(arcgis[:1])
     assert chosen is not None and "returnCountOnly" in chosen.url
+
+
+# A fan-out: one request per province to one endpoint family, after a metadata call. The
+# result's URL is the template, as cmhc_list_metropolitan_areas's was before #267.
+_PROVINCES = "https://x.ca/Navigation/MetsByProvince/"
+_TEMPLATE = _PROVINCES + "{province_id}"
+
+
+def _fan_out_requests(order: tuple[str, ...]) -> list[RecordedRequest]:
+    requests = [RecordedRequest("GET", "https://x.ca/provinces", b"", "", status=200)]
+    requests += [RecordedRequest("GET", _PROVINCES + p, b"", "", status=200) for p in order]
+    return requests
+
+
+@pytest.mark.parametrize("order", list(itertools.permutations(("59", "10", "48", "9"))))
+def test_choose_refuses_a_fan_out_whatever_order_it_started_in(order):
+    # Requests are recorded as they start, and a gather's start order is whatever the
+    # rate limiter and the source make it. The answer must not depend on it (#274).
+    with pytest.raises(probe.FanOut) as refused:
+        probe.choose(_fan_out_requests(order), _TEMPLATE)
+    assert refused.value.note == (
+        "This result combines 4 requests to one endpoint family "
+        f"({_PROVINCES}{{}}, such as 9, 10, 48, ...), so a script cannot say which one to "
+        "repeat. Call the tool again with an argument that selects one of them, then "
+        "reproduce that call."
+    )
+    assert len(refused.value.requests) == 4
+    # A result with no URL of its own is refused the same way.
+    with pytest.raises(probe.FanOut):
+        probe.choose(_fan_out_requests(order))
+    # A result that names one province's page replays that page, in any order.
+    chosen, pages = probe.choose(_fan_out_requests(order), _PROVINCES + "48")
+    assert chosen is not None and chosen.url == _PROVINCES + "48" and pages == 1
+
+
+def test_choose_still_replays_what_is_not_a_fan_out():
+    # One province asked for: one request to the family, so nothing is ambiguous.
+    chosen, pages = probe.choose(_fan_out_requests(("48",)), _TEMPLATE)
+    assert chosen is not None and chosen.url == _PROVINCES + "48" and pages == 1
+    # Lookups that come before the data request are not the data request.
+    lookups = [
+        RecordedRequest("GET", "https://x.ca/ids/1", b"", "", status=200),
+        RecordedRequest("GET", "https://x.ca/ids/2", b"", "", status=200),
+        RecordedRequest("GET", "https://x.ca/data?offset=0", b"", "", status=200),
+    ]
+    chosen, _ = probe.choose(lookups)
+    assert chosen is not None and chosen.url.endswith("data?offset=0")
+    # Metadata and data endpoints differ in words, not in ids.
+    meta = [
+        RecordedRequest("GET", "https://x.ca/collections/a1/queryables", b"", "", status=200),
+        RecordedRequest("GET", "https://x.ca/collections/a1/items", b"", "", status=200),
+    ]
+    chosen, _ = probe.choose(meta)
+    assert chosen is not None and chosen.url.endswith("/items")
+    # Paging is one path with new offsets (the first test above): still the first page.
+    paged = [
+        RecordedRequest("GET", "https://x.ca/rows/7?offset=0", b"", "", status=200),
+        RecordedRequest("GET", "https://x.ca/rows/7?offset=500", b"", "", status=200),
+    ]
+    chosen, pages = probe.choose(paged)
+    assert chosen is not None and chosen.url.endswith("offset=0") and pages == 2
+
+
+async def test_a_gather_that_finishes_out_of_order_is_refused_every_time(httpx_mock):
+    ids = ("47", "48", "59")
+    reply_after: dict[str, float] = {}
+    finished: list[str] = []
+
+    async def reply(request: httpx.Request) -> httpx.Response:
+        province = request.url.path.rsplit("/", 1)[-1]
+        await asyncio.sleep(reply_after[province])
+        finished.append(province)
+        return httpx.Response(200, json={"province": province})
+
+    httpx_mock.add_callback(reply, url=re.compile(re.escape(_PROVINCES) + r"\d+"), is_reusable=True)
+    starts: set[tuple[str, ...]] = set()
+    notes: set[str] = set()
+    # Each province's rank is when it starts; the one that starts first replies last, so
+    # the requests finish in the reverse of the order they were recorded in.
+    for ranks in [(0, 1, 2), (2, 1, 0), (1, 2, 0)]:
+        reply_after.update({p: 0.3 - 0.1 * rank for p, rank in zip(ids, ranks, strict=True)})
+        finished.clear()
+
+        async def one(province: str, rank: int):
+            await asyncio.sleep(0.05 * rank)
+            return await api_get(_PROVINCES + province)
+
+        with recording() as requests:
+            await asyncio.gather(*(one(p, r) for p, r in zip(ids, ranks, strict=True)))
+        started = tuple(r.url.rsplit("/", 1)[-1] for r in requests)
+        starts.add(started)
+        assert finished == list(reversed(started))
+        with pytest.raises(probe.FanOut) as refused:
+            probe.choose(requests, _TEMPLATE)
+        notes.add(refused.value.note)
+    # Three different recorded orders, one refusal.
+    assert len(starts) == 3 and len(notes) == 1
+
+
+async def test_reproduce_code_says_a_fan_out_has_no_single_request(monkeypatch):
+    requests = _fan_out_requests(("47", "48", "59"))
+    result = {"provenance": {"url": _TEMPLATE}}
+
+    async def run_tool(tool, args, lang="en"):
+        return result, requests
+
+    monkeypatch.setattr(client, "_run_tool", run_tool)
+    # No httpx_mock here: replaying a request would fail the test, and none is made.
+    refused = await client.reproduce("fan_out_tool", {})
+    assert refused.scripts == [] and refused.method == "none" and refused.source_url == _TEMPLATE
+    assert len(refused.notes) == 1 and "combines 3 requests" in refused.notes[0]
+    french = await client.reproduce("fan_out_tool", {}, lang="fr")
+    assert "combine 3 requêtes vers une même famille" in french.notes[0]
+    assert "reproduisez cet appel" in french.notes[0]
 
 
 def test_unsent_arguments_are_the_ones_applied_locally():

@@ -3,7 +3,9 @@
 reproduce_code runs the tool once while shared/http.py records every
 request (URL with all query parameters, POST body, Accept header). The
 data request is the last successful one; when a tool paged through the
-same endpoint, the first page is used and a note says so. The request is
+same endpoint, the first page is used and a note says so; when it fanned
+out over several ids of one endpoint (13 provinces, 5 years) and its result
+names none of them, nothing is replayed (see `FanOut`). The request is
 then fetched once more to confirm what comes back and where the rows sit,
 so a script never reads a whole JSON response as a single row.
 
@@ -71,6 +73,66 @@ def _count_only(request: RecordedRequest) -> bool:
     return lowered.get("returncountonly") == "true" or lowered.get("limit") == "0"
 
 
+class FanOut(Exception):
+    """The tool made several requests to one endpoint family and its result names none.
+
+    A gather over ids (CMHC's 13 provinces, one CSV per year) records its
+    requests in the order they started, which the source's speed and the rate
+    limiter decide, so "the last request" would be a different one on each run.
+    `note` is the reproduce_code note that says so; `requests` are the
+    requests of the family.
+    """
+
+    def __init__(self, note: str, requests: list[RecordedRequest]) -> None:
+        super().__init__(note)
+        self.note = note
+        self.requests = requests
+
+
+def _family(url: str) -> str:
+    """The endpoint family of a URL: host and path, with each segment that holds a digit
+    (an id, a year, a file number) replaced by `{}`.
+
+    `.../MetsByProvince/47` and `.../MetsByProvince/48` share one family; metadata
+    and data endpoints (`/queryables`, `/items`) do not, so a tool that reads its
+    metadata first and its data last is not mistaken for a fan-out.
+    """
+    parsed = urlparse(url)
+    segments = [
+        "{}" if re.search(r"\d", segment) else segment for segment in parsed.path.split("/")
+    ]
+    return f"{parsed.scheme}://{parsed.netloc}{'/'.join(segments)}"
+
+
+def _natural_key(text: str) -> list[Any]:
+    # Digits compare as numbers ("9" before "10"). The split puts text at even
+    # positions and digit runs at odd ones, so two keys never compare a text with a number.
+    return [int(piece) if i % 2 else piece for i, piece in enumerate(re.split(r"(\d+)", text))]
+
+
+def _fan_out(family: list[RecordedRequest]) -> FanOut:
+    """The refusal for requests that share an endpoint family but not a path.
+
+    The note and the order of its examples depend only on which requests were
+    made, never on the order they were recorded in.
+    """
+    paths = sorted({_path(r.url) for r in family}, key=_natural_key)
+    split = [path.split("/") for path in paths]
+    # The segments that differ between the paths, kept in place, and the first one's values.
+    varying = [len({parts[i] for parts in split}) > 1 for i in range(len(split[0]))]
+    shown = ["{}" if differs else part for part, differs in zip(split[0], varying, strict=True)]
+    first = varying.index(True)
+    examples = [parts[first] for parts in split]
+    more = ", ..." if len(examples) > 3 else ""
+    note = (
+        f"This result combines {len(family)} requests to one endpoint family "
+        f"({'/'.join(shown)}, such as {', '.join(examples[:3])}{more}), so a script cannot "
+        "say which one to repeat. Call the tool again with an argument that selects one of "
+        "them, then reproduce that call."
+    )
+    return FanOut(note, family)
+
+
 def choose(
     requests: list[RecordedRequest], provenance_url: str = ""
 ) -> tuple[RecordedRequest | None, int]:
@@ -81,6 +143,13 @@ def choose(
     still reproduces the search. Otherwise
     the last successful GET or POST is the data request. A count-only
     request (see `_count_only`) is never chosen while a request for rows exists.
+
+    When the result names none of them and the request it would fall back to
+    belongs to a family of several paths that differ only in an id or a year
+    (`_family`), the tool fanned out and no one request is the data request:
+    FanOut is raised rather than replaying whichever started last (issue #274).
+    Requests that share one path and differ in their query string are paging
+    through an endpoint, not a fan-out, and still give the first page.
     """
     ok = [
         r
@@ -98,6 +167,12 @@ def choose(
     data = [r for r in ok if "html" not in r.response_type.lower()]
     if "html" in target.response_type.lower() and data:
         target = data[-1]
+    if not named:
+        family = [
+            r for r in ok if r.method == target.method and _family(r.url) == _family(target.url)
+        ]
+        if len({_path(r.url) for r in family}) > 1:
+            raise _fan_out(family)
     same = [r for r in ok if _path(r.url) == _path(target.url) and r.method == target.method]
     return same[0], len(same)
 

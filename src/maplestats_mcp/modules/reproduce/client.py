@@ -190,7 +190,15 @@ async def _spec(tool: str, args: dict[str, Any], lang: str = "en") -> Spec:
         return await ip_horizons.build(tool, args, payload)
     if builder is not None:
         return await builder(args, payload)
-    chosen, pages = probe.choose(requests, str(payload.get("provenance", {}).get("url") or ""))
+    provenance_url = str(payload.get("provenance", {}).get("url") or "")
+    try:
+        chosen, pages = probe.choose(requests, provenance_url)
+    except probe.FanOut as fan_out:
+        # Several requests to one endpoint family, none of them the one the result
+        # names: any of them would be an arbitrary replay (issue #274).
+        return Spec(
+            kind="none", url=provenance_url, file_name="", method="none", notes=[fan_out.note]
+        )
     if chosen is None and requests and all(r.method == "HEAD" for r in requests):
         # A tool that only checks that each file exists (HEAD) lists links;
         # there is no data request to replay.

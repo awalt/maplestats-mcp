@@ -178,6 +178,20 @@ _NOTES: list[tuple[str, Template]] = [
     ),
     (
         (
+            r"This result combines (?P<count>\d+) requests to one endpoint family "
+            r"\((?P<family>\S+), such as (?P<examples>.+)\), so a script cannot say which one to "
+            r"repeat\. Call the tool again with an argument that selects one of them, then "
+            r"reproduce that call\."
+        ),
+        (
+            "Ce résultat combine {count} requêtes vers une même famille de points d'accès "
+            "({family}, par exemple {examples}) ; un script ne peut donc pas savoir laquelle "
+            "rejouer. Appelez l'outil de nouveau avec un argument qui en sélectionne une seule, "
+            "puis reproduisez cet appel."
+        ),
+    ),
+    (
+        (
             r"Replaying the request failed: the source did not answer in time; call reproduce_code "
             r"again\."
         ),
