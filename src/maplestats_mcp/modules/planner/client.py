@@ -11,7 +11,8 @@ import re
 import unicodedata
 from functools import cache
 
-from maplestats_mcp.catalogue import TOOL_SWITCHES
+from maplestats_mcp import config, gis_profile
+from maplestats_mcp.catalogue import tool_enabled
 from maplestats_mcp.modules.planner.places import (
     CITIES,
     CITY_PROVINCES,
@@ -205,9 +206,33 @@ def _province_of(label: str) -> str | None:
 
 def _available(step: PlanStep) -> bool:
     """False for a tool a setting has switched off on this server (statcan_pumf_tabulate on
-    the Render backup), so a plan never sends the model to a tool call_tool will refuse."""
-    switch = TOOL_SWITCHES.get(step.tool)
-    return switch is None or switch()
+    the Render backup, the PURE geospatial class under MAPLE_GIS=0), so a plan never sends
+    the model to a tool call_tool will refuse. Every step kind comes through here: a topic's
+    (`_ordered`), a place's and the fallback's (`_steps`)."""
+    return tool_enabled(step.tool)
+
+
+def _without_hidden_names(plan_out: QueryPlan) -> QueryPlan:
+    """Under MAPLE_GIS=0, cut the words that point at a hidden tool.
+
+    A step already went with its tool. What is left is prose written when the tool
+    existed: a caveat that says to use it, a "(from nrcan_geo_locate)" in a purpose. It runs
+    after the French is chosen, so a French plan loses the same words as an English one.
+    """
+
+    def steps(items: list[StepOut]) -> list[StepOut]:
+        return [
+            StepOut(tool=step.tool, purpose=gis_profile.without_pointers(step.purpose))
+            for step in items
+        ]
+
+    for topic in plan_out.topics:
+        topic.steps = steps(topic.steps)
+        topic.caveats = [c for c in topic.caveats if not gis_profile.names_hidden_tool(c)]
+    for place in plan_out.places:
+        place.steps = steps(place.steps)
+    plan_out.fallback_steps = steps(plan_out.fallback_steps)
+    return plan_out
 
 
 def _steps(steps: tuple[PlanStep, ...]) -> list[StepOut]:
@@ -363,6 +388,10 @@ def plan(question: str, lang: str = "en") -> QueryPlan:
     scored = []
     if out_of_scope is None:
         for topic in TOPICS:
+            # A topic whose every step is a hidden tool (places, under MAPLE_GIS=0) would
+            # match a question and answer with no step.
+            if not any(_available(step) for step in topic.steps):
+                continue
             topic_text = _blank(text, topic.shadows)
             hits = [term.rstrip("*") for term in topic.terms if _matches(term, topic_text)]
             hits += _pattern_hits(topic, topic_text)
@@ -411,4 +440,5 @@ def plan(question: str, lang: str = "en") -> QueryPlan:
             lang="fr" if french else "en",
         ),
     )
-    return _add_fitness_notes(_french(result) if french else result, lang)
+    planned = _add_fitness_notes(_french(result) if french else result, lang)
+    return planned if config.get_gis_enabled() else _without_hidden_names(planned)

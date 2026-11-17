@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from fastmcp.resources import resource
 
+from maplestats_mcp import gis_profile
+
 _WELL_KNOWN_COLLECTIONS_DOC = """\
 # Well-known MSC GeoMet collections
 
@@ -192,7 +194,10 @@ _GOTCHAS_DOC = """\
 def eccc_well_known_collections_doc() -> str:
     """List well-known MSC GeoMet collections for alerts, current conditions,
     AQHI, climate normals/observations, hydrometric, and marine data. French version: docs://eccc/fr/collections-courantes."""
-    return _WELL_KNOWN_COLLECTIONS_DOC
+    return gis_profile.cut_text(
+        _WELL_KNOWN_COLLECTIONS_DOC,
+        gis_profile.RESOURCE_CUTS["docs://eccc/well-known-collections"],
+    )
 
 
 @resource("docs://eccc/gotchas")
@@ -401,7 +406,10 @@ def eccc_well_known_collections_doc_fr() -> str:
     """Collections courantes de MSC GeoMet : alertes, conditions actuelles,
     cote air santé, normales et observations climatiques, hydrométrie et
     météo marine. Version française de docs://eccc/well-known-collections."""
-    return _WELL_KNOWN_COLLECTIONS_DOC_FR
+    return gis_profile.cut_text(
+        _WELL_KNOWN_COLLECTIONS_DOC_FR,
+        gis_profile.RESOURCE_CUTS["docs://eccc/fr/collections-courantes"],
+    )
 
 
 @resource("docs://eccc/fr/pieges")
