@@ -57,6 +57,10 @@ CASES = [
     ("hospital wait times indicator", "cihi_search_indicators"),
     ("Census 2021 population of a city", "statcan_census_profile_get_data"),
     ("public use microdata Labour Force Survey", "statcan_pumf_search"),
+    # Issue #261 (2026-11-15): ILO, ECB, ABS and Eurostat outranked every wds_ tool.
+    ("Labour Force Survey vector series unemployment", "wds_get_data_from_vectors"),
+    ("LFS headline unemployment rate Alberta latest month", "statcan_indicators_get_indicators"),
+    ("Labour Force Survey Alberta", "wds_search_cubes"),
     ("cross-tabulate PUMF microdata", "statcan_pumf_tabulate"),
     ("generate R code to reproduce this query", "reproduce_code"),
     ("check my answer's figures before replying", "check_answer"),

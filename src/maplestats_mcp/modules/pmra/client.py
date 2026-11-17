@@ -23,6 +23,11 @@ and /api/extract/product/{registration number}, with and without ?lang=fr:
    parenthesis and compares case-folded names.
 6. /product/{number} returns the one-row CSV, or HTTP 404 with a JSON
    body {"clientMessage":"Record not found"} for an unknown number.
+7. Re-checked 2026-11-16: the product extract (English and French, and the
+   one-row /product/{number}) now has 18 columns, not 16. The two new ones
+   come last: "Active ingredient concentration" and "CAS number". The first
+   16 are unchanged, so they are still read by position; the extra two are
+   ignored. The ingredient (4) and MRL (5) extracts are unchanged.
 """
 
 from __future__ import annotations
@@ -110,6 +115,27 @@ async def _get(url: str) -> bytes:
     return downloaded.body
 
 
+# English header names of the 16 product fields the client uses, in order.
+_PRODUCT_FIELDS = (
+    "Registration number",
+    "Product name - English",
+    "Product name - French",
+    "Registration Status",
+    "Expiry date",
+    "Marketing type",
+    "Date first registered",
+    "Exclusive period start date",
+    "Active ingredients - English",
+    "Active ingredients - French",
+    "Product Type",
+    "Registrant name",
+    "Use Site Category",
+    "Sites of Use",
+    "Pests",
+    "Current / Historical",
+)
+
+
 def parse_extract(
     body: bytes, columns: int, what: str, lang: str = "en"
 ) -> tuple[list[list[str]], int]:
@@ -122,34 +148,29 @@ def parse_extract(
     text = body.decode("cp1252", errors="replace").lstrip("﻿")
     rows = list(csv.reader(io.StringIO(text)))
     header = rows[0] if rows else []
-    # The product extract gained two additional columns in November 2026.
-    # Project by the original field names, not by their positions: inserting
-    # fields before Current / Historical must not silently corrupt status,
-    # ingredient, registrant or other values. Leave other extract types strict.
-    product_fields = (
-        "Registration number",
-        "Product name - English",
-        "Product name - French",
-        "Registration Status",
-        "Expiry date",
-        "Marketing type",
-        "Date first registered",
-        "Exclusive period start date",
-        "Active ingredients - English",
-        "Active ingredients - French",
-        "Product Type",
-        "Registrant name",
-        "Use Site Category",
-        "Sites of Use",
-        "Pests",
-        "Current / Historical",
-    )
+    # Extra columns after the ones used are accepted (the product extract gained
+    # two by 2026-11-16); fewer columns than expected is a layout change.
+    if len(header) < columns:
+        _raise(
+            UpstreamError,
+            f"pmra: the {what} extract has {len(header)} columns, expected at least "
+            f"{columns}; its layout changed. Header: {header!r}",
+            f"pmra : l'extrait {what} a {len(header)} colonnes au lieu d'au moins "
+            f"{columns} ; sa structure a changé. En-tête : {header!r}",
+            lang,
+        )
     projection = list(range(columns))
-    if what == "product" and len(header) > columns:
+    # The English product header names its fields, so read them by name: a column
+    # inserted before Current / Historical must not shift status, ingredient or
+    # registrant values. The French header text is not known here, so French (and
+    # every other extract) is read by position over the leading columns.
+    if (
+        what == "product"
+        and len(header) > columns
+        and _fold(header[0]) == _fold(_PRODUCT_FIELDS[0])
+    ):
         positions = {_fold(name): i for i, name in enumerate(header)}
-        if all(_fold(name) in positions for name in product_fields):
-            projection = [positions[_fold(name)] for name in product_fields]
-        else:
+        if not all(_fold(name) in positions for name in _PRODUCT_FIELDS):
             _raise(
                 UpstreamError,
                 "pmra: new product columns cannot be mapped to the 16 known fields; "
@@ -158,20 +179,8 @@ def parse_extract(
                 f"champs connus ; en-tête : {header!r}",
                 lang,
             )
-    elif len(header) != columns:
-        _raise(
-            UpstreamError,
-            f"pmra: the {what} extract has {len(header)} columns, expected "
-            f"{columns}; its layout changed. Header: {header!r}",
-            f"pmra : l'extrait {what} a {len(header)} colonnes au lieu de {columns} ; "
-            f"sa structure a changé. En-tête : {header!r}",
-            lang,
-        )
-    kept = [
-        [_clean(row[i]) for i in projection]
-        for row in rows[1:]
-        if len(row) == len(header)
-    ]
+        projection = [positions[_fold(name)] for name in _PRODUCT_FIELDS]
+    kept = [[_clean(row[i]) for i in projection] for row in rows[1:] if len(row) == len(header)]
     return kept, len(rows) - 1 - len(kept)
 
 

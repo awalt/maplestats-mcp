@@ -421,3 +421,136 @@ def test_a_file_from_before_error_codes_still_loads(tmp_path) -> None:
     assert UsageStats(path=path).snapshot()["by_error"] == {
         "boc_get_observations": {"not_found": 1}
     }
+
+
+# ---- who calls: a fixed label per client, never the name or the address it sent
+
+
+def test_client_names_map_to_a_fixed_label() -> None:
+    from maplestats_mcp.shared.usage import client_label
+
+    assert client_label("claude-code") == "claude-code"
+    assert client_label("Claude Code (v2.1)") == "claude"  # not claude-code's exact spelling
+    assert client_label("Cursor-Desktop") == "cursor"
+    assert client_label("uptime-check") == "uptime-check"
+    assert client_label("mcp") == "mcp-sdk"
+    assert client_label("my neighbour's private tool") == "other"
+    assert client_label("") == "unknown" and client_label(None) == "unknown"
+
+
+def test_internal_needs_the_secret_and_a_token_to_be_set() -> None:
+    from maplestats_mcp.shared.usage import INTERNAL_HEADER, is_internal
+
+    assert is_internal({INTERNAL_HEADER: "s3cret"}, "s3cret")
+    assert not is_internal({INTERNAL_HEADER: "wrong"}, "s3cret")
+    assert not is_internal({}, "s3cret")
+    # With no token configured, an empty or any header never counts as internal.
+    assert not is_internal({INTERNAL_HEADER: ""}, None)
+    assert not is_internal({INTERNAL_HEADER: "anything"}, None)
+
+
+def test_calls_are_counted_by_client_label_and_day() -> None:
+    stats = UsageStats(("boc_get_observations",))
+    stats.record("boc_get_observations", True, client="claude-code")
+    stats.record("boc_get_observations", False, client="claude-code")
+    stats.record("boc_get_observations", True, client="internal")
+    stats.record("boc_get_observations", True)  # no label: counted before labels existed
+    snap = stats.snapshot()
+    assert snap["calls"] == 4 and snap["calls_excluding_internal"] == 3
+    assert snap["by_client"] == {
+        "claude-code": {"ok": 1, "error": 1},
+        "internal": {"ok": 1, "error": 0},
+        "untracked": {"ok": 1, "error": 0},
+    }
+    assert sum(next(iter(snap["by_day_client"].values())).values()) == 3
+
+
+def test_a_label_outside_the_fixed_list_is_never_stored() -> None:
+    stats = UsageStats(("boc_get_observations",))
+    stats.record("boc_get_observations", True, client="what is my neighbour's income?")
+    snap = stats.snapshot()
+    assert list(snap["by_client"]) == ["other"]
+    assert "neighbour" not in json.dumps(snap)
+
+
+async def test_the_announced_client_name_is_counted_as_its_label_only() -> None:
+    from fastmcp import FastMCP
+    from mcp.types import Implementation
+
+    from maplestats_mcp.shared.usage import UsageMiddleware
+
+    stats = UsageStats(("ping_tool",))
+    server = FastMCP("t")
+    server.add_middleware(UsageMiddleware(stats))
+
+    @server.tool
+    async def ping_tool() -> str:
+        return "x"
+
+    secret_name = "Cursor private-build-7f3a"
+    async with Client(server, client_info=Implementation(name=secret_name, version="1")) as c:
+        await c.call_tool("ping_tool", {})
+    snap = stats.snapshot()
+    assert snap["by_client"] == {"cursor": {"ok": 1, "error": 0}}
+    assert "private-build" not in json.dumps(snap)
+
+
+async def test_a_call_with_the_secret_header_is_internal(monkeypatch) -> None:
+    from fastmcp import FastMCP
+
+    from maplestats_mcp import config
+    from maplestats_mcp.shared import usage as usage_module
+
+    monkeypatch.setattr(config, "get_internal_token", lambda: "s3cret")
+    monkeypatch.setattr(
+        "fastmcp.server.dependencies.get_http_headers",
+        lambda **_: {usage_module.INTERNAL_HEADER: "s3cret"},
+    )
+    stats = UsageStats(("ping_tool",))
+    server = FastMCP("t")
+    server.add_middleware(usage_module.UsageMiddleware(stats))
+
+    @server.tool
+    async def ping_tool() -> str:
+        return "x"
+
+    async with Client(server) as c:
+        await c.call_tool("ping_tool", {})
+    snap = stats.snapshot()
+    assert snap["by_client"] == {"internal": {"ok": 1, "error": 0}}
+    assert snap["calls_excluding_internal"] == 0
+    assert "s3cret" not in json.dumps(snap)
+
+
+def test_client_labels_survive_a_restart(tmp_path) -> None:
+    path = tmp_path / "stats.json"
+    first = UsageStats(("boc_get_observations",), path=path)
+    first.record("boc_get_observations", True, client="claude-code")
+    assert first.save()
+    second = UsageStats(("boc_get_observations",), path=path)
+    second.record("boc_get_observations", False, client="internal")
+    assert second.save()
+    snap = UsageStats(path=path).snapshot()
+    assert snap["by_client"] == {
+        "claude-code": {"ok": 1, "error": 0},
+        "internal": {"ok": 0, "error": 1},
+    }
+    assert sum(next(iter(snap["by_day_client"].values())).values()) == 2
+
+
+def test_a_file_from_before_client_labels_still_loads(tmp_path) -> None:
+    path = tmp_path / "stats.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "counting_since": "2026-11-07T16:39:30+00:00",
+                "by_tool": {"wds_search_cubes": {"ok": 4, "error": 1}},
+                "by_day": {"2026-11-09": {"ok": 4, "error": 1}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    snap = UsageStats(("wds_search_cubes",), path=path).snapshot()
+    assert snap["calls"] == 5
+    assert snap["by_client"] == {"untracked": {"ok": 4, "error": 1}}

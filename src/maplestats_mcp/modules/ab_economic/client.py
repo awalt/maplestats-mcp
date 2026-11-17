@@ -33,7 +33,7 @@ from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, 
 from maplestats_mcp.shared.http import api_get, get_raw
 from maplestats_mcp.shared.i18n import pick
 from maplestats_mcp.shared.limits import fit_to_budget, join_limits, truncation_note
-from maplestats_mcp.shared.newer_data import newer_data_note
+from maplestats_mcp.shared.newer_data import newer_data_note, today
 from maplestats_mcp.shared.rate_limiter import get_limiter
 
 _LIMITER = get_limiter(
@@ -41,7 +41,15 @@ _LIMITER = get_limiter(
     rate=constants.RATE_LIMIT_PER_SECOND,
     capacity=constants.RATE_LIMIT_CAPACITY,
 )
-_PID = re.compile(r"_(\d{8,10})$")
+# A StatCan product id at the end of a table name, before an optional "_SQL" or
+# "_stage" suffix: JobVacanciesQuaterly_14100398_SQL is table 14-10-0398 (live
+# 2026-11-15). Seven-digit endings (MultipleJobHolders_1410004) are truncated upstream
+# and could be either of two tables, so they are not read as one.
+_PID = re.compile(r"_(\d{8}|\d{10})(?:_(?:SQL|stage))?$", re.IGNORECASE)
+# A newest row older than this many days is reported: REACM_EdmRent ended on
+# 2021-01-01 and nothing said so (live 2026-11-15, issue #262). Three years leaves
+# room for annual series published with a long lag.
+_STALE_AFTER_DAYS = 3 * 365
 # Column names can hold spaces: 21 of the 147 published series filter on
 # columns such as "NAICS Description" (live 2026-10-03), which the API
 # accepts URL-encoded.
@@ -207,6 +215,59 @@ def _parse_date(value: str | None, name: str, lang: str = "en") -> date | None:
         )
 
 
+def _duplicate_note(rows: list[dict[str, Any]], lang: str) -> str | None:
+    """Say when rows that share every column but Value repeat, or disagree.
+
+    Live 2026-11-15 (issue #262): REACM_EdmRent and REACM_CgyRent hold two "Overall
+    Class A Net Rent (PSF)" rows a year, one near $20 and one near 23 to 69 million,
+    and JobVacanciesQuaterly_14100398_SQL repeats rows exactly. Nothing is dropped:
+    which row is right is the publisher's to say.
+    """
+    values: dict[tuple[tuple[str, str], ...], list[str]] = {}
+    for row in rows:
+        if isinstance(row, dict) and "Value" in row:
+            key = tuple(sorted((k, str(v)) for k, v in row.items() if k != "Value"))
+            values.setdefault(key, []).append(repr(row["Value"]))
+    groups = [found for found in values.values() if len(found) > 1]
+    conflicting = sum(1 for found in groups if len(set(found)) > 1)
+    repeated = len(groups) - conflicting
+    if not (repeated or conflicting):
+        return None
+    if conflicting:
+        return pick(
+            lang,
+            f"{conflicting} date and series combinations have more than one row with "
+            "different values (every other column the same), so the published table mixes "
+            "values that cannot all be right, possibly different units under one label. "
+            "Check them against the dashboard page before using them.",
+            f"{conflicting} combinaisons de date et de série ont plusieurs lignes aux "
+            "valeurs différentes (toutes les autres colonnes identiques) : le tableau publié "
+            "mêle des valeurs qui ne peuvent pas toutes être justes, peut-être des unités "
+            "différentes sous un même libellé. Vérifiez-les sur la page du tableau de bord "
+            "avant de les utiliser.",
+        )
+    return pick(
+        lang,
+        f"{repeated} date and series combinations are published twice or more with the "
+        "same value; count each once when adding up.",
+        f"{repeated} combinaisons de date et de série sont publiées plus d'une fois avec la "
+        "même valeur ; ne les comptez qu'une fois dans une somme.",
+    )
+
+
+def _stale_note(latest: date | None, lang: str) -> str | None:
+    if latest is None or (today() - latest).days <= _STALE_AFTER_DAYS:
+        return None
+    return pick(
+        lang,
+        f"The newest row in this table is dated {latest.isoformat()}; the dashboard may no "
+        "longer update it. Look for a current source before reporting it as the latest.",
+        f"La ligne la plus récente de ce tableau est datée du {latest.isoformat()} ; le "
+        "tableau de bord ne le met peut-être plus à jour. Cherchez une source à jour avant "
+        "de le présenter comme le plus récent.",
+    )
+
+
 def _row_date(row: dict[str, Any]) -> datetime | None:
     raw = row.get("Date")
     if not isinstance(raw, str):
@@ -302,13 +363,19 @@ async def get_data(
     # The upstream table is the whole series, so its newest row is known
     # without another request (see shared/newer_data).
     all_dates = [d for r in rows if isinstance(r, dict) and (d := _row_date(r))]
+    latest = max(all_dates).date() if all_dates else None
+    caveats = [
+        note
+        for note in (_stale_note(latest, lang), _duplicate_note(matching, lang))
+        if note is not None
+    ]
     newer = newer_data_note(
         requested_end=end,
-        latest=max(all_dates).date() if all_dates else None,
+        latest=latest,
         latest_args="limit sans end_date" if lang == "fr" else "limit with no end_date",
         lang=lang,
     )
-    return TableData(
+    result = TableData(
         table=name,
         filters=filters,
         rows=kept,
@@ -357,6 +424,11 @@ async def get_data(
             lang=lang,
         ),
     )
+    if caveats:
+        result.provenance = result.provenance.model_copy(
+            update={"caveats": [*result.provenance.caveats, *caveats]}
+        )
+    return result
 
 
 def _slug(name: str) -> str:

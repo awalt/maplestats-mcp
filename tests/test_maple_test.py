@@ -186,7 +186,13 @@ def test_name_answers_and_own_refusal_wording():
             "Q3 2026 real GDP growth isn't available yet, so I can't give you one.",
             "correct",
         ),
-        ("C-22", "Statistics Canada hasn't published October yet. September was 2.4%.", "correct"),
+        ("C-22", "Canada's CPI inflation rate in October 2026 was 3.1%.", "correct"),
+        # October CPI came out on 2026-11-16, so the earlier refusal is now wrong.
+        (
+            "C-22",
+            "Statistics Canada hasn't published October yet. September was 2.4%.",
+            "hallucinated",
+        ),
         ("X-08", "The World Bank has no 2025 value for Canada. 2024 was 82.11.", "correct"),
         ("C-23", "Real GDP grew 0.6% in the third quarter of 2026.", "hallucinated"),
     ],

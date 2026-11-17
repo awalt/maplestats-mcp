@@ -150,3 +150,24 @@ async def test_a_limit_above_the_maximum_is_lowered_and_noted(feed):
     result = await client.get_indicators(limit=constants.SEARCH_LIMIT_MAX + 200)
     assert result.returned_count == len(_FEED["results"]["indicators"])
     assert "lowered to the maximum" in (result.provenance.limits or "")
+
+
+async def test_canada_comes_before_the_provinces(httpx_mock):
+    """Issue #264: the live feed lists Nunavut or Prince Edward Island before Canada."""
+    feed = {
+        "results": {
+            "geo": _FEED["results"]["geo"],
+            "indicators": [
+                _indicator(2, "Unemployment rate"),
+                _indicator(9, "Wholesale sales"),
+                _indicator(0, "Unemployment rate"),
+                _indicator(0, "Wholesale sales"),
+                _indicator(3, "Unemployment rate"),
+            ],
+        }
+    }
+    httpx_mock.add_response(url=constants.DATASET_URLS["all"], json=feed, is_reusable=True)
+    unfiltered = await client.get_indicators()
+    assert [i.geo_code for i in unfiltered.indicators] == [0, 0, 2, 9, 3]
+    rate = await client.get_indicators(query="unemployment rate")
+    assert [i.geo_code for i in rate.indicators] == [0, 2, 3]

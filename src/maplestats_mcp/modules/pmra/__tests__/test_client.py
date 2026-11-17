@@ -95,6 +95,22 @@ def _clear_cache():
     yield
 
 
+def test_extra_trailing_columns_are_ignored():
+    """The live product extract has had 18 columns since 2026-11 (concentration, CAS number)."""
+    header = _PRODUCT_HEADER.rstrip("\r\n") + ",Active ingredient concentration,CAS number\r\n"
+    row = _ROUNDUP.rstrip("\r\n") + ",41.0 %,1071-83-6\r\n"
+    rows, skipped = client.parse_extract(
+        _csv(row, header=header), constants.PRODUCT_COLUMNS, "product"
+    )
+    assert skipped == 0
+    assert rows[0][0] == "31153" and rows[0][15] == "Current"
+    # A 16-cell row under the 18-column header is a malformed row, reported as skipped.
+    _, skipped = client.parse_extract(
+        _csv(row, _ROUNDUP, header=header), constants.PRODUCT_COLUMNS, "product"
+    )
+    assert skipped == 1
+
+
 def test_extract_parsing_and_layout_check():
     rows, skipped = client.parse_extract(_csv(_ROUNDUP), constants.PRODUCT_COLUMNS, "product")
     assert skipped == 0
@@ -141,6 +157,22 @@ def test_product_extract_rejects_unknown_column_layout():
     csv.writer(output).writerows(rows)
     with pytest.raises(UpstreamError, match="cannot be mapped"):
         client.parse_extract(output.getvalue().encode("cp1252"), 16, "product")
+
+
+def test_french_product_extract_with_added_columns_is_read_by_position():
+    """The French header text is not known, so extra columns at the end are skipped by position."""
+    import csv
+    import io
+
+    raw = list(csv.reader(io.StringIO(_PRODUCT_HEADER + _ROUNDUP)))
+    headers, row = raw
+    headers = ["Numéro d'homologation", *headers[1:], "Concentration", "Numéro CAS"]
+    row = [*row, "41.0 %", "1071-83-6"]
+    out = io.StringIO()
+    csv.writer(out).writerows([headers, row])
+    parsed, skipped = client.parse_extract(out.getvalue().encode("cp1252"), 16, "product", "fr")
+    assert skipped == 0
+    assert len(parsed[0]) == 16 and parsed[0][0] == "31153" and parsed[0][15] == "Current"
 
 
 async def test_skipped_rows_are_reported(httpx_mock):

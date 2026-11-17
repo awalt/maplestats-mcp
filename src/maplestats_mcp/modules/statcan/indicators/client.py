@@ -272,8 +272,13 @@ async def get_indicators(
             )
         )
 
-    if phrase:
-        matched.sort(key=lambda item: phrase not in _fold(item.title))
+    # Canada before the provinces: the feed lists geographies in no useful order (the
+    # unfiltered call began with Nunavut wholesale sales, and "unemployment rate" with
+    # Prince Edward Island, live 2026-11-15, issue #264). Stable, so feed order stays
+    # within each group.
+    matched.sort(
+        key=lambda item: (bool(phrase) and phrase not in _fold(item.title), item.geo_code != 0)
+    )
     if not matched:
         notes.append(
             _empty_hint(results["indicators"], terms, elsewhere, geo_names, geo_code, lang)

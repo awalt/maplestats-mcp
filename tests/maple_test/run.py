@@ -253,7 +253,11 @@ def servers(
         }
     if arm == "maplestats_hosted":
         # The hosted server as users reach it (brief results, the default since #203).
-        return {"maplestats": {"type": "http", "url": HOSTED}}
+        server: dict[str, Any] = {"type": "http", "url": HOSTED}
+        if os.environ.get("MAPLE_INTERNAL_TOKEN"):
+            # Marks the run as the maintainer's own in the hosted /stats counts.
+            server["headers"] = {"X-Maple-Internal": os.environ["MAPLE_INTERNAL_TOKEN"]}
+        return {"maplestats": server}
     if arm == "maplestats_full":
         # The same hosted server through a local relay that sets detail='full' on every
         # call_tool request (relay_full.py), so full results do not depend on the model.
@@ -269,7 +273,14 @@ def servers(
                     "tests.maple_test.relay_full",
                     HOSTED,
                 ],
-                "env": {"MAPLE_RELAY_LOG": os.environ.get("MAPLE_RELAY_LOG", "")},
+                "env": {
+                    "MAPLE_RELAY_LOG": os.environ.get("MAPLE_RELAY_LOG", ""),
+                    **(
+                        {"MAPLE_INTERNAL_TOKEN": os.environ["MAPLE_INTERNAL_TOKEN"]}
+                        if os.environ.get("MAPLE_INTERNAL_TOKEN")
+                        else {}
+                    ),
+                },
             }
         }
     if arm == "mcp_statcan":

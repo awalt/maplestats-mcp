@@ -1,20 +1,20 @@
 {
  "question_id": "C-22",
  "version": "v2",
- "recorded_on": "2026-11-07",
- "server_commit": "d72372c",
+ "recorded_on": "2026-11-16",
+ "server_commit": "5c52b1b",
  "tool": "wds_get_data_from_vectors",
  "arguments": {
   "vector_ids": [
    41690973
   ],
-  "latest_n": 2
+  "latest_n": 13
  },
  "requests": [
   "5e3f34da23222465",
   "9cc55ee47fda0d20",
-  "ade52856824da930",
-  "bdef00936ed4b92a"
+  "bdef00936ed4b92a",
+  "fe5b0838c40c395f"
  ],
  "result": {
   "series": [
@@ -23,7 +23,7 @@
     "coordinate": "2.2.0.0.0.0.0.0.0.0",
     "vector_id": 41690973,
     "context": {
-     "citation": "Statistics Canada. Table 18-10-0004-01, Consumer Price Index, monthly, not seasonally adjusted. Vector v41690973. Released 2026-10-19.",
+     "citation": "Statistics Canada. Table 18-10-0004-01, Consumer Price Index, monthly, not seasonally adjusted. Vector v41690973. Released 2026-11-16.",
      "table_id": "18-10-0004-01",
      "table_title": "Consumer Price Index, monthly, not seasonally adjusted",
      "table_url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1810000401",
@@ -44,14 +44,154 @@
        "member_id": 2
       }
      ],
-     "table_release_time": "2026-10-19T08:30",
+     "table_release_time": "2026-11-16T08:30",
      "first_period": "1914-01-01",
-     "last_period": "2026-09-01",
+     "last_period": "2026-10-01",
      "notes": [
       "Unit is an index (2002=100), not a price or dollar level: quote changes as percentages of the index."
      ]
     },
     "observations": [
+     {
+      "ref_period": "2025-10-01",
+      "value": 165.3,
+      "decimals": 1,
+      "scalar_factor_code": 0,
+      "scale_multiplier": 1,
+      "symbol_code": 0,
+      "status_code": 0,
+      "security_level_code": 0,
+      "release_time": "2025-11-17T13:30:00Z",
+      "symbol": "none",
+      "status": "normal",
+      "security_level": "public"
+     },
+     {
+      "ref_period": "2025-11-01",
+      "value": 165.4,
+      "decimals": 1,
+      "scalar_factor_code": 0,
+      "scale_multiplier": 1,
+      "symbol_code": 0,
+      "status_code": 0,
+      "security_level_code": 0,
+      "release_time": "2025-12-15T13:30:00Z",
+      "symbol": "none",
+      "status": "normal",
+      "security_level": "public"
+     },
+     {
+      "ref_period": "2025-12-01",
+      "value": 165.0,
+      "decimals": 1,
+      "scalar_factor_code": 0,
+      "scale_multiplier": 1,
+      "symbol_code": 0,
+      "status_code": 0,
+      "security_level_code": 0,
+      "release_time": "2026-01-19T13:30:00Z",
+      "symbol": "none",
+      "status": "normal",
+      "security_level": "public"
+     },
+     {
+      "ref_period": "2026-01-01",
+      "value": 165.0,
+      "decimals": 1,
+      "scalar_factor_code": 0,
+      "scale_multiplier": 1,
+      "symbol_code": 0,
+      "status_code": 0,
+      "security_level_code": 0,
+      "release_time": "2026-02-17T13:30:00Z",
+      "symbol": "none",
+      "status": "normal",
+      "security_level": "public"
+     },
+     {
+      "ref_period": "2026-02-01",
+      "value": 165.9,
+      "decimals": 1,
+      "scalar_factor_code": 0,
+      "scale_multiplier": 1,
+      "symbol_code": 0,
+      "status_code": 0,
+      "security_level_code": 0,
+      "release_time": "2026-03-16T12:30:00Z",
+      "symbol": "none",
+      "status": "normal",
+      "security_level": "public"
+     },
+     {
+      "ref_period": "2026-03-01",
+      "value": 167.4,
+      "decimals": 1,
+      "scalar_factor_code": 0,
+      "scale_multiplier": 1,
+      "symbol_code": 0,
+      "status_code": 0,
+      "security_level_code": 0,
+      "release_time": "2026-04-20T12:30:00Z",
+      "symbol": "none",
+      "status": "normal",
+      "security_level": "public"
+     },
+     {
+      "ref_period": "2026-04-01",
+      "value": 168.0,
+      "decimals": 1,
+      "scalar_factor_code": 0,
+      "scale_multiplier": 1,
+      "symbol_code": 0,
+      "status_code": 0,
+      "security_level_code": 0,
+      "release_time": "2026-05-19T12:30:00Z",
+      "symbol": "none",
+      "status": "normal",
+      "security_level": "public"
+     },
+     {
+      "ref_period": "2026-05-01",
+      "value": 169.6,
+      "decimals": 1,
+      "scalar_factor_code": 0,
+      "scale_multiplier": 1,
+      "symbol_code": 0,
+      "status_code": 0,
+      "security_level_code": 0,
+      "release_time": "2026-06-22T12:30:00Z",
+      "symbol": "none",
+      "status": "normal",
+      "security_level": "public"
+     },
+     {
+      "ref_period": "2026-06-01",
+      "value": 169.0,
+      "decimals": 1,
+      "scalar_factor_code": 0,
+      "scale_multiplier": 1,
+      "symbol_code": 0,
+      "status_code": 0,
+      "security_level_code": 0,
+      "release_time": "2026-07-20T12:30:00Z",
+      "symbol": "none",
+      "status": "normal",
+      "security_level": "public"
+     },
+     {
+      "ref_period": "2026-07-01",
+      "value": 169.9,
+      "decimals": 1,
+      "scalar_factor_code": 0,
+      "scale_multiplier": 1,
+      "symbol_code": 0,
+      "status_code": 0,
+      "security_level_code": 0,
+      "release_time": "2026-08-17T12:30:00Z",
+      "symbol": "none",
+      "status": "normal",
+      "security_level": "public"
+     },
      {
       "ref_period": "2026-08-01",
       "value": 169.8,
@@ -76,6 +216,20 @@
       "status_code": 0,
       "security_level_code": 0,
       "release_time": "2026-10-19T12:30:00Z",
+      "symbol": "none",
+      "status": "normal",
+      "security_level": "public"
+     },
+     {
+      "ref_period": "2026-10-01",
+      "value": 170.4,
+      "decimals": 1,
+      "scalar_factor_code": 0,
+      "scale_multiplier": 1,
+      "symbol_code": 0,
+      "status_code": 0,
+      "security_level_code": 0,
+      "release_time": "2026-11-16T13:30:00Z",
       "symbol": "none",
       "status": "normal",
       "security_level": "public"

@@ -474,7 +474,9 @@ def core() -> list[dict[str, Any]]:
                     cite(cpi, october, "2026-10-01", "2.2"),
                     cite(cpi, october, "2025-10-01", "2.2"),
                 ],
-                traps=["Use the 12-month non-seasonally-adjusted CPI change, not the monthly change."],
+                traps=[
+                    "Use the 12-month non-seasonally-adjusted CPI change, not the monthly change."
+                ],
             )
         )
     else:

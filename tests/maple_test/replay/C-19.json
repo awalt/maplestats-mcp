@@ -1,8 +1,8 @@
 {
  "question_id": "C-19",
  "version": "v2",
- "recorded_on": "2026-11-07",
- "server_commit": "d72372c",
+ "recorded_on": "2026-11-16",
+ "server_commit": "5c52b1b",
  "tool": "boc_get_observations",
  "arguments": {
   "series_names": [
@@ -24,7 +24,7 @@
     "unit": "Percent",
     "frequency": "Business daily",
     "status": "active",
-    "last_observation": "2026-11-05",
+    "last_observation": "2026-11-13",
     "successor": null,
     "note": null
    }
@@ -80,7 +80,7 @@
    "as_of": "2026-10-30T00:00:00Z",
    "freshness": null,
    "coverage": null,
-   "limits": "Newer data exist: the series runs to 2026-11-05, after the end of the range asked for (2026-10-30). Today is 2026-11-07; for the latest values pass recent, recent_months or recent_years instead of a date range.",
+   "limits": "Newer data exist: the series runs to 2026-11-13, after the end of the range asked for (2026-10-30). Today is 2026-11-16; for the latest values pass recent, recent_months or recent_years instead of a date range.",
    "cached": false,
    "lang": "en",
    "schema_name": "boc.ObservationsResult",

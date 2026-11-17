@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -234,3 +235,60 @@ async def test_french_errors(httpx_mock):
     httpx_mock.add_response(url=_TABLES_URL, json=_TABLES)
     with pytest.raises(NotFound, match="tableau de bord économique de l'Alberta"):
         await client.get_data("NoSuchTable", lang="fr")
+
+
+def _rent(date: str, value: float, kind: str = "Commercial") -> dict[str, object]:
+    # Shaped on live REACM_EdmRent rows, 2026-11-15.
+    return {
+        "Date": f"{date}T00:00:00",
+        "GeoID": "4811061",
+        "GeoName": "Edmonton",
+        "Type": kind,
+        "Indicator": 'Overall Class "A" Net Rent (PSF)',
+        "Value": value,
+    }
+
+
+@pytest.fixture
+def _today(monkeypatch):
+    monkeypatch.setattr(client, "today", lambda: date(2026, 11, 15))
+
+
+async def test_conflicting_rows_and_a_stale_table_are_reported(httpx_mock, _today):
+    """Issue #262: two rents a year, one in the millions, and no row after 2021."""
+    httpx_mock.add_response(url=_TABLES_URL, json=[{"tableName": "REACM_EdmRent"}])
+    httpx_mock.add_response(
+        json=[
+            _rent("2020-01-01", 19.86),
+            _rent("2020-01-01", 26082146.0),
+            _rent("2021-01-01", 19.76),
+            _rent("2021-01-01", 26082146.0, "Residential"),
+        ]
+    )
+    result = await client.get_data("REACM_EdmRent")
+    assert result.returned_count == 4  # nothing is dropped
+    caveats = result.provenance.caveats
+    assert any("2021-01-01" in c and "may no longer update" in c for c in caveats)
+    assert any(
+        c.startswith("1 date and series combinations have more than one row") for c in caveats
+    )
+
+
+async def test_exact_repeats_are_reported_and_a_current_table_is_not_stale(httpx_mock, _today):
+    httpx_mock.add_response(url=_TABLES_URL, json=_TABLES)
+    httpx_mock.add_response(json=[_row("2026-04-01", 1.9), _row("2026-04-01", 1.9)])
+    result = await client.get_data("UnemploymentRates_14100287")
+    (note,) = result.provenance.caveats
+    assert note.startswith("1 date and series combinations are published twice or more")
+    httpx_mock.add_response(json=[_row("2026-05-01", 1.9), _row("2026-04-01", 1.9)])
+    clean = await client.get_data("UnemploymentRates_14100287", {"GeoName": "Alberta"})
+    assert clean.provenance.caveats == []
+
+
+def test_statcan_pid_is_read_before_a_suffix_but_not_from_seven_digits():
+    assert client._pid("JobVacanciesQuaterly_14100398_SQL") == "14100398"
+    assert client._pid("LabourForceCMA_14100380_stage") == "14100380"
+    assert client._pid("FemaleIndustry_1410002301") == "1410002301"
+    assert client._pid("MultipleJobHolders_1410004") is None
+    assert client._pid("Tourism_AllVisitorsLand_2410057_SQL") is None
+    assert client._pid("AESO_PowerGen") is None
