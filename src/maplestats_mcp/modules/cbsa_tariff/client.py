@@ -49,6 +49,7 @@ import zipfile
 from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -70,7 +71,13 @@ from maplestats_mcp.shared import duck
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.capped_io import FileTooLarge, copy_capped
 from maplestats_mcp.shared.envelope import make_provenance, raise_localized
-from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
+from maplestats_mcp.shared.errors import (
+    InvalidInput,
+    NotFound,
+    TooLarge,
+    UpstreamError,
+    UpstreamUnavailable,
+)
 from maplestats_mcp.shared.executor import run_in_pool
 from maplestats_mcp.shared.http import get_raw
 from maplestats_mcp.shared.i18n import french_spacing
@@ -141,7 +148,9 @@ def parse_menu(html: str, year: int, lang: str) -> list[TariffEdition]:
         title = " ".join(heading.get_text(" ").split()) if heading else ""
         label, when = _LABEL.search(title), _DATE.search(title)
         links = [str(a.get("href") or "") for a in panel.find_all("a")]
-        zips = [h for h in links if h.lower().endswith(".zip")]
+        # The zip is downloaded, so only a link on CBSA's own host is taken: the page's
+        # href may be absolute, and get_raw would fetch whatever host it names.
+        zips = [h for h in links if h.lower().endswith(".zip") and _on_cbsa_site(_absolute(h))]
         if not label or not when or not zips:
             continue
         edition = label.group(1) + (f"-{label.group(2)}" if label.group(2) else "")
@@ -162,6 +171,12 @@ def parse_menu(html: str, year: int, lang: str) -> list[TariffEdition]:
 
 def _absolute(href: str) -> str:
     return href if href.startswith("http") else constants.SITE + "/" + href.lstrip("/")
+
+
+def _on_cbsa_site(url: str) -> bool:
+    """https on the host of constants.SITE (https://www.cbsa-asfc.gc.ca)."""
+    parsed = urlparse(url)
+    return parsed.scheme == "https" and parsed.hostname == urlparse(constants.SITE).hostname
 
 
 class _NoYearPage(NotFound):
@@ -470,7 +485,14 @@ async def _download_and_convert(edition: TariffEdition, target: Path, lang: str)
     url = edition.access_zip_url
     await _LIMITER.acquire()
     try:
-        response = await get_raw(url, timeout=120.0)
+        response = await get_raw(url, timeout=120.0, max_bytes=constants.MAX_ZIP_BYTES)
+    except TooLarge:
+        raise_localized(
+            UpstreamError,
+            f"cbsa_tariff: {url} is much larger than expected; it changed.",
+            f"cbsa_tariff : {url} est beaucoup plus volumineux que prévu ; il a changé.",
+            lang,
+        )
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         if status in (404, 410):
@@ -491,13 +513,6 @@ async def _download_and_convert(edition: TariffEdition, target: Path, lang: str)
             UpstreamUnavailable,
             f"cbsa_tariff: {url} did not respond in time.",
             f"cbsa_tariff : {url} n'a pas répondu à temps.",
-            lang,
-        )
-    if len(response.content) > constants.MAX_ZIP_BYTES:
-        raise_localized(
-            UpstreamError,
-            f"cbsa_tariff: {url} is much larger than expected; it changed.",
-            f"cbsa_tariff : {url} est beaucoup plus volumineux que prévu ; il a changé.",
             lang,
         )
     try:

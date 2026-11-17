@@ -30,7 +30,7 @@ from maplestats_mcp.modules.competition_bureau.schemas import MergerReview, Merg
 from maplestats_mcp.shared.arg_checks import check_range
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance, raise_typed
-from maplestats_mcp.shared.errors import InvalidInput, UpstreamError, UpstreamUnavailable
+from maplestats_mcp.shared.errors import InvalidInput, TooLarge, UpstreamError, UpstreamUnavailable
 from maplestats_mcp.shared.http import get_raw
 from maplestats_mcp.shared.i18n import french_spacing
 from maplestats_mcp.shared.rate_limiter import get_limiter
@@ -139,7 +139,14 @@ def parse_archive(page: str) -> list[MergerReview]:
 async def _page(url: str, lang: str = "en") -> str:
     await _LIMITER.acquire()
     try:
-        response = await get_raw(url, timeout=60.0)
+        response = await get_raw(url, timeout=60.0, max_bytes=constants.MAX_PAGE_BYTES)
+    except TooLarge:
+        _raise(
+            UpstreamError,
+            f"competition_bureau: {url} is larger than expected.",
+            f"competition_bureau : {url} est plus volumineuse que prévu.",
+            lang,
+        )
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         _raise(
@@ -153,13 +160,6 @@ async def _page(url: str, lang: str = "en") -> str:
             UpstreamUnavailable,
             f"competition_bureau: {url} did not respond in time.",
             f"competition_bureau : {url} n'a pas répondu à temps.",
-            lang,
-        )
-    if len(response.content) > constants.MAX_PAGE_BYTES:
-        _raise(
-            UpstreamError,
-            f"competition_bureau: {url} is larger than expected.",
-            f"competition_bureau : {url} est plus volumineuse que prévu.",
             lang,
         )
     return response.text

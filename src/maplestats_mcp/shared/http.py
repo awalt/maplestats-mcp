@@ -52,8 +52,9 @@ from tenacity import (
 from maplestats_mcp import __version__
 from maplestats_mcp.shared import upstream_wait
 from maplestats_mcp.shared.breaker import BREAKER, is_failure_status, one_call
-from maplestats_mcp.shared.errors import CloudflareChallenge
+from maplestats_mcp.shared.errors import CloudflareChallenge, TooLarge
 from maplestats_mcp.shared.fr_typography import call_error
+from maplestats_mcp.shared.i18n import fr_number
 
 _RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
 # Built from the package version so the User-Agent upstreams see (and can
@@ -443,6 +444,82 @@ async def api_get(
 
 
 _PASSTHROUGH_STATUSES = frozenset({406, 409})
+# An error answer is only inspected (its status and headers, a Cloudflare page), so
+# a server that streams a huge one costs at most this much memory (the same bound as
+# shared/file_download.py).
+_ERROR_BODY_MAX_BYTES = 64 * 1024
+
+
+def _copy_answer(response: httpx.Response, body: bytes) -> httpx.Response:
+    """The same answer holding `body`: status, headers and request kept, and the
+    encoding headers dropped because aiter_bytes() already decoded what was read."""
+    headers = [
+        (name, value)
+        for name, value in response.headers.multi_items()
+        if name.lower() not in ("content-encoding", "content-length", "transfer-encoding")
+    ]
+    return httpx.Response(
+        response.status_code, headers=headers, content=body, request=response.request
+    )
+
+
+def _too_large(url: str, max_bytes: int, declared: int | None) -> TooLarge:
+    seen = (
+        f"declares {declared:,} bytes"
+        if declared is not None
+        else f"is larger than {max_bytes:,} bytes (stopped reading at the cap)"
+    )
+    seen_fr = (
+        f"annonce {fr_number(declared)} octets"
+        if declared is not None
+        else f"dépasse {fr_number(max_bytes)} octets (lecture arrêtée à la limite)"
+    )
+    return call_error(
+        TooLarge,
+        f"{url} {seen}; this reader stops at {max_bytes:,}. Download it from the publisher "
+        "instead.",
+        f"{url} {seen_fr} ; ce lecteur s'arrête à {fr_number(max_bytes)}. Téléchargez-le "
+        "plutôt depuis le site de l'éditeur.",
+    )
+
+
+async def stream_capped(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    params: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: float = 30.0,
+    max_bytes: int,
+) -> httpx.Response:
+    """GET `url` on `client` and return the whole answer, reading at most `max_bytes` of it.
+
+    `client.get()` reads the whole body before a caller can look at its size. Here a
+    declared Content-Length above the cap is refused without reading the body, and a
+    body that outgrows the cap without declaring a length is aborted mid-stream;
+    either raises TooLarge (an UpstreamError). An error status (4xx, 5xx) or a
+    redirect keeps at most 64 KB of its body, enough for the callers that read its
+    status, its Location header or a Cloudflare page. A success comes back as an
+    ordinary httpx.Response, so callers use `.content`, `.text` and `.headers` as
+    they would after `client.get()`.
+    """
+    async with client.stream("GET", url, params=params, headers=headers, timeout=timeout) as live:
+        if live.status_code >= 300:
+            body = bytearray()
+            async for chunk in live.aiter_bytes():
+                body.extend(chunk)
+                if len(body) >= _ERROR_BODY_MAX_BYTES:
+                    break
+            return _copy_answer(live, bytes(body[:_ERROR_BODY_MAX_BYTES]))
+        declared = live.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > max_bytes:
+            raise _too_large(url, max_bytes, int(declared))
+        body = bytearray()
+        async for chunk in live.aiter_bytes():
+            body.extend(chunk)
+            if len(body) > max_bytes:
+                raise _too_large(url, max_bytes, None)
+        return _copy_answer(live, bytes(body))
 
 
 @counted_once
@@ -459,6 +536,7 @@ async def get_raw(
     params: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     timeout: float = 30.0,
+    max_bytes: int | None = None,
 ) -> httpx.Response:
     """GET without JSON-decoding — for non-JSON responses (e.g. SDMX-ML/XML).
 
@@ -469,14 +547,29 @@ async def get_raw(
     still raises via raise_for_status(), so the retry decorator's
     is_retryable check still fires for genuinely transient statuses
     (429/500/502/503/504).
+
+    The whole body is read into memory. A caller that knows the largest file it
+    accepts passes `max_bytes`: a longer body raises TooLarge before it is held
+    (see `stream_capped`), instead of after, as a check on `len(response.content)`
+    would. Without it the read is unbounded, as it always was.
     """
     async with _client_for(url) as client:
-        response = await client.get(
-            url,
-            params=params,
-            headers=_request_headers(url, headers, reuse=True),
-            timeout=timeout,
-        )
+        if max_bytes is None:
+            response = await client.get(
+                url,
+                params=params,
+                headers=_request_headers(url, headers, reuse=True),
+                timeout=timeout,
+            )
+        else:
+            response = await stream_capped(
+                client,
+                url,
+                params=params,
+                headers=_request_headers(url, headers, reuse=True),
+                timeout=timeout,
+                max_bytes=max_bytes,
+            )
     if response.status_code in _PASSTHROUGH_STATUSES:
         return response
     raise_if_cloudflare_challenge(response)

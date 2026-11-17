@@ -26,6 +26,10 @@ DICTIONARY_URLS = {
     "industrial_design": "https://opic-cipo.ca/cipo/client_downloads/IP_Horizon_Resources/ID_Data_Dictionary.zip",
 }
 MAX_DICTIONARY_BYTES = 5 * 1024 * 1024
+# The dictionary ZIP holds one small .xlsx. The ZIP's own cap only bounds the compressed
+# bytes, so the workbook's inflated size has a cap too: 20 MB is the limit
+# shared/remote_zip.read_member puts on the codebooks and layout files it reads.
+MAX_DICTIONARY_WORKBOOK_BYTES = 20 * 1024 * 1024
 
 # Releases on CIPO's server that open.canada.ca does not list. Checked
 # 2026-09-25: every trademark link the package lists (TM_CSV_2024_08_20 and

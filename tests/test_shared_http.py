@@ -9,7 +9,12 @@ from tenacity import RetryCallState
 
 from maplestats_mcp import __version__
 from maplestats_mcp.shared import http as http_module
-from maplestats_mcp.shared.errors import CloudflareChallenge, UpstreamUnavailable
+from maplestats_mcp.shared.errors import (
+    CloudflareChallenge,
+    TooLarge,
+    UpstreamError,
+    UpstreamUnavailable,
+)
 from maplestats_mcp.shared.http import (
     api_get,
     api_post,
@@ -21,6 +26,7 @@ from maplestats_mcp.shared.http import (
     send_with_retry,
     wait_honouring_retry_after,
 )
+from maplestats_mcp.shared.i18n import reset_call_lang, set_call_lang
 
 
 async def test_api_get_decodes_json(httpx_mock):
@@ -235,3 +241,110 @@ def test_retry_after_ignores_non_ascii_digits():
 
     assert retry_after_seconds("²") is None
     assert retry_after_seconds("12") == 12.0
+
+
+# get_raw(max_bytes=...): the cap applies before the body is held -----------------
+
+
+class _Body:
+    """A response body that counts the chunks the reader actually pulled."""
+
+    def __init__(self, chunks: int, chunk: bytes = b"x" * 16_384) -> None:
+        self.total = chunks
+        self.chunk = chunk
+        self.pulled = 0
+
+    async def __aiter__(self):
+        for _ in range(self.total):
+            self.pulled += 1
+            yield self.chunk
+
+
+def _serve(httpx_mock, body, *, url="https://example.invalid/big", status=200, headers=None):
+    def respond(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, headers=headers or {}, content=body)
+
+    httpx_mock.add_callback(respond, url=url)
+
+
+async def test_get_raw_with_a_cap_returns_a_body_under_it(httpx_mock):
+    httpx_mock.add_response(
+        url="https://example.invalid/small",
+        content="café".encode(),
+        headers={"content-type": "text/plain; charset=utf-8", "x-seen": "yes"},
+    )
+    response = await get_raw("https://example.invalid/small", max_bytes=1000)
+    assert response.content == "café".encode()
+    assert response.text == "café"
+    assert response.headers["x-seen"] == "yes"
+    assert str(response.url) == "https://example.invalid/small"
+
+
+async def test_get_raw_refuses_a_declared_length_over_the_cap_without_reading(httpx_mock):
+    body = _Body(chunks=10)
+    _serve(httpx_mock, body, headers={"content-length": "9000000"})
+    with pytest.raises(TooLarge, match="9,000,000 bytes"):
+        await get_raw("https://example.invalid/big", max_bytes=100_000)
+    assert body.pulled == 0
+
+
+async def test_get_raw_stops_an_undeclared_body_that_outgrows_the_cap(httpx_mock):
+    body = _Body(chunks=500)  # 8 MB on offer, no Content-Length
+    _serve(httpx_mock, body)
+    with pytest.raises(TooLarge, match="stopped reading at the cap"):
+        await get_raw("https://example.invalid/big", max_bytes=100_000)
+    assert body.pulled <= 8  # 100,000 bytes is seven 16 KB chunks
+
+
+async def test_get_raw_cap_error_is_an_upstream_error_not_a_retry(httpx_mock):
+    _serve(httpx_mock, _Body(chunks=50))
+    with pytest.raises(UpstreamError):
+        await get_raw("https://example.invalid/big", max_bytes=1000)
+    assert len(httpx_mock.get_requests()) == 1
+
+
+async def test_get_raw_cap_error_reads_in_french_for_a_french_call(httpx_mock):
+    _serve(httpx_mock, _Body(chunks=50))
+    token = set_call_lang("fr")
+    try:
+        with pytest.raises(TooLarge, match="Téléchargez-le"):
+            await get_raw("https://example.invalid/big", max_bytes=1000)
+    finally:
+        reset_call_lang(token)
+
+
+async def test_get_raw_with_a_cap_still_raises_for_a_status_and_keeps_its_headers(httpx_mock):
+    httpx_mock.add_response(
+        url="https://example.invalid/moved",
+        status_code=302,
+        headers={"location": "https://example.invalid/elsewhere"},
+    )
+    with pytest.raises(httpx.HTTPStatusError) as caught:
+        await get_raw("https://example.invalid/moved", max_bytes=1000)
+    assert caught.value.response.headers["location"] == "https://example.invalid/elsewhere"
+
+
+async def test_get_raw_with_a_cap_reads_only_the_start_of_an_error_page(httpx_mock):
+    body = _Body(chunks=400)
+    _serve(httpx_mock, body, status=404)
+    with pytest.raises(httpx.HTTPStatusError):
+        await get_raw("https://example.invalid/big", max_bytes=1000)
+    assert body.pulled <= 6  # 64 KB of 16 KB chunks, not the 6.5 MB on offer
+
+
+async def test_get_raw_with_a_cap_still_passes_a_409_through(httpx_mock):
+    httpx_mock.add_response(url="https://example.invalid/locked", status_code=409, content=b"no")
+    response = await get_raw("https://example.invalid/locked", max_bytes=1000)
+    assert (response.status_code, response.content) == (409, b"no")
+
+
+async def test_get_raw_with_a_cap_still_retries_a_503(httpx_mock):
+    httpx_mock.add_response(url="https://example.invalid/flaky", status_code=503)
+    httpx_mock.add_response(url="https://example.invalid/flaky", content=b"ok")
+    response = await get_raw("https://example.invalid/flaky", max_bytes=1000)
+    assert response.content == b"ok"
+
+
+async def test_get_raw_without_a_cap_reads_the_whole_body_as_before(httpx_mock):
+    httpx_mock.add_response(url="https://example.invalid/all", content=b"y" * 200_000)
+    assert len((await get_raw("https://example.invalid/all")).content) == 200_000

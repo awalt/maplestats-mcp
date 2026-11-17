@@ -112,7 +112,7 @@ async def _xml(
     async def fetch() -> Node:
         await _LIMITER.acquire()
         try:
-            response = await get_raw(url, timeout=60.0)
+            response = await get_raw(url, timeout=60.0, max_bytes=constants.MAX_BODY_BYTES)
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
             if status in (301, 302, 404):

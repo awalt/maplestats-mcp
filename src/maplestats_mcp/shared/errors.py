@@ -28,6 +28,14 @@ class UpstreamUnavailable(ValueError):
     """The upstream API is temporarily unreachable (network/5xx/timeout)."""
 
 
+class TooLarge(UpstreamError):
+    """A file or response is over the reader's byte cap (declared, or found while reading).
+
+    Defined here so shared/http.py (`get_raw(max_bytes=...)`) and shared/file_download.py
+    raise the same class; `file_download.TooLarge` is this class.
+    """
+
+
 class CloudflareChallenge(UpstreamUnavailable):
     """The host answered with a Cloudflare bot challenge, which only a browser can pass.
 

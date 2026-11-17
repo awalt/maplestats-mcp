@@ -33,7 +33,7 @@ from maplestats_mcp.modules.cbsa import constants
 from maplestats_mcp.modules.cbsa.schemas import BorderCrossing, BorderWaitTimes, WaitTime
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance, raise_typed
-from maplestats_mcp.shared.errors import InvalidInput, UpstreamError, UpstreamUnavailable
+from maplestats_mcp.shared.errors import InvalidInput, TooLarge, UpstreamError, UpstreamUnavailable
 from maplestats_mcp.shared.http import get_raw
 from maplestats_mcp.shared.i18n import french_spacing
 from maplestats_mcp.shared.rate_limiter import get_limiter
@@ -140,7 +140,14 @@ async def _crossings(lang: str) -> tuple[list[BorderCrossing], bool]:
     async def fetch() -> list[BorderCrossing]:
         await _LIMITER.acquire()
         try:
-            response = await get_raw(url, timeout=30.0)
+            response = await get_raw(url, timeout=30.0, max_bytes=constants.MAX_FILE_BYTES)
+        except TooLarge:
+            _raise(
+                UpstreamError,
+                f"cbsa: {url} is much larger than expected; it changed.",
+                f"cbsa : {url} est beaucoup plus volumineux que prévu ; il a changé.",
+                lang,
+            )
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
             _raise(
@@ -154,13 +161,6 @@ async def _crossings(lang: str) -> tuple[list[BorderCrossing], bool]:
                 UpstreamUnavailable,
                 f"cbsa: {url} did not respond in time.",
                 f"cbsa : {url} n'a pas répondu à temps.",
-                lang,
-            )
-        if len(response.content) > constants.MAX_FILE_BYTES:
-            _raise(
-                UpstreamError,
-                f"cbsa: {url} is much larger than expected; it changed.",
-                f"cbsa : {url} est beaucoup plus volumineux que prévu ; il a changé.",
                 lang,
             )
         return parse_file(response.content.decode("utf-8-sig", errors="replace"), lang)

@@ -31,7 +31,6 @@ Checked live on 2026-11-07 with the project's User-Agent, no key:
 
 from __future__ import annotations
 
-import asyncio
 import io
 import math
 import re
@@ -61,7 +60,14 @@ from maplestats_mcp.modules.fed.schemas import (
 )
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance, raise_localized
-from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
+from maplestats_mcp.shared.errors import (
+    InvalidInput,
+    NotFound,
+    TooLarge,
+    UpstreamError,
+    UpstreamUnavailable,
+)
+from maplestats_mcp.shared.executor import run_in_pool
 from maplestats_mcp.shared.http import get_raw
 from maplestats_mcp.shared.i18n import fr_number, normalize_lang, pick
 from maplestats_mcp.shared.rate_limiter import get_limiter
@@ -289,7 +295,17 @@ async def _download(url: str, lang: str) -> bytes:
         capacity=constants.RATE_LIMIT_CAPACITY,
     ).acquire()
     try:
-        response = await get_raw(url, timeout=constants.DOWNLOAD_TIMEOUT_SECONDS)
+        response = await get_raw(
+            url, timeout=constants.DOWNLOAD_TIMEOUT_SECONDS, max_bytes=constants.MAX_ZIP_BYTES
+        )
+    except TooLarge:
+        raise_localized(
+            UpstreamError,
+            f"{url} is over {constants.MAX_ZIP_BYTES:,} bytes, more than this server reads.",
+            f"{url} dépasse {fr_number(constants.MAX_ZIP_BYTES)} octets, plus que ce que ce "
+            "serveur lit.",
+            lang,
+        )
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         if status == 404:
@@ -309,15 +325,7 @@ async def _download(url: str, lang: str) -> bytes:
         )
     except httpx.HTTPError as exc:
         _raise_unavailable(url, exc, lang)
-    body = response.content
-    if len(body) > constants.MAX_ZIP_BYTES:
-        raise_localized(
-            UpstreamError,
-            f"{url} is {len(body):,} bytes, more than this server reads.",
-            f"{url} fait {fr_number(len(body))} octets, plus que ce que ce serveur lit.",
-            lang,
-        )
-    return body
+    return response.content
 
 
 def _release_spec(release: str, lang: str) -> constants.Release:
@@ -340,7 +348,9 @@ async def _load(spec: constants.Release, lang: str) -> tuple[_Release, bool]:
     async def fetch() -> _Release:
         body = await _download(spec.data_url, lang)
         try:
-            return await asyncio.to_thread(parse_release, spec.code, body)
+            # The parsing pool, not asyncio.to_thread: a 127 MB XML parse would hold a
+            # thread of the default executor that DNS lookups share (shared/executor.py).
+            return await run_in_pool(parse_release, spec.code, body)
         except UpstreamError as exc:
             raise_localized(
                 UpstreamError,

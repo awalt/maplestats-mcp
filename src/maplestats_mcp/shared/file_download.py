@@ -34,7 +34,13 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
-from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
+from maplestats_mcp.shared.errors import (
+    InvalidInput,
+    NotFound,
+    TooLarge,
+    UpstreamError,
+    UpstreamUnavailable,
+)
 from maplestats_mcp.shared.fr_typography import call_error
 from maplestats_mcp.shared.http import (
     counted_once,
@@ -124,10 +130,6 @@ def check_url(url: str, allow_host: HostCheck, context: str) -> None:
         )
     if not allow_host(parsed.hostname):
         raise _refuse(url, context)
-
-
-class TooLarge(UpstreamError):
-    """The file is over the reader's byte cap (declared, or found while reading)."""
 
 
 class RedirectRefused(UpstreamError):
