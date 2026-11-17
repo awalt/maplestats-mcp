@@ -81,6 +81,19 @@ _GUIDANCE = (
 # ahead of national steps; "BC" is how purposes name British Columbia.
 _PLACE_WORDS = {"British Columbia": ("British Columbia", "BC ")}
 
+# Tools that serve one city's portal, and the places a question must name for them
+# to belong in its plan (the city or its province). An Edmonton and Calgary rent
+# question was planned with RentSafeTO and Toronto's short-term rentals, and an
+# Ottawa restaurant question started with Toronto's DineSafe (2026-11-15, issue
+# #265). A question that names no place keeps them.
+_CITY_TOOLS = {
+    "toronto_": ("Toronto", "Ontario"),
+    "eps_": ("Edmonton", "Alberta"),
+    "ets_": ("Edmonton", "Alberta"),
+    "epcor_": ("Edmonton", "Alberta"),
+    "opendatasoft_vancouver_": ("Vancouver", "British Columbia"),
+}
+
 
 def _normalize(text: str) -> str:
     # Map the characters the ASCII step would drop: a typographic apostrophe
@@ -146,7 +159,21 @@ def _ordered(topic: Topic, text: str, labels: list[str]) -> list[StepOut]:
         return 2 * term_hit + _place_score(step, labels)
 
     steps = sorted(topic.steps, key=score, reverse=True)
-    return [StepOut(tool=step.tool, purpose=step.purpose) for step in steps if _available(step)]
+    return [
+        StepOut(tool=step.tool, purpose=step.purpose)
+        for step in steps
+        if _available(step) and _for_places(step, labels)
+    ]
+
+
+def _for_places(step: PlanStep, labels: list[str]) -> bool:
+    """False for one city's tool when the question names only other places."""
+    if not labels:
+        return True
+    for prefix, places in _CITY_TOOLS.items():
+        if step.tool.startswith(prefix):
+            return any(label in places for label in labels)
+    return True
 
 
 def _available(step: PlanStep) -> bool:
