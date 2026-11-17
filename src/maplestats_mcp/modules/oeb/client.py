@@ -52,6 +52,7 @@ _LIMITER = get_limiter(
 _client = new_client(timeout=constants.PAGE_TIMEOUT_SECONDS, follow_redirects=False)
 _MAX_REDIRECTS = 3
 _MAX_HOPS = 2
+_YEAR_MIN, _YEAR_MAX = 1900, 2100
 
 # Field names (normalized: lower case, letters and digits only) that hold the
 # company, as found across the 196 XML files and the workbooks on 2026-10-03:
@@ -778,6 +779,16 @@ async def query_dataset(
             InvalidInput,
             f"max_rows must be between 1 and {constants.MAX_ROWS}.",
             f"max_rows doit être entre 1 et {constants.MAX_ROWS}.",
+            lang,
+        )
+    # The year is matched by prefix on purpose (2024 also finds the fiscal year
+    # 2024-25), so a short number such as 202 would match 2020 to 2029.
+    if year is not None and not _YEAR_MIN <= year <= _YEAR_MAX:
+        raise_localized(
+            InvalidInput,
+            f"year must be a four-digit year between {_YEAR_MIN} and {_YEAR_MAX}, got {year}.",
+            f"year doit être une année à quatre chiffres entre {_YEAR_MIN} et {_YEAR_MAX} ; "
+            f"reçu {year}.",
             lang,
         )
     page, row = await _resolve(dataset, lang)

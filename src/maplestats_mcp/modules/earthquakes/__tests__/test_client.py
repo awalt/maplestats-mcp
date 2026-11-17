@@ -69,6 +69,19 @@ async def test_event_id_queries_by_minute_and_returns_that_minute(httpx_mock):
     assert query["eventid"] == ["20260910.0315"]
 
 
+async def test_event_id_with_another_filter_is_refused_not_ignored(httpx_mock):
+    # The lookup is by minute only, so a filter next to it used to vanish silently.
+    with pytest.raises(InvalidInput, match=r"cannot be combined with min_magnitude, bbox"):
+        await client.search(event_id="20260910.0315", min_magnitude=5, bbox=(-130, 45, -120, 55))
+    with pytest.raises(InvalidInput, match="ne peut pas être combiné avec start"):
+        await client.search(event_id="20260910.0315", start="2026-09-01", lang="fr")
+    assert httpx_mock.get_requests() == []
+    # limit has a default of its own and is not a filter.
+    httpx_mock.add_response(text=_TEXT)
+    result = await client.search(event_id="20260910.0315", limit=5)
+    assert result.earthquakes[0].lookup_id == "20260910.0315"
+
+
 async def test_catalogue_id_is_refused_with_the_minute_form(httpx_mock):
     # Live 2026-10-08: ids like ca2026sykh are returned but rejected by `eventid`.
     with pytest.raises(InvalidInput, match=r"20260924\.1414"):

@@ -21,6 +21,11 @@ SCRIPTS = ROOT / "scripts"
 
 
 def _load_smoke_table():
+    # smoke_test_modules.py imports its sibling _smoke_common, found only with
+    # scripts/ on the path; without this the file passed only when another
+    # test had added it first.
+    if str(SCRIPTS) not in sys.path:
+        sys.path.insert(0, str(SCRIPTS))
     spec = importlib.util.spec_from_file_location(
         "smoke_modules", SCRIPTS / "smoke_test_modules.py"
     )

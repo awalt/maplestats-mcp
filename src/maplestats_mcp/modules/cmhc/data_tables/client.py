@@ -70,7 +70,7 @@ from urllib.parse import unquote, urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
-from defusedxml import ElementTree
+from defusedxml import DefusedXmlException, ElementTree
 
 from maplestats_mcp.modules.cmhc.data_tables import constants
 from maplestats_mcp.modules.cmhc.data_tables.schemas import (
@@ -378,7 +378,14 @@ def _sitemap_pairs(body: str) -> dict[str, str]:
 async def _pairing() -> tuple[dict[str, str], bool]:
     async def fetch() -> dict[str, str]:
         body = await _get_html(constants.SITEMAP_URL)
-        pairs = await run_parse(_sitemap_pairs, body)
+        try:
+            pairs = await run_parse(_sitemap_pairs, body)
+        except (ElementTree.ParseError, DefusedXmlException) as exc:
+            raise call_error(
+                UpstreamError,
+                f"The sitemap at {constants.SITEMAP_URL} is not valid XML.",
+                f"Le plan du site à {constants.SITEMAP_URL} n'est pas un XML valide.",
+            ) from exc
         if not pairs:
             raise call_error(
                 UpstreamError,

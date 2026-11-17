@@ -201,7 +201,8 @@ async def search_datasets(
             lang=lang,
         )
 
-    cache_key = f"{config.source}:search:{query}:{category}:{tag}:{limit}:{offset}"
+    # repr of a tuple, not a ":" join, for the same reason as the rows key below.
+    cache_key = f"{config.source}:search:{(query, category, tag, limit, offset)!r}"
     result, was_cached = await cached_fetch(cache_key, constants.CACHE_TTL_SEARCH_SECONDS, fetch)
     raw_results = list_or_empty(result, "results")
     total_count = get_or(result, "resultSetSize", len(raw_results))

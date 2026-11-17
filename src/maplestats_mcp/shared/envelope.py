@@ -33,9 +33,12 @@ STATCAN_LICENCE_FR = t("provenance.statcan_licence", "fr")
 
 def _licence_for(source: str, url: str, lang: str = "en") -> str | None:
     """StatCan's licence in the call's language; every other source from shared/licences."""
-    if source.lower().startswith("statcan") or "statcan.gc.ca" in url.lower():
+    if source.lower().startswith("statcan"):
         return t("provenance.statcan_licence", lang)
-    return licence_for(source, url)
+    # A source with its own terms keeps them even when its file sits on a
+    # statcan.gc.ca URL (transit:statcan: each feed has its agency's terms).
+    terms = licence_for(source, url)
+    return t("provenance.statcan_licence", lang) if terms == STATCAN_LICENCE else terms
 
 
 def make_provenance(

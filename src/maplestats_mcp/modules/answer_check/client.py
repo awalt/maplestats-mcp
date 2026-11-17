@@ -78,13 +78,14 @@ _SCALE_WORDS: dict[str, tuple[tuple[re.Pattern[str], float], ...]] = {
         (_words(r"\btrillions?\b"), 1e12),
         (_words(r"\bbillions?\b|\bbn\b|\bmilliards?\b"), 1e9),
         (_words(r"\bmillions?\b"), 1e6),
-        (_words(r"\bthousands?\b|\bk\b"), 1e3),
+        # "per thousand" is a rate, not a scale.
+        (_words(r"(?<!\bper )\bthousands?\b|\bk\b"), 1e3),
     ),
     "fr": (
         (_words(r"\bbillions?\b"), 1e12),
         (_words(r"\bmilliards?\b|\bG\$|\bMds?\$?"), 1e9),
         (_words(r"\bmillions?\b"), 1e6),
-        (_words(r"\bmilliers?\b|\bmille\b|\bk\b"), 1e3),
+        (_words(r"\bmilliers?\b|(?<!\bpour )\bmille\b|\bk\b"), 1e3),
     ),
 }
 # A scale word is not a licence to round: "2 million" must not match 2.4 million.
@@ -166,6 +167,10 @@ def _number(raw: float | str, lang: str) -> tuple[float, float]:
     """
     if isinstance(raw, str):
         text = re.sub(r"[\s  $%]", "", raw)
+        # A typeset minus (U+2212) and accounting parentheses both mean negative.
+        text = text.replace("−", "-")
+        if re.fullmatch(r"\([^()-]+\)", text):
+            text = "-" + text[1:-1]
         if "," in text and "." in text:
             # The separator written last is the decimal one: 1,234.5 or 1.234,5.
             thousands = "," if text.rfind(",") < text.rfind(".") else "."

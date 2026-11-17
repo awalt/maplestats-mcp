@@ -197,7 +197,15 @@ async def list_files(database: str, lang: str = "en", sizes: bool = True) -> Lod
         modified: str | None = None
         if sizes:
             await _LIMITER.acquire()
-            size, modified = await files.head_size(item.url)
+            try:
+                size, modified = await files.head_size(item.url)
+            except (NotFound, UpstreamError, UpstreamUnavailable):
+                # One dead link must not hide every other file on the page.
+                dead = say(
+                    "StatCan's link to this file did not answer; its size is unknown.",
+                    "Le lien de Statistique Canada vers ce fichier n'a pas répondu ; sa taille est inconnue.",
+                )
+                note = f"{note} {dead}" if note else dead
         out.append(
             LodeFile(
                 label=item.label,

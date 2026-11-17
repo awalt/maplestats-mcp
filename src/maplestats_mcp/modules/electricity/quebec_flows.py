@@ -27,7 +27,7 @@ water levels and river flows) is 15 MB and is not read.
 from __future__ import annotations
 
 import unicodedata
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from maplestats_mcp.modules.electricity import constants
@@ -275,6 +275,9 @@ async def get_facility_flows(
                     f"{label} doit être une date ou une date-heure ISO, reçu '{text}'.",
                     lang,
                 ) from exc
+            if label == "end" and "T" not in text.upper() and " " not in text.strip():
+                # A date alone means the whole day, not its first instant.
+                parsed += timedelta(days=1) - timedelta(microseconds=1)
             window.append(parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC))
         else:
             window.append(None)

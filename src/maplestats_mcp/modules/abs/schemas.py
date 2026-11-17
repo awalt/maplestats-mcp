@@ -69,6 +69,7 @@ class SeriesInfo(BaseModel):
         default=None, description="Original, Seasonally Adjusted or Trend."
     )
     unit: str | None = None
+    unit_multiplier: str | None = None
     base_period: str | None = None
     dimensions: list[DimensionValue]
     observation_count: int

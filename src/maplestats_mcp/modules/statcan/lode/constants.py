@@ -52,6 +52,9 @@ PREVIEW_ROWS_MAX = 200
 PREVIEW_SCAN_DEFAULT_MB = 8
 PREVIEW_SCAN_MAX_MB = 40
 RANGE_CHUNK_BYTES = 1 << 20
+# Deflate can expand a thousandfold, so the compressed cap alone does not
+# bound memory: a preview stops inflating here and reports itself partial.
+PREVIEW_INFLATED_MAX_BYTES = 64 << 20
 SCAN_ROWS_MAX = 2_000_000
 
 

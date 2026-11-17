@@ -187,7 +187,7 @@ def test_filters_run_on_source_names_in_every_language():
     assert 'str_starts(as.character(`Fiscal Year`), fixed("2023"))' in code["r"]
     assert "pl.col('Value').cast(pl.Float64, strict=False) >= 1000" in code["python"]
     assert "str.strip_chars().str.to_lowercase() == 'tc energy'" in code["python"]
-    assert 'startswith(coalesce(string(row["Fiscal Year"]), ""), "2023")' in code["julia"]
+    assert 'startswith(string(coalesce(row["Fiscal Year"], "")), "2023")' in code["julia"]
     # Filters come before name cleaning, so they use the source's names.
     assert code["r"].index("filter(") < code["r"].index("clean_names()")
 

@@ -60,9 +60,9 @@ async def statcan_census_profile_archive_get_download_link(
     topics) for a pre-2021 census, given a level key from
     statcan_census_profile_archive_list_geography_levels. Files can be
     large (tens to hundreds of megabytes for fine-grained levels like
-    dissemination areas). Only CSV and TAB formats are covered -- IVT
-    (a proprietary Beyond 20/20 format) uses a different, separate
-    resolver not implemented here. `lang="fr"` returns StatCan's
+    dissemination areas). 2016 offers CSV, TAB, IVT (Beyond 20/20) and
+    XML; 2001, 2006 and 2011 only CSV and TAB, because their IVT and XML
+    files use a different resolver not implemented here. `lang="fr"` returns StatCan's
     French-language file for every year. Keywords: census, archive,
     historical, download, CSV, TAB, comprehensive download file, census
     profile.

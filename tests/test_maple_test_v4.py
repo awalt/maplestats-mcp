@@ -234,3 +234,14 @@ def test_review_regex_fixes():
     assert grade_v4(FRESH["N-19"], text).outcome != "correct"
     text = "Toronto Public Health owns it, refreshed daily, and it is in the DataStore (active)."
     assert grade_v4(FRESH["N-19"], text).outcome == "correct"
+
+
+def test_the_judge_cache_key_follows_the_answer_key():
+    q = next(iter(V4.values()))
+    revised = {**q, "expected": {**q["expected"], "revised_value": 1}}
+    key = judge._cache_key(judge.MODEL, q, "answer")
+    assert key == judge._cache_key(judge.MODEL, dict(q), "answer")
+    assert key != judge._cache_key(judge.MODEL, revised, "answer")
+    assert key != judge._cache_key(judge.MODEL, q, "another answer")
+    # A field the judge never sees (the split) does not cost a cached verdict.
+    assert key == judge._cache_key(judge.MODEL, {**q, "split": "other"}, "answer")

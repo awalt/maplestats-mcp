@@ -182,3 +182,47 @@ def test_network_error_explicit_lang_beats_an_english_call():
     assert "n'a pas répondu à temps" in str(network_error("x", timeout, "fr"))
     assert "did not respond in time" in str(network_error("x", timeout, "en"))
     assert "did not respond in time" in str(network_error("x", timeout))
+
+
+_REST_URL = "https://services.example.com/arcgis/rest/services/Parks/FeatureServer"
+
+
+@pytest.mark.parametrize(
+    "service_url",
+    [
+        "http://services.example.com/arcgis/rest/services/Parks/FeatureServer",
+        "https:///arcgis/rest/services/Parks/FeatureServer",
+        "https://user:secret@services.example.com/arcgis/rest/services/Parks/FeatureServer",
+        "https://localhost/arcgis/rest/services/Parks/FeatureServer",
+        "https://gis.localhost/arcgis/rest/services/Parks/FeatureServer",
+        "https://127.0.0.1/arcgis/rest/services/Parks/FeatureServer",
+        "https://[::1]/arcgis/rest/services/Parks/FeatureServer",
+        "https://evil.example.com/other?next=/rest/services/",
+        "https://evil.example.com/other#/rest/services/",
+        "https://services.example.com:notaport/arcgis/rest/services/Parks/FeatureServer",
+    ],
+    ids=[
+        "http",
+        "no-host",
+        "credentials",
+        "localhost",
+        "dot-localhost",
+        "ipv4",
+        "ipv6",
+        "marker-in-query",
+        "marker-in-fragment",
+        "bad-port",
+    ],
+)
+async def test_service_url_guard_rejects_before_any_request(httpx_mock, service_url: str):
+    with pytest.raises(InvalidInput, match="public host"):
+        await arcgis.get_service_info(_ARCGIS, service_url)
+    with pytest.raises(InvalidInput, match="hôte public"):
+        await arcgis.query_layer(_ARCGIS, service_url, 0, lang="fr")
+    assert httpx_mock.get_requests() == []
+
+
+async def test_service_url_guard_accepts_a_public_https_rest_endpoint(httpx_mock):
+    httpx_mock.add_response(url=f"{_REST_URL}?f=json", json={"layers": []})
+    body = await arcgis.get_service_info(_ARCGIS, _REST_URL)
+    assert body == {"layers": []}

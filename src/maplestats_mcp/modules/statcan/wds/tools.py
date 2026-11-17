@@ -318,8 +318,8 @@ async def wds_get_data_from_vectors(
     client.use_lang(lang)
     request = transforms.TransformRequest(transform, frequency, aggregation, index_base, window)
     request.check(lang)
+    client._check_vector_ids(vector_ids)
     if not request.active:
-        client._check_vector_ids(vector_ids)
         data, _ = await asyncio.gather(
             client.get_data_from_vectors_and_latest_n_periods(vector_ids, latest_n),
             context.prefetch(vector_ids),
@@ -566,8 +566,8 @@ async def wds_get_data_by_reference_period_range(
     client.use_lang(lang)
     request = transforms.TransformRequest(transform, frequency, aggregation, index_base, window)
     request.check(lang)
+    client._check_vector_ids(vector_ids)
     if not request.active:
-        client._check_vector_ids(vector_ids)
         data, _ = await asyncio.gather(
             client.get_data_from_vector_by_reference_period_range(
                 vector_ids, start_ref_period, end_ref_period

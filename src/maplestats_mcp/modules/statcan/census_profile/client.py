@@ -35,6 +35,7 @@ Confirmed live 2026-09-20. Two real quirks handled:
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any
 
 import httpx
@@ -164,6 +165,11 @@ async def _fetch_codelist(codelist_id: str, lang: str = "en") -> tuple[list[dict
     ], cached
 
 
+def _fold(text: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+
 async def search_geography(
     level: str,
     query: str = "",
@@ -195,8 +201,9 @@ async def search_geography(
         )
     _, codelist_id = dataflow
     codes, cached = await _fetch_codelist(codelist_id, lang)
-    query_lower = query.strip().lower()
-    matched = [c for c in codes if query_lower in c["name"].lower()] if query_lower else codes
+    # Accents folded on both sides, so "montreal" finds "Montréal".
+    wanted = _fold(query.strip())
+    matched = [c for c in codes if wanted in _fold(c["name"])] if wanted else codes
     return GeographySearchResult(
         level=level,
         matches=[GeographyMatch(code=c["code"], name=c["name"]) for c in matched[:limit]],
@@ -229,8 +236,9 @@ async def search_characteristic(
             )
         )
     codes, cached = await _fetch_codelist(constants.CHARACTERISTIC_CODELIST, lang)
-    query_lower = query.strip().lower()
-    matched = [c for c in codes if query_lower in c["name"].lower()] if query_lower else codes
+    # Accents folded on both sides, so "montreal" finds "Montréal".
+    wanted = _fold(query.strip())
+    matched = [c for c in codes if wanted in _fold(c["name"])] if wanted else codes
     return CharacteristicSearchResult(
         matches=[
             CharacteristicMatch(code=c["code"], name=c["name"], parent_code=c.get("parent"))

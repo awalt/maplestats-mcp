@@ -513,6 +513,17 @@ def test_period_bounds_and_archive_spans():
     assert client.archive_span("Stage.csv", "Stage") is None
 
 
+def test_period_bounds_reject_impossible_dates_and_never_overflow():
+    for text in ("2024-13", "2024-02-31", "2024-09-15 25:00", "2023-02-29", "0000-12"):
+        with pytest.raises(InvalidInput, match="not a real date or time"):
+            client.bound(text, end=True, lang="en", name="end")
+    with pytest.raises(InvalidInput, match="n'est pas une date ou une heure valide"):
+        client.bound("2024-02-31", end=False, lang="fr", name="start")
+    # The last year the datetime type holds: the month-end sum must not overflow.
+    assert client.bound("9999-12", end=True, lang="en", name="end") == "9999-12-31 23:59:59"
+    assert client.bound("2023-02", end=True, lang="en", name="end") == "2023-02-28 23:59:59"
+
+
 # French (lang="fr"): provenance text, licence, notes and errors; English unchanged.
 
 

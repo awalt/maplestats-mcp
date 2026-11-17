@@ -39,6 +39,8 @@ CSV_SHEET = "csv"
 MAX_SCAN_ROWS = 1_000_000
 CSV_FIELD_LIMIT = 2**22
 HEADER_SEARCH_ROWS = 30
+# Rows up to header_row are held in memory, so a huge value must fail first.
+MAX_HEADER_ROW = 1_000
 HEADER_MIN_CELLS = 3
 PREVIEW_ROWS = 3
 PREVIEW_SCAN_ROWS = 40
@@ -240,6 +242,12 @@ def scan_rows(
     limit: int = ROWS_LIMIT_DEFAULT,
 ) -> ScanResult:
     """One pass over `rows`: header, filters, count, and the requested page."""
+    if header_row is not None and header_row > MAX_HEADER_ROW:
+        raise call_error(
+            InvalidInput,
+            f"header_row must be at most {MAX_HEADER_ROW}, got {header_row}.",
+            f"header_row doit être au plus {MAX_HEADER_ROW}, reçu {header_row}.",
+        )
     iterator = iter(rows)
     buffer = list(islice(iterator, max(HEADER_SEARCH_ROWS, (header_row or 0) + header_rows)))
     if header_row is not None:

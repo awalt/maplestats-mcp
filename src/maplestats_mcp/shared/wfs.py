@@ -81,8 +81,9 @@ def _extract_exception_text(body: bytes) -> str:
     except (ElementTree.ParseError, DefusedXmlException):
         return body[:200].decode("utf-8", errors="replace")
     text_el = root.find(f".//{_OWS_NS}ExceptionText")
-    if text_el is not None and text_el.text:
-        return text_el.text.strip().splitlines()[0]
+    lines = (text_el.text or "").strip().splitlines() if text_el is not None else []
+    if lines:
+        return lines[0]
     return body[:200].decode("utf-8", errors="replace")
 
 

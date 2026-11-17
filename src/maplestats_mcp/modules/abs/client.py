@@ -80,7 +80,7 @@ _STOPWORDS = frozenset(
     {"the", "of", "and", "in", "for", "by", "on", "to", "a", "an", "data", "dataset",
      "datasets", "australia", "australian", "abs"}
 )  # fmt: skip
-_SERIES_ATTRIBUTES = ("UNIT_MEASURE", "BASE_PERIOD")
+_SERIES_ATTRIBUTES = ("UNIT_MEASURE", "UNIT_MULT", "BASE_PERIOD")
 _PRESET_FLOWS = frozenset(spec.dataflow for spec in constants.INDICATORS.values())
 
 
@@ -444,6 +444,7 @@ def _series_info(series: sdmx.Series) -> SeriesInfo:
         frequency=freq[1] if freq else None,
         adjustment=adjustment[1] if adjustment else None,
         unit=attrs["UNIT_MEASURE"][1] if "UNIT_MEASURE" in attrs else None,
+        unit_multiplier=attrs["UNIT_MULT"][1] if "UNIT_MULT" in attrs else None,
         base_period=attrs["BASE_PERIOD"][1] if "BASE_PERIOD" in attrs else None,
         dimensions=[DimensionValue(id=d, code=c, label=label) for d, c, label in series.dims],
         observation_count=len(obs),

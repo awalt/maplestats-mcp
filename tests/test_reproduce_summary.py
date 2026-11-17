@@ -106,7 +106,7 @@ def test_in_filter_in_julia_and_excel():
         filters=[Filter("in", ["GEO"], ["Canada", " Ontario "])],
     )
     julia, _ = RENDERERS["julia"](spec, "t")  # type: ignore[misc]
-    assert 'lowercase(strip(coalesce(string(row["GEO"]), ""))) in ("canada", "ontario",)' in julia
+    assert 'lowercase(strip(string(coalesce(row["GEO"], "")))) in ("canada", "ontario",)' in julia
     from maplestats_mcp.modules.reproduce.excel import render_excel
 
     rendered = render_excel(spec, "t")

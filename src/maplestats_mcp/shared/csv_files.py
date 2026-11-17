@@ -128,7 +128,9 @@ def parse_rows(body: bytes, url: str, context: str) -> list[dict[str, str]]:
             f"{context} : {url} a renvoyé une page Web, pas un fichier CSV.",
         )
     return [
-        {(k or "").strip(): (v or "") for k, v in row.items()}
+        # DictReader files cells past the header under None, as a list; a
+        # trailing comma on a data row must not add a list-valued column.
+        {k.strip(): (v or "") for k, v in row.items() if k is not None}
         for row in csv.DictReader(io.StringIO(text))
     ]
 

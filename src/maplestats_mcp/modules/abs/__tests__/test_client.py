@@ -93,6 +93,14 @@ async def test_get_data_sorts_newest_first_rows_and_labels_series(httpx_mock):
     assert _data_requests(httpx_mock)[0].url.params["lastNObservations"] == "3"
 
 
+async def test_unit_multiplier_is_kept_so_thousands_are_not_read_as_units(httpx_mock):
+    _mock(httpx_mock, "LF", None)
+    thousands = _text("data_lf.csv").replace("0: Units", "3: Thousands")
+    httpx_mock.add_response(url=_data("LF"), text=thousands)
+    result = await client.get_data("LF", "m13.3.1599.20.1+2+aus.m", last_n=3)
+    assert {s.unit_multiplier for s in result.series} == {"Thousands"}
+
+
 async def test_unknown_code_fails_before_a_request(httpx_mock):
     _mock(httpx_mock, "LF", None)
     with pytest.raises(InvalidInput, match="M99 is not a MEASURE code"):

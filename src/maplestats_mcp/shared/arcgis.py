@@ -70,10 +70,12 @@ default to the prior behavior.
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal, NoReturn
+from urllib.parse import urlparse
 
 import httpx
 
@@ -440,16 +442,44 @@ def _raise_if_embedded_error(source: str, context: str, body: Any, lang: str = "
     )
 
 
+def _is_public_host(host: str) -> bool:
+    """False for localhost and IP-literal hosts (a link must not reach a private network)."""
+    lowered = host.lower().rstrip(".")
+    if lowered == "localhost" or lowered.endswith(".localhost"):
+        return False
+    try:
+        ipaddress.ip_address(lowered.strip("[]"))
+    except ValueError:
+        return True
+    return False
+
+
+def _is_arcgis_rest_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname
+        _ = parsed.port  # a malformed port raises ValueError here, not later in httpx
+    except ValueError:
+        return False
+    if parsed.scheme != "https" or not host or "@" in parsed.netloc:
+        return False
+    # "/rest/services/" is tested on the path alone: in the query or the
+    # fragment it proves nothing about the endpoint being called.
+    return _is_public_host(host) and "/rest/services/" in parsed.path
+
+
 def _require_arcgis_rest_url(
     config: ArcGISHubConfig, context: str, service_url: str, lang: str = "en"
 ) -> None:
-    if not service_url.startswith("https://") or "/rest/services/" not in service_url:
+    if not _is_arcgis_rest_url(service_url):
         raise_localized(
             InvalidInput,
             f"{config.source}:{context}: service_url must be an https ArcGIS REST "
-            f"service endpoint (containing /rest/services/), got {service_url!r}.",
+            "service endpoint on a public host, without credentials (path containing "
+            f"/rest/services/), got {service_url!r}.",
             f"{config.source}:{context} : service_url doit être un point d'accès de service "
-            f"ArcGIS REST en https (contenant /rest/services/); reçu {service_url!r}.",
+            "ArcGIS REST en https sur un hôte public, sans identifiants (chemin contenant "
+            f"/rest/services/); reçu {service_url!r}.",
             lang,
         )
 

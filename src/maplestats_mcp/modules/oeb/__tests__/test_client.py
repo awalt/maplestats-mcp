@@ -298,6 +298,16 @@ async def test_query_filters_distributor_year_and_fields(httpx_mock):
     assert result.matched_distributors == ["Hydro Ottawa Limited"]
 
 
+async def test_query_rejects_a_year_that_would_match_by_prefix(httpx_mock):
+    # year is matched by prefix (2024 finds 2024-25), so 202 would match 2020-2029.
+    for year in (202, 20, 0, 21000, -2024):
+        with pytest.raises(InvalidInput, match="four-digit year between 1900 and 2100"):
+            await client.query_dataset(REL_SLUG, year=year)
+    with pytest.raises(InvalidInput, match="année à quatre chiffres entre 1900 et 2100"):
+        await client.query_dataset(REL_SLUG, year=202, lang="fr")
+    assert httpx_mock.get_requests() == []
+
+
 async def test_query_matches_historical_names_and_where(httpx_mock):
     _mock_catalogue(httpx_mock)
     httpx_mock.add_response(url=REL_URL, content=ACCESS_XML)

@@ -10,11 +10,12 @@ Geographic Warehouse WFS layers the BC Catalogue lists for these networks.
 
 from __future__ import annotations
 
+import calendar
 import csv
 import io
 import re
 from collections.abc import Callable
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from maplestats_mcp.modules.bc_environment import constants
@@ -173,13 +174,34 @@ def bound(text: str | None, *, end: bool, lang: Lang, name: str) -> str | None:
             lang,
         )
     year, month, day, hour, minute, second = match.groups()
+    try:
+        # The pattern only checks digits: building the moment rejects month 13,
+        # 31 February, hour 25 and years outside 1-9999, which would otherwise
+        # pass through as text and match nothing (or raise OverflowError below).
+        datetime(
+            int(year),
+            int(month or 1),
+            int(day or 1),
+            int(hour or 0),
+            int(minute or 0),
+            int(second or 0),
+        )
+    except (ValueError, OverflowError):
+        raise_typed(
+            InvalidInput,
+            pick(
+                lang,
+                f"{name} is not a real date or time: {text!r}.",
+                f"{name} n'est pas une date ou une heure valide (reçu {text!r}).",
+            ),
+            lang,
+        )
     if end:
         if month is None:
             return f"{year}-12-31 23:59:59"
         if day is None:
-            first_next = date(int(year) + (month == "12"), int(month) % 12 + 1, 1)
-            last = first_next - timedelta(days=1)
-            return f"{last:%Y-%m-%d} 23:59:59"
+            last_day = calendar.monthrange(int(year), int(month))[1]
+            return f"{year}-{month}-{last_day:02d} 23:59:59"
         if hour is None:
             return f"{year}-{month}-{day} 23:59:59"
     return f"{year}-{month or '01'}-{day or '01'} {hour or '00'}:{minute or '00'}:{second or '00'}"

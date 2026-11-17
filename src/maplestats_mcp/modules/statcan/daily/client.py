@@ -146,7 +146,18 @@ async def get_releases(
         await _LIMITER.acquire()
         try:
             response = await get_raw(url)
+            # get_raw hands back 406 and 409 unraised; their bodies are not a feed.
+            response.raise_for_status()
+            # Parsed here so a body that is not XML is never cached.
+            DefusedET.fromstring(response.content)
             return response.content
+        except (ElementTree.ParseError, DefusedXmlException) as exc:
+            raise UpstreamError(
+                say(
+                    f"statcan_daily:get_releases: response for subject {subject!r} was not valid XML.",
+                    f"statcan_daily:get_releases : la réponse pour le sujet {subject!r} n'était pas du XML valide.",
+                )
+            ) from exc
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
             raise UpstreamError(
@@ -1087,6 +1098,8 @@ async def _article_html(article_id: str, url: str, tool: str) -> tuple[str, bool
         await _LIMITER.acquire()
         try:
             response = await get_raw(url)
+            # get_raw hands back 406 and 409 unraised; their bodies are not the page.
+            response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
             if status == 404:
@@ -1554,6 +1567,8 @@ async def _fetch_html(
         await _LIMITER.acquire()
         try:
             response = await get_raw(url)
+            # get_raw hands back 406 and 409 unraised; their bodies are not the page.
+            response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
             if status == 404 and missing_ok:
