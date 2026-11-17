@@ -84,6 +84,7 @@ from maplestats_mcp.shared.i18n import french_spacing
 from maplestats_mcp.shared.json_utils import list_or_empty
 from maplestats_mcp.shared.limits import join_limits
 from maplestats_mcp.shared.rate_limiter import get_limiter
+from maplestats_mcp.shared.xlsx_sheets import open_workbook
 
 _LIMITER = get_limiter(
     constants.RATE_LIMIT_SOURCE,
@@ -339,10 +340,7 @@ def _text(value: Any) -> str | None:
 
 def parse_dictionary(workbook_bytes: bytes) -> tuple[list[DictionaryField], list[str]]:
     """Fields from every table sheet, plus the overview sheet's notes."""
-    # Imported on first use, like duckdb in statcan/pumf: only this tool needs it.
-    import openpyxl
-
-    workbook = openpyxl.load_workbook(io.BytesIO(workbook_bytes), read_only=True, data_only=True)
+    workbook = open_workbook(workbook_bytes)
     fields: list[DictionaryField] = []
     notes: list[str] = []
     for index, sheet in enumerate(workbook.worksheets):

@@ -233,3 +233,22 @@ async def test_parsing_runs_in_the_parse_pool_not_on_the_event_loop(httpx_mock, 
     assert cached is False
     assert seen and seen[0] is not loop_thread
     assert seen[0].name.startswith("maple-parse")
+
+
+def test_utf16_csv_is_read_by_its_byte_order_mark():
+    text = "Year,Province\n2024,Qu\u00e9bec\n"
+    rows = csv_files.parse_rows(text.encode("utf-16"), URL, "test")
+    assert rows == [{"Year": "2024", "Province": "Qu\u00e9bec"}]
+
+
+def test_an_unclosed_quote_is_an_upstream_error_not_a_bare_csv_error():
+    import csv
+
+    # A quote left open makes the rest of the file one field, which outgrows the field limit.
+    old = csv.field_size_limit(200)
+    try:
+        body = b'a,b\n1,"never closed' + b"x" * 1000
+        with pytest.raises(UpstreamError, match="not well-formed CSV"):
+            csv_files.parse_rows(body, URL, "test")
+    finally:
+        csv.field_size_limit(old)

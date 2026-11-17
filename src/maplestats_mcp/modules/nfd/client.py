@@ -84,6 +84,7 @@ from maplestats_mcp.shared.http import (
 from maplestats_mcp.shared.licences import LICENCES_FR, OGL_CANADA
 from maplestats_mcp.shared.models import Provenance
 from maplestats_mcp.shared.rate_limiter import get_limiter
+from maplestats_mcp.shared.xlsx_sheets import open_workbook
 
 _LICENCE = f"{OGL_CANADA} NFD terms of use: {constants.TERMS_URL}"
 _LICENCE_FR = french_spacing(
@@ -727,11 +728,10 @@ async def _load_dictionary(entry: CatalogueEntry, lang: Lang) -> tuple[dict[str,
 
     async def fetch() -> dict[str, Any]:
         response = await _download(url, f"nfd dictionary {entry.table_id}")
-        # openpyxl takes ~0.7 s to import, so it loads on first use.
-        from openpyxl import load_workbook
-
         try:
-            workbook = load_workbook(io.BytesIO(response.content), read_only=True, data_only=True)
+            workbook = open_workbook(response.content)
+        except UpstreamError:
+            raise  # the unpacked-size limit says so itself
         except Exception as exc:  # any unreadable workbook is the same upstream fault
             raise UpstreamError(
                 f"nfd: the data dictionary {url} is not a readable workbook."

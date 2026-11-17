@@ -25,7 +25,6 @@ Checked live 2026-10-27:
 
 from __future__ import annotations
 
-import io
 import re
 import unicodedata
 from collections.abc import Callable
@@ -59,6 +58,7 @@ from maplestats_mcp.shared.i18n import french_spacing, normalize_lang
 from maplestats_mcp.shared.json_utils import list_or_empty
 from maplestats_mcp.shared.limits import join_limits
 from maplestats_mcp.shared.rate_limiter import get_limiter
+from maplestats_mcp.shared.xlsx_sheets import open_workbook
 
 _LIMITER = get_limiter(
     constants.RATE_LIMIT_SOURCE,
@@ -182,9 +182,7 @@ async def _download(url: str, lang: str) -> bytes:
 
 def read_sheets(body: bytes, wanted: Callable[[str], bool]) -> dict[str, list[tuple[Any, ...]]]:
     """The rows of every sheet whose name `wanted` accepts; key "" holds the sheet names."""
-    from openpyxl import load_workbook
-
-    book = load_workbook(io.BytesIO(body), read_only=True, data_only=True)
+    book = open_workbook(body)
     try:
         sheets: dict[str, list[tuple[Any, ...]]] = {"": [tuple(book.sheetnames)]}
         for name in book.sheetnames:

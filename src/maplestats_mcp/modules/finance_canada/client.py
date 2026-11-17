@@ -31,7 +31,6 @@ English and French:
 
 from __future__ import annotations
 
-import io
 import json
 import re
 import unicodedata
@@ -56,6 +55,7 @@ from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError
 from maplestats_mcp.shared.executor import check_deadline, run_parse
 from maplestats_mcp.shared.i18n import french_spacing
 from maplestats_mcp.shared.rate_limiter import get_limiter
+from maplestats_mcp.shared.xlsx_sheets import open_workbook
 
 _LIMITER = get_limiter(
     constants.RATE_LIMIT_SOURCE,
@@ -368,9 +368,7 @@ def parse_block(
 
 
 def parse_workbook(body: bytes, lang: str) -> list[ParsedTable]:
-    from openpyxl import load_workbook
-
-    workbook = load_workbook(io.BytesIO(body), read_only=True, data_only=True)
+    workbook = open_workbook(body)
     try:
         tables: list[ParsedTable] = []
         part: str | None = None

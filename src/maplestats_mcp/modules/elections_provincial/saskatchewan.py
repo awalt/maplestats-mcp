@@ -37,9 +37,11 @@ from maplestats_mcp.modules.elections_provincial.common import (
     finish_shares,
     mark_winners,
 )
+from maplestats_mcp.shared import csv_files
 from maplestats_mcp.shared.errors import UpstreamError
 from maplestats_mcp.shared.executor import run_parse
 from maplestats_mcp.shared.fr_typography import call_error
+from maplestats_mcp.shared.xlsx_sheets import open_workbook
 
 # Names for the party codes in the files. Elections Saskatchewan's own notes spell out GP,
 # LIB, NDP, PC, SP and WIP; the other codes are the party names it registers.
@@ -69,10 +71,7 @@ def file_url(year: str) -> str:
 
 
 def _text(body: bytes) -> str:
-    try:
-        return body.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        return body.decode("cp1252")
+    return csv_files.decode(body)
 
 
 def _count(value: object) -> int:
@@ -186,10 +185,7 @@ def _build(
 
 def parse_xlsx(body: bytes) -> list[District]:
     """Districts from the 2011 poll results workbook (one sheet per constituency)."""
-    # openpyxl takes ~0.7 s to import, so it loads on first use.
-    from openpyxl import load_workbook
-
-    workbook = load_workbook(io.BytesIO(body), read_only=True, data_only=True)
+    workbook = open_workbook(body)
     votes: dict[str, dict[str, int]] = {}
     candidates: dict[str, dict[str, str]] = {}
     rejected: dict[str, int] = {}
