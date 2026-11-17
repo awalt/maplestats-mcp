@@ -10,7 +10,6 @@ partners, units), which are parsed here and cached for a week.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import re
 import unicodedata
@@ -41,6 +40,7 @@ from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.concurrency import gather_or_cancel
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
+from maplestats_mcp.shared.executor import run_parse
 from maplestats_mcp.shared.http import api_get, get_raw
 from maplestats_mcp.shared.json_utils import list_or_empty
 from maplestats_mcp.shared.limits import join_limits
@@ -377,9 +377,10 @@ async def _parse_code_file(content: bytes) -> list[dict[str, str | int]]:
     if len(content) < constants.CODES_THREAD_PARSE_BYTES:
         return _parse_objects(content.decode("utf-8-sig"))
     # Even as JSON the 16 MB HS10 list takes a fraction of a second, which would
-    # stall every other request the server is handling; a thread keeps it off
-    # the event loop.
-    return await asyncio.to_thread(lambda: _parse_objects(content.decode("utf-8-sig")))
+    # stall every other request the server is handling; the parsing pool keeps it off
+    # the event loop (asyncio.to_thread would use the default executor that DNS
+    # lookups share, see shared/executor.py).
+    return await run_parse(_parse_objects, content.decode("utf-8-sig"))
 
 
 async def _fetch_list(name: str) -> list[dict[str, str | int]]:

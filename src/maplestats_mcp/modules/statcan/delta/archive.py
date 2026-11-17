@@ -40,7 +40,7 @@ from email.utils import parsedate_to_datetime
 from xml.etree.ElementTree import Element
 
 import httpx
-from defusedxml import ElementTree
+from defusedxml import DefusedXmlException, ElementTree
 from tenacity import retry, retry_if_exception, stop_after_attempt
 
 from maplestats_mcp import config
@@ -62,6 +62,7 @@ from maplestats_mcp.shared import remote_zip
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
+from maplestats_mcp.shared.executor import run_in_pool
 from maplestats_mcp.shared.http import (
     counted_once,
     get_raw,
@@ -374,21 +375,27 @@ async def _read_cubes(
 
     async def fetch() -> list[DeltaTable]:
         raw = await remote_zip.read_member(archive.url, archive.metadata, max_bytes=MAX_XML_BYTES)
-        cubes: list[DeltaTable] = []
-        try:
+
+        def parse() -> list[DeltaTable]:
+            cubes: list[DeltaTable] = []
             for _, element in ElementTree.iterparse(io.BytesIO(raw), events=("end",)):
                 if element.tag == "cube":
                     wanted = detail_for is not None and _int(element, "productId") == detail_for
                     cubes.append(_cube(element, lang=lang, detail=wanted))
                     element.clear()
-        except ElementTree.ParseError as exc:
+            return cubes
+
+        try:
+            # The parsing pool: up to MAX_XML_BYTES (80 MB) of XML would otherwise be
+            # parsed on the event loop, stalling every other request for seconds.
+            return await run_in_pool(parse)
+        except (ElementTree.ParseError, DefusedXmlException) as exc:
             raise UpstreamError(
                 say(
                     f"{archive.metadata.name} is not valid XML: {exc}.",
                     f"{archive.metadata.name} n'est pas du XML valide : {exc}.",
                 )
             ) from exc
-        return cubes
 
     key = f"delta:cubes:{archive.date}:{archive.etag}:{lang}:{detail_for}"
     cubes, cached = await cached_fetch(key, CACHE_TTL_SECONDS, fetch)
@@ -527,7 +534,7 @@ async def _codeset(archive: Archive) -> dict[str, dict[int, tuple[str, str]]]:
         raw = await remote_zip.read_member(archive.url, archive.codeset)
         try:
             return _parse_codeset(raw)
-        except ElementTree.ParseError as exc:
+        except (ElementTree.ParseError, DefusedXmlException) as exc:
             raise UpstreamError(
                 say(
                     f"{archive.codeset.name} is not valid XML: {exc}.",

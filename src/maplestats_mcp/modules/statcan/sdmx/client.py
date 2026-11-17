@@ -30,6 +30,7 @@ import httpx
 # drop-in replacement removes it for free. `Element` itself is just a
 # plain data structure (not a parser) and is safe to import from
 # stdlib for the type hints below.
+from defusedxml import DefusedXmlException
 from defusedxml import ElementTree as defused_ET
 
 from maplestats_mcp.modules.statcan.lang import say
@@ -113,7 +114,7 @@ def _upstream_message(response: httpx.Response) -> str:
 def _parse_xml(content: bytes) -> Element:
     try:
         return defused_ET.fromstring(content)
-    except ParseError as exc:
+    except (ParseError, DefusedXmlException) as exc:
         raise _BadBodyError(len(content), str(exc)) from exc
 
 

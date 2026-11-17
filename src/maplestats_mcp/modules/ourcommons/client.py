@@ -8,7 +8,7 @@ from typing import Literal
 from xml.etree.ElementTree import Element
 
 import httpx
-from defusedxml import ElementTree
+from defusedxml import DefusedXmlException, ElementTree
 
 from maplestats_mcp.modules.ourcommons import constants
 from maplestats_mcp.modules.ourcommons.schemas import (
@@ -138,7 +138,7 @@ async def _xml(
             ) from exc
         try:
             return ElementTree.fromstring(response.content)
-        except ElementTree.ParseError as exc:
+        except (ElementTree.ParseError, DefusedXmlException) as exc:
             raise lang_error(
                 NotFound,
                 lang,

@@ -60,6 +60,7 @@ from maplestats_mcp.shared.arg_checks import format_choices
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
+from maplestats_mcp.shared.executor import run_parse
 from maplestats_mcp.shared.fr_typography import call_error, fr_or_en, lang_error
 from maplestats_mcp.shared.http import (
     counted_once,
@@ -309,6 +310,45 @@ async def _read_dump(url: str) -> tuple[bytes, str | None]:
         return b"".join(chunks), response.headers.get("last-modified")
 
 
+def _parse_dump(body: bytes, lang: str, url: str, modified: str | None) -> _Dump:
+    """The records of the open-data JSON file; run in the parsing pool because decoding
+    and reading a file of up to DUMP_MAX_BYTES takes seconds of CPU."""
+    try:
+        rows = json.loads(body)
+    except ValueError as exc:
+        raise lang_error(
+            UpstreamError,
+            lang,
+            "recalls: open-data file is not valid JSON.",
+            "recalls : le fichier de données ouvertes n'est pas un JSON valide.",
+        ) from exc
+    if not isinstance(rows, list) or not rows:
+        raise lang_error(
+            UpstreamError,
+            lang,
+            "recalls: open-data file is not a non-empty JSON list.",
+            "recalls : le fichier de données ouvertes n'est pas une liste JSON non vide.",
+        )
+    keys = constants.KEYS[lang]
+    if not isinstance(rows[0], dict) or keys["title"] not in rows[0]:
+        raise lang_error(
+            UpstreamError,
+            lang,
+            f"recalls: open-data rows no longer carry {keys['title']!r}; the format changed.",
+            f"recalls : les lignes du fichier n'ont plus {keys['title']!r} ; le format a changé.",
+        )
+    records = [r for r in (_record(row, keys) for row in rows if isinstance(row, dict)) if r]
+    skipped = len(rows) - len(records)
+    records.sort(key=_sort_key, reverse=True)
+    as_of = None
+    if modified:
+        try:
+            as_of = parsedate_to_datetime(modified)
+        except (TypeError, ValueError):
+            as_of = None
+    return _Dump(records=tuple(records), url=url, as_of=as_of, skipped=skipped)
+
+
 async def _load_dump(lang: str) -> tuple[_Dump, bool]:
     url = constants.DUMP_URLS[lang]
 
@@ -330,41 +370,9 @@ async def _load_dump(lang: str) -> tuple[_Dump, bool]:
                 "recalls: open-data file could not be downloaded.",
                 "recalls : le fichier de données ouvertes n'a pas pu être téléchargé.",
             ) from exc
-        try:
-            rows = json.loads(body)
-        except ValueError as exc:
-            raise lang_error(
-                UpstreamError,
-                lang,
-                "recalls: open-data file is not valid JSON.",
-                "recalls : le fichier de données ouvertes n'est pas un JSON valide.",
-            ) from exc
-        if not isinstance(rows, list) or not rows:
-            raise lang_error(
-                UpstreamError,
-                lang,
-                "recalls: open-data file is not a non-empty JSON list.",
-                "recalls : le fichier de données ouvertes n'est pas une liste JSON non vide.",
-            )
-        keys = constants.KEYS[lang]
-        if not isinstance(rows[0], dict) or keys["title"] not in rows[0]:
-            raise lang_error(
-                UpstreamError,
-                lang,
-                f"recalls: open-data rows no longer carry {keys['title']!r}; the format changed.",
-                f"recalls : les lignes du fichier n'ont plus {keys['title']!r} ; le format a "
-                "changé.",
-            )
-        records = [r for r in (_record(row, keys) for row in rows if isinstance(row, dict)) if r]
-        skipped = len(rows) - len(records)
-        records.sort(key=_sort_key, reverse=True)
-        as_of = None
-        if modified:
-            try:
-                as_of = parsedate_to_datetime(modified)
-            except (TypeError, ValueError):
-                as_of = None
-        return _Dump(records=tuple(records), url=url, as_of=as_of, skipped=skipped)
+        # The parsing pool: json.loads and the record build would otherwise run on the
+        # event loop for seconds, stalling every other request the server is handling.
+        return await run_parse(_parse_dump, body, lang, url, modified)
 
     return await cached_fetch(f"recalls:dump:{lang}", constants.DUMP_CACHE_TTL_SECONDS, fetch)
 
