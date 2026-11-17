@@ -13,6 +13,7 @@ from functools import cache
 
 from maplestats_mcp import config, gis_profile
 from maplestats_mcp.catalogue import tool_enabled
+from maplestats_mcp.modules.planner import calls, cues
 from maplestats_mcp.modules.planner.places import (
     CITIES,
     CITY_PROVINCES,
@@ -176,17 +177,29 @@ def _ordered(topic: Topic, text: str, labels: list[str]) -> list[StepOut]:
         return 2 * term_hit + _place_score(step, labels)
 
     steps = sorted(topic.steps, key=score, reverse=True)
-    return [
-        StepOut(tool=step.tool, purpose=step.purpose)
-        for step in steps
-        if _available(step) and _for_places(step, labels)
-    ]
+    relevant = [step for step in steps if _available(step) and _for_places(step, labels)]
+    # A topic never loses all its steps to the side-trip cues.
+    lean = [step for step in relevant if _side_trip_cued(step, text)]
+    return [_step_out(step) for step in lean or relevant]
+
+
+def _step_out(step: PlanStep) -> StepOut:
+    return StepOut(tool=step.tool, purpose=step.purpose, call=calls.call_for(step))
 
 
 def _for_places(step: PlanStep, labels: list[str]) -> bool:
-    """False for one city's or province's tool when the question names only other places."""
+    """False for a step that serves other places or provinces than the ones the question names.
+
+    A question that names no place keeps every step but the one-province dashboards
+    (cues.PROVINCE_ONLY_TOOLS), which are for a question about that province.
+    """
+    for prefix, province in cues.PROVINCE_ONLY_TOOLS.items():
+        if step.tool.startswith(prefix):
+            return province in {_province_of(label) for label in labels}
     if not labels:
         return True
+    if step.places and not _serves(step.places, labels):
+        return False
     for prefix, places in _CITY_TOOLS.items():
         if step.tool.startswith(prefix):
             return any(label in places for label in labels)
@@ -195,6 +208,46 @@ def _for_places(step: PlanStep, labels: list[str]) -> bool:
             provinces = {_province_of(label) for label in labels}
             return None in provinces or province in provinces
     return True
+
+
+def _serves(places: tuple[str, ...], labels: list[str]) -> bool:
+    """Whether a step that reads data for `places` answers a question naming `labels`.
+
+    A place the step lists answers itself. A province it lists (a province-wide table)
+    answers a question about any city of that province; a province named answers a step
+    for a city of it. A question about Ottawa is not answered by a step for Toronto.
+    """
+    for label in labels:
+        province = _province_of(label)
+        if label in places:
+            return True
+        if label not in _PROVINCE_LABELS and province in places:
+            return True
+        if label in _PROVINCE_LABELS and any(CITY_PROVINCES.get(p) == label for p in places):
+            return True
+    return False
+
+
+def _side_trip_cued(step: PlanStep, text: str) -> bool:
+    """False for a source most questions do not need, when the question does not ask for it.
+
+    The cues are the step's own terms and patterns plus cues.SIDE_TRIPS' words, so a step
+    that names its own cues keeps them (the census archive's "2011", the boundary maps'
+    "boundaries").
+    """
+    side_trip = next(
+        (words for prefix, words in cues.SIDE_TRIPS.items() if step.tool.startswith(prefix)), None
+    )
+    if side_trip is None or not (side_trip or step.terms or step.patterns):
+        return True
+    return any(_matches(term, text) for term in (*side_trip, *step.terms)) or any(
+        re.search(pattern, text) for pattern in step.patterns
+    )
+
+
+def _place_cued(step: PlanStep, text: str) -> bool:
+    """False for a place's side source (Edmonton Transit) the question does not touch."""
+    return not step.cues or any(_matches(term, text) for term in step.cues)
 
 
 def _province_of(label: str) -> str | None:
@@ -222,7 +275,7 @@ def _without_hidden_names(plan_out: QueryPlan) -> QueryPlan:
 
     def steps(items: list[StepOut]) -> list[StepOut]:
         return [
-            StepOut(tool=step.tool, purpose=gis_profile.without_pointers(step.purpose))
+            step.model_copy(update={"purpose": gis_profile.without_pointers(step.purpose)})
             for step in items
         ]
 
@@ -235,11 +288,18 @@ def _without_hidden_names(plan_out: QueryPlan) -> QueryPlan:
     return plan_out
 
 
-def _steps(steps: tuple[PlanStep, ...]) -> list[StepOut]:
-    return [StepOut(tool=step.tool, purpose=step.purpose) for step in steps if _available(step)]
+def _steps(steps: tuple[PlanStep, ...], text: str = "", topical: bool = False) -> list[StepOut]:
+    """A place's or the fallback's steps; once a topic matched, only those the question touches."""
+    return [
+        _step_out(step)
+        for step in steps
+        if _available(step) and (not topical or _place_cued(step, text))
+    ]
 
 
-def _places(question: str, text: str, foreign: str | None = None) -> list[PlaceMatch]:
+def _places(
+    question: str, text: str, foreign: str | None = None, topical: bool = False
+) -> list[PlaceMatch]:
     # An English possessive ("Alberta's population") must still name the place.
     text = re.sub(r"(\w)'s\b", r"\1", text)
     places: list[PlaceMatch] = []
@@ -250,7 +310,7 @@ def _places(question: str, text: str, foreign: str | None = None) -> list[PlaceM
         city_text = _blank(text, CITY_SHADOWS.get(alias, ()))
         if f" {alias} " in f" {city_text} " and label not in seen:
             seen.add(label)
-            places.append(PlaceMatch(place=label, kind="city", steps=_steps(steps)))
+            places.append(PlaceMatch(place=label, kind="city", steps=_steps(steps, text, topical)))
     province_keys = {key for key in PROVINCES if f" {key} " in f" {text} "}
     province_keys |= {
         target for alias, target in PROVINCE_ALIASES.items() if f" {alias} " in f" {text} "
@@ -265,7 +325,7 @@ def _places(question: str, text: str, foreign: str | None = None) -> list[PlaceM
         province_keys.discard("quebec")
     for key in sorted(province_keys):
         label, steps = PROVINCES[key]
-        places.append(PlaceMatch(place=label, kind="province", steps=_steps(steps)))
+        places.append(PlaceMatch(place=label, kind="province", steps=_steps(steps, text, topical)))
     return places
 
 
@@ -292,7 +352,7 @@ def _french(plan_out: QueryPlan) -> QueryPlan:
     # Translate after planning: step order and place scoring read the English
     # purposes, so the plan is the same in both languages, only worded in French.
     def steps(items: list[StepOut]) -> list[StepOut]:
-        return [StepOut(tool=step.tool, purpose=to_french(step.purpose)) for step in items]
+        return [step.model_copy(update={"purpose": to_french(step.purpose)}) for step in items]
 
     for topic in plan_out.topics:
         topic.label = to_french(topic.label)
@@ -402,6 +462,10 @@ def plan(question: str, lang: str = "en") -> QueryPlan:
                 hits.insert(0, str(foreign))
             if hits:
                 scored.append((len(hits), topic, hits, topic_text))
+    if scored:
+        # Once a topic matched, a place's side sources the question does not touch (Edmonton
+        # Transit for a rent question) stay out; a question that names only a place keeps them.
+        places = _places(question, text, foreign, topical=True)
     scored.sort(
         key=lambda item: (
             (uk_question and item[1].key == "united_kingdom")

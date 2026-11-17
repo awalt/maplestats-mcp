@@ -12,6 +12,12 @@ from maplestats_mcp.shared.models import Provenance
 class StepOut(BaseModel):
     tool: str = Field(description="Tool to invoke with call_tool.")
     purpose: str
+    call: str | None = Field(
+        default=None,
+        description="The arguments of a first call to this step's tool, as JSON with <...> "
+        "where only the question can supply a value. Pass them to call_tool with `tool` "
+        "directly; no search_tools call is needed first.",
+    )
 
 
 class TopicMatch(BaseModel):

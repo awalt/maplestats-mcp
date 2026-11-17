@@ -7,19 +7,29 @@ checks that each one exists.
 
 from __future__ import annotations
 
+from maplestats_mcp.modules.planner import cues
 from maplestats_mcp.modules.planner.topics import PlanStep
 
 
 def _ckan(portal: str, extra: str = "") -> PlanStep:
-    return PlanStep("ckan_search_datasets", f"search with portal='{portal}'{extra}")
+    return PlanStep(
+        "ckan_search_datasets", f"search with portal='{portal}'{extra}", args=(("portal", portal),)
+    )
 
 
-def _arcgis(portal: str) -> PlanStep:
-    return PlanStep("arcgis_hub_search_datasets", f"search with portal='{portal}'")
+def _arcgis(portal: str, cue_words: tuple[str, ...] = ()) -> PlanStep:
+    return PlanStep(
+        "arcgis_hub_search_datasets",
+        f"search with portal='{portal}'",
+        args=(("portal", portal),),
+        cues=cue_words,
+    )
 
 
 def _socrata(portal: str) -> PlanStep:
-    return PlanStep("socrata_search_datasets", f"search with portal='{portal}'")
+    return PlanStep(
+        "socrata_search_datasets", f"search with portal='{portal}'", args=(("portal", portal),)
+    )
 
 
 def _qc_city(org: str) -> PlanStep:
@@ -34,7 +44,7 @@ PROVINCES: dict[str, tuple[str, tuple[PlanStep, ...]]] = {
             _ckan("bc"),
             PlanStep("bc_stats_list_files", "BC Stats Excel tables (labour, GDP, population)"),
             PlanStep("bcgw_query_layer", "BC Geographic Warehouse layers: type_name"),
-            _arcgis("bc_energy_regulator"),
+            _arcgis("bc_energy_regulator", cues.ENERGY),
         ),
     ),
     "alberta": (
@@ -43,7 +53,9 @@ PROVINCES: dict[str, tuple[str, tuple[PlanStep, ...]]] = {
             PlanStep("ab_opendata_search_datasets", "Open Alberta Excel and CSV files"),
             _ckan("ab"),
             PlanStep("ab_economic_list_indicators", "Alberta Economic Dashboard"),
-            PlanStep("aer_get_well_licences_daily", "Alberta Energy Regulator reports"),
+            PlanStep(
+                "aer_get_well_licences_daily", "Alberta Energy Regulator reports", cues=cues.ENERGY
+            ),
         ),
     ),
     "quebec": (
@@ -64,9 +76,18 @@ PROVINCES: dict[str, tuple[str, tuple[PlanStep, ...]]] = {
             PlanStep(
                 "arcgis_hub_search_datasets",
                 "search with portal='sk' (provincial GeoHub: geospatial layers only)",
+                args=(("portal", "sk"),),
             ),
-            PlanStep("arcgis_hub_search_datasets", "search with portal='saskatoon' (city data)"),
-            PlanStep("ckan_search_datasets", "search with portal='regina' (city data)"),
+            PlanStep(
+                "arcgis_hub_search_datasets",
+                "search with portal='saskatoon' (city data)",
+                args=(("portal", "saskatoon"),),
+            ),
+            PlanStep(
+                "ckan_search_datasets",
+                "search with portal='regina' (city data)",
+                args=(("portal", "regina"),),
+            ),
         ),
     ),
     "prince edward island": ("Prince Edward Island", (_arcgis("pe"),)),
@@ -156,7 +177,7 @@ CITY_SHADOWS: dict[str, tuple[str, ...]] = {
 SHARED_CITY_NAMES: frozenset[str] = frozenset({"london", "victoria"})
 
 CITIES: dict[str, tuple[str, tuple[PlanStep, ...]]] = {
-    "toronto": ("Toronto", (_ckan("toronto"), _arcgis("toronto_police"))),
+    "toronto": ("Toronto", (_ckan("toronto"), _arcgis("toronto_police", cues.POLICE))),
     "montreal": ("Montreal", (_ckan("montreal"),)),
     "regina": ("Regina", (_ckan("regina"),)),
     "quebec city": ("Quebec City", (_qc_city("ville-de-quebec"),)),
@@ -171,9 +192,13 @@ CITIES: dict[str, tuple[str, tuple[PlanStep, ...]]] = {
         "Edmonton",
         (
             _socrata("edmonton"),
-            PlanStep("eps_summarize_occurrences", "Edmonton Police Service occurrences"),
-            PlanStep("ets_get_service_alerts", "Edmonton Transit"),
-            PlanStep("epcor_get_daily_water_quality", "EPCOR drinking water quality"),
+            PlanStep(
+                "eps_summarize_occurrences", "Edmonton Police Service occurrences", cues=cues.POLICE
+            ),
+            PlanStep("ets_get_service_alerts", "Edmonton Transit", cues=cues.TRANSIT),
+            PlanStep(
+                "epcor_get_daily_water_quality", "EPCOR drinking water quality", cues=cues.WATER
+            ),
         ),
     ),
     "winnipeg": ("Winnipeg", (_socrata("winnipeg"),)),
@@ -184,7 +209,7 @@ CITIES: dict[str, tuple[str, tuple[PlanStep, ...]]] = {
             _arcgis("metro_vancouver"),
         ),
     ),
-    "ottawa": ("Ottawa", (_arcgis("ottawa"), _arcgis("ottawa_police"))),
+    "ottawa": ("Ottawa", (_arcgis("ottawa"), _arcgis("ottawa_police", cues.POLICE))),
     "halifax": ("Halifax", (_arcgis("halifax"),)),
     "london": ("London (Ontario)", (_arcgis("london"),)),
     "kitchener": ("Kitchener", (_arcgis("kitchener"), _arcgis("waterloo_region"))),
