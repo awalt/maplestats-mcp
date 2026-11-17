@@ -77,8 +77,9 @@ async def wds_search_cubes(
     keyword or table number, or list every table when `query` is omitted.
 
     Use for: finding a StatCan table's productId when you only know a
-    topic (monthly GDP by industry, the consumer price index (CPI), the monthly
-    unemployment rate for Alberta or a CMA, average hourly wages by
+    topic (monthly GDP by industry, the consumer price index (CPI), the
+    Labour Force Survey monthly unemployment rate for Alberta or a CMA,
+    average hourly wages by
     occupation, population estimates by province) or a number such as
     "18-10-0004",
     discovering which StatCan tables cover a subject before requesting
@@ -90,7 +91,8 @@ async def wds_search_cubes(
     tables; statcan_delta_list_real_time_tables pairs the 19 with their regular tables.
     Keywords: statcan, find a StatCan table, statistics canada, table, cube, search, productId,
     discover, wds, catalogue, browse, list, inventory, all cubes, full
-    list, tables, labour force, monthly unemployment rate, employment,
+    list, tables, labour force, Labour Force Survey, monthly
+    unemployment rate, employment,
     GDP by industry monthly, CPI, consumer price index monthly, population estimates
     quarterly, retail trade, wages, trade, interprovincial migration,
     time series, real-time table, Alberta, by province, which table has,
@@ -99,10 +101,10 @@ async def wds_search_cubes(
     Mots-clés : Statistique Canada, StatCan, chercher un tableau, trouver un
     tableau, quel tableau, tableau de données, recherche, tableaux,
     numéro de tableau, découverte, catalogue, parcourir, liste, inventaire,
-    population active, taux de chômage mensuel, emploi, PIB par industrie,
+    Enquête sur la population active, EPA, taux de chômage mensuel, emploi, PIB par industrie,
     PIB industrie, produit intérieur brut, IPC, indice des prix à la consommation, permis
     de bâtir, permis de construire, estimations de population
-    trimestrielles, commerce de détail, salaires, commerce, migration
+    trimestrielles, commerce de détail, ventes au détail, salaires, commerce, migration
     interprovinciale, séries chronologiques, tableau en temps réel,
     révisions, espérance de vie, mortalité, RMR, PIB mensuel, salaire
     selon la profession, infirmières.
@@ -283,7 +285,8 @@ async def wds_get_data_from_vectors(
     growth rate, index or quarterly/annual aggregate.
 
     Use for: getting the data for one or more StatCan vectors (recent
-    values of known time series), and
+    values of known time series, such as a Labour Force Survey
+    unemployment rate or employment vector), and
     year-over-year inflation from the CPI (the latest Canadian inflation
     rate, Canada or a province), monthly or annualized growth,
     or a quarterly average of a monthly series. Results come back

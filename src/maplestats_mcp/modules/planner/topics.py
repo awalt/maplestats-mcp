@@ -420,7 +420,10 @@ TOPICS: tuple[Topic, ...] = (
             *_QUALITY_CHANGE_TERMS,
         ),
         (
-            PlanStep("statcan_indicators_get_indicators", "latest headline CPI and change"),
+            PlanStep(
+                "statcan_indicators_get_indicators",
+                "latest headline CPI and change: query='consumer price index'",
+            ),
             PlanStep("wds_search_cubes", "CPI table by component or province (e.g. 18-10-0004)"),
             PlanStep(
                 "boc_search_series",
@@ -484,7 +487,11 @@ TOPICS: tuple[Topic, ...] = (
             "population active",
         ),
         (
-            PlanStep("statcan_indicators_get_indicators", "latest Labour Force Survey headline"),
+            PlanStep(
+                "statcan_indicators_get_indicators",
+                "latest Labour Force Survey headline: query='unemployment rate' (or "
+                "'employment'), geo_code for a province",
+            ),
             PlanStep("wds_search_cubes", "LFS tables by province, CMA, industry or age"),
             PlanStep(
                 "ab_economic_list_tables", "Alberta dashboard tables, when the question is Alberta"

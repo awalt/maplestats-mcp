@@ -64,7 +64,9 @@ FR: dict[str, str] = {
     ),
     # Prices
     "Inflation and prices": "Inflation et prix",
-    "latest headline CPI and change": "dernier IPC d'ensemble et sa variation",
+    "latest headline CPI and change: query='consumer price index'": (
+        "dernier IPC d'ensemble et sa variation : query='consumer price index'"
+    ),
     "CPI table by component or province (e.g. 18-10-0004)": (
         "tableau de l'IPC par composante ou par province (p. ex. 18-10-0004)"
     ),
@@ -115,8 +117,10 @@ FR: dict[str, str] = {
         "découragés, catégorie de travailleur...) : query='Guide to the Labour Force "
         "Survey' (71-543-G; en français, « Guide de l'Enquête sur la population active »)"
     ),
-    "latest Labour Force Survey headline": (
-        "derniers résultats principaux de l'Enquête sur la population active"
+    "latest Labour Force Survey headline: query='unemployment rate' (or "
+    "'employment'), geo_code for a province": (
+        "derniers résultats principaux de l'Enquête sur la population active : "
+        "query='unemployment rate' (ou 'employment'), geo_code pour une province"
     ),
     "LFS tables by province, CMA, industry or age": (
         "tableaux de l'EPA par province, RMR, industrie ou âge"
