@@ -28,6 +28,16 @@ class PlanStep:
     terms: tuple[str, ...] = ()
     # Regexes that, like `terms`, move the step first when the question matches.
     patterns: tuple[str, ...] = ()
+    # Argument values the planner knows for this step (a place's portal), as name and
+    # value pairs; they fill the step's `call` (modules/planner/calls.py).
+    args: tuple[tuple[str, str | int | bool], ...] = ()
+    # Places (labels as places.py names them) this step reads data for. A question that
+    # names a place drops a step none of its places are, or whose province none are.
+    places: tuple[str, ...] = ()
+    # Words the question must use for this step to stay in a plan that matched a topic;
+    # empty means always. Only a place's steps use it (an Edmonton rent question does
+    # not need Edmonton Transit); a topic's step cues are its `terms`, which order it.
+    cues: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -2505,10 +2515,13 @@ TOPICS = (*TOPICS, BANKING)
 FALLBACK_STEPS: tuple[PlanStep, ...] = (
     PlanStep("statcan_reference_search_data", "StatCan data products on the topic"),
     PlanStep("wds_search_cubes", "StatCan tables by keyword"),
-    PlanStep("ckan_search_datasets", "federal open data: portal='federal'"),
+    PlanStep(
+        "ckan_search_datasets", "federal open data: portal='federal'", args=(("portal", "federal"),)
+    ),
     PlanStep(
         "ckan_read_resource",
         "rows of a CSV or Excel file found there: the same portal and its resource_id",
+        args=(("portal", "federal"),),
     ),
 )
 
@@ -3415,6 +3428,7 @@ BUILDING_PERMITS = Topic(
             "permit records for Calgary, Edmonton and Winnipeg: portal='calgary' "
             "dataset_id='c2es-76ed' ('8ced-xbvn' holds inspections), portal='edmonton' "
             "dataset_id='24uj-dj8v', portal='winnipeg' dataset_id='it4w-cpf4'",
+            places=("Calgary", "Edmonton", "Winnipeg"),
         ),
         PlanStep(
             "opendatasoft_vancouver_query_records",
@@ -3425,37 +3439,44 @@ BUILDING_PERMITS = Topic(
             "Toronto permit records: portal='toronto' resource_id="
             "'6d0229af-bc54-46de-9c2b-26759b01dd05' (active) or "
             "'a96c0ba4-3026-402b-b09d-5b1268b8f810' (cleared since 2017)",
+            places=("Toronto",),
         ),
         PlanStep(
             "ckan_datastore_search",
             "Montreal permits (construction, alteration, demolition): portal='montreal' "
             "resource_id='5232a72d-235a-48eb-ae20-bb9d501300ad'",
+            places=("Montreal",),
         ),
         PlanStep(
             "ckan_datastore_search",
             "Laval building permits: portal='qc' resource_id='d4731ee2-b1e5-4a31-bc56-4e13115e74ef'",
+            places=("Laval",),
         ),
         PlanStep(
             "ckan_datastore_search",
             "British Columbia monthly permit values by municipality (BC Stats): portal='bc' "
             "resource_id='1e1faf36-6526-4f7c-8586-a01f3b2a56a5' (dataset 'Building Permits "
             "(BPER)' has the units and sector files)",
+            places=("British Columbia",),
         ),
         PlanStep(
             "ckan_read_resource",
             "Regina building permit report: portal='regina' "
             "resource_id='dcea70fc-87dd-4e04-bc34-b3ce6580daac' (2026; one workbook a year)",
+            places=("Regina",),
         ),
         PlanStep(
             "arcgis_hub_query_feature_layer",
             "Halifax permit records: portal='halifax' item_id='6cef25e4172e4466a1eb8d3fd794f571' "
             "('9acb26e369fe4892b759f336863521e8' holds inspections)",
+            places=("Halifax",),
         ),
         PlanStep(
             "arcgis_hub_query_feature_layer",
             "BC city permit layers: portal='surrey' item_id='f3ec200f59a342e38c52248f07fe610d' "
             "(Surrey), portal='victoria' item_id='5a2c28fdaccc4ebcb0ad5bcac8d0e469' (Victoria, "
             "2016-2025; 'b4db2c27a1d14d59a7d7901ba77f16ce' is the last 365 days)",
+            places=("Surrey", "Victoria"),
         ),
         PlanStep(
             "arcgis_hub_query_feature_layer",
@@ -3465,6 +3486,7 @@ BUILDING_PERMITS = Topic(
             "item_id='9093dbbced88444fb61134187737c547' (Kitchener), portal='kingston' "
             "item_id='df21b0d558164d4088f79c8533e3e6ac' (Kingston), portal='barrie' "
             "item_id='2a33295b41df4d2e87fda301fff140cc' (Barrie)",
+            places=("Mississauga", "Brampton", "Kitchener", "Kingston", "Barrie"),
         ),
     ),
     (
@@ -3534,6 +3556,7 @@ BUSINESS_LICENCES = Topic(
             "licence registers for Calgary, Edmonton and Winnipeg: portal='calgary' "
             "dataset_id='vdjc-pybd', portal='edmonton' dataset_id='qhi4-bdpu', "
             "portal='winnipeg' dataset_id='d5k3-sfzx'",
+            places=("Calgary", "Edmonton", "Winnipeg"),
         ),
         PlanStep(
             "opendatasoft_vancouver_query_records",
@@ -3544,17 +3567,20 @@ BUSINESS_LICENCES = Topic(
             "ckan_datastore_search",
             "Toronto business licences and permits: portal='toronto' "
             "resource_id='169e90ba-3ae0-43dd-8b2f-919e87002f50'",
+            places=("Toronto",),
         ),
         PlanStep(
             "arcgis_hub_query_feature_layer",
             "BC city licence layers: portal='victoria' item_id='25883649fc494cb0a530313aa16aa4bb' "
             "(Victoria, 2016-2025), portal='kelowna' item_id='b4699cd3c0dd4f43bf8a13f7549aa19e' "
             "(Kelowna), portal='burnaby' item_id='d4de3afbeffd4728a75a219e9d0f07a5' (Burnaby)",
+            places=("Victoria", "Kelowna", "Burnaby"),
         ),
         PlanStep(
             "arcgis_hub_query_feature_layer",
             "Mississauga licensed eateries: portal='mississauga' "
             "item_id='c10a649309534871aa79596c187ba1dd'",
+            places=("Mississauga",),
         ),
         PlanStep(
             "wds_search_cubes",
@@ -3615,22 +3641,31 @@ FOOD_INSPECTIONS = Topic(
             "Montreal food offences and fines: portal='montreal' "
             "resource_id='7f939a08-be8a-45e1-b208-d8744dca8fc6' (establishments: "
             "'28a4957d-732e-48f9-8adb-0624867d9bb0')",
+            places=("Montreal",),
         ),
         PlanStep(
             "ckan_datastore_search",
             "Quebec food inspections by region and month (MAPAQ, retail and restaurants): "
             "portal='qc' resource_id='3e7a2432-b533-4e8c-8ac0-143643412e5a'",
+            places=("Quebec",),
         ),
         PlanStep(
             "arcgis_hub_query_feature_layer",
             "Fraser Health restaurant inspections, published by Surrey: portal='surrey' "
             "item_id='320cec8503034bb997d8f6e57690dd5d' (by TRACKINGNUMBER; "
             "'7901c9e7847a441a8e0a0964724240bb' names the restaurants)",
+            places=(
+                *("Surrey", "Burnaby", "Coquitlam", "Delta (BC)", "Maple Ridge"),
+                *("New Westminster", "Port Moody", "White Rock", "Abbotsford"),
+            ),
         ),
         PlanStep(
             "arcgis_hub_query_feature_layer",
             "Region of Waterloo (Kitchener, Waterloo, Cambridge) food premises, without "
             "results: portal='waterloo_region' item_id='61a7a8d8775e4da381d9718658c0d842'",
+            places=(
+                *("Region of Waterloo", "Kitchener", "Waterloo (Ontario)", "Cambridge (Ontario)"),
+            ),
         ),
         PlanStep(
             "socrata_query_dataset_rows",
@@ -3639,6 +3674,7 @@ FOOD_INSPECTIONS = Topic(
             "dataset_id='fxcw-yyy2' (Winnipeg closures and convictions, last updated 2020), "
             "portal='ns' dataset_id='2shh-dv8p' (Nova Scotia licensed food establishments, no "
             "results)",
+            places=("Edmonton", "Winnipeg", "Nova Scotia"),
         ),
         PlanStep(
             "recalls_search",
@@ -3691,11 +3727,13 @@ PLANNING_APPLICATIONS = Topic(
             "(development permits; '33vi-ew4s' land use redesignations), portal='edmonton' "
             "dataset_id='2ccn-pwtu' (development permits), portal='winnipeg' "
             "dataset_id='wbyv-ks6y' (monthly development permit counts)",
+            places=("Calgary", "Edmonton", "Winnipeg"),
         ),
         PlanStep(
             "ckan_datastore_search",
             "Toronto development applications: portal='toronto' "
             "resource_id='8907d8ed-c515-4ce9-b674-9f8c6eefcf0d'",
+            places=("Toronto",),
         ),
         PlanStep(
             "arcgis_hub_query_feature_layer",
@@ -3706,17 +3744,20 @@ PLANNING_APPLICATIONS = Topic(
             "item_id='5f3a817276b643949fff4579cb5c566b' (Barrie), portal='brampton' "
             "item_id='63c2acbac6e74daaad23aa1d2787f90a' (Brampton site plans), portal='york' "
             "item_id='2ea061702aaa4d5fae39c1226525fd4e' (York Region, Markham)",
+            places=("Mississauga", "Kitchener", "Kingston", "Barrie", "Brampton", "Markham"),
         ),
         PlanStep(
             "arcgis_hub_query_feature_layer",
             "Halifax planning applications: portal='halifax' "
             "item_id='9a411eae96224ccba613035841db0f60' (subdivisions: "
             "'e0279bb3940b424d9e041008bbb8d035')",
+            places=("Halifax",),
         ),
         PlanStep(
             "arcgis_hub_query_feature_layer",
             "BC city application layers: portal='surrey' item_id='93c52bde8cef4978a947116f6d69d171' "
             "(Surrey), portal='victoria' item_id='9a246b2b61954b819bfcb8db32e2b82b' (Victoria)",
+            places=("Surrey", "Victoria"),
         ),
         PlanStep(
             "opendatasoft_vancouver_query_records",
