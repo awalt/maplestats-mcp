@@ -977,9 +977,13 @@ async def list_metropolitan_areas(
         wanted_name = _norm(name)
         pattern = re.compile(rf"(^| ){re.escape(wanted_name)}( |$)")
         areas = [a for a in areas if pattern.search(_norm(a.name))]
-    url = f"{_base_path(lang)}/Navigation/MetsByProvince/" + (
-        chosen[0].id if len(chosen) == 1 else "{province_id}"
-    )
+    # Name the page the areas came from. A name search reads every province's list at
+    # once, so without this the URL was the "{province_id}" template and reproduce_code
+    # fell back to the last request to finish: Edmonton (48) was cited as
+    # MetsByProvince/47, Saskatchewan's page (seen live 2026-11-15, issue #263).
+    found_in = sorted({a.province_id for a in areas}) if name and name.strip() else []
+    page_id = chosen[0].id if len(chosen) == 1 else (found_in[0] if len(found_in) == 1 else None)
+    url = f"{_base_path(lang)}/Navigation/MetsByProvince/" + (page_id or "{province_id}")
     return MetroAreaList(
         areas=areas,
         total_count=len(areas),
