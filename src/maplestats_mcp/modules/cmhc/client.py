@@ -1515,7 +1515,10 @@ async def get_table_data(
         )
         return {
             "table_id": str(table_id),
-            "table_name": model.get("TableName") or "",
+            # CMHC pads some table names with trailing spaces (confirmed in the
+            # recorded SCSS and core-housing-need tables); strip them here so the
+            # result, its citation and the column-label check all see one name.
+            "table_name": (model.get("TableName") or "").strip(),
             "geography_name": geography_name,
             # The line under the title (the parser above checked it exists): the
             # reference period, then any filters.

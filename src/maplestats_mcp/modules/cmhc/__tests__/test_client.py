@@ -457,6 +457,28 @@ def test_citation_says_when_no_period_is_stated():
     assert citation.endswith("Historical Vacancy Rates, Canada, reference period not stated.")
 
 
+async def test_get_table_data_strips_the_padding_cmhc_puts_on_table_names(httpx_mock):
+    """CMHC pads some table names with two trailing spaces; the recorded SCSS
+    table carries them. The returned name and the citation must not."""
+    matching_html = (_FIXTURES / "scss_starts_by_province_matching_criteria.html").read_text(
+        encoding="utf-8"
+    )
+    # Guard the premise: the recording really has the padding.
+    assert "10,000 people)  &quot;" in matching_html
+    _mock_export(
+        httpx_mock,
+        "en",
+        _match_params(*_SCSS_PROVINCES),
+        matching_html,
+        "scss_starts_by_province_export.csv",
+    )
+    result = await client.get_table_data(*_SCSS_PROVINCES)
+    assert result.table_name == result.table_name.strip()
+    assert result.table_name.endswith("at least 10,000 people)")
+    assert "  " not in result.citation
+    assert f"{result.table_name}, Canada" in result.citation
+
+
 async def test_get_table_data_applies_and_validates_filters(httpx_mock):
     httpx_mock.add_response(
         url=(
