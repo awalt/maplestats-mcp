@@ -54,7 +54,7 @@ import re
 import statistics
 import time
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from pypdf import PdfReader
@@ -197,6 +197,9 @@ class PdfText:
     # and those of them whose images cover the page: scans.
     no_text_pages: list[int] = field(default_factory=list)
     scanned_pages: list[int] = field(default_factory=list)
+    # Seconds the extraction took, for the caller that goes on to read scanned pages
+    # within the same budget.
+    seconds: float = 0.0
 
 
 def page_anchor(number: int) -> str:
@@ -752,4 +755,32 @@ def extract(
         two_column,
         no_text_pages=no_text,
         scanned_pages=scanned,
+        seconds=time.monotonic() - started,
     )
+
+
+def with_page_text(document: PdfText, texts: dict[int, list[str]]) -> PdfText:
+    """A copy of `document` where each page in `texts` (page number to its paragraphs)
+    holds those paragraphs in place of what it had: the "no text layer" line of a scan,
+    or the text layer OCR is asked to replace. The cached document is not changed."""
+    blocks = list(document.page.blocks)
+    for number in sorted(texts, reverse=True):
+        anchor = page_anchor(number)
+        start = next(
+            (i for i, b in enumerate(blocks) if b.kind == "heading" and b.anchor == anchor), None
+        )
+        if start is None:
+            continue
+        # The page's body runs to the next heading at its level or above (the next page
+        # or bookmark); the headings found inside the page are below it.
+        level = blocks[start].level
+        end = next(
+            (
+                i
+                for i in range(start + 1, len(blocks))
+                if blocks[i].kind == "heading" and blocks[i].level <= level
+            ),
+            len(blocks),
+        )
+        blocks[start + 1 : end] = [pages.Block("text", text) for text in texts[number]]
+    return replace(document, page=replace(document.page, blocks=blocks))

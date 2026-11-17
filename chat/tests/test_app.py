@@ -1597,3 +1597,12 @@ def test_the_page_reads_the_stream_route():
     page = chat_app.PAGE.decode("utf-8")
     assert "api/chat/stream" in page
     assert "can take up to a minute while the data server wakes" not in page
+
+
+def test_the_prompt_stops_the_model_doubting_its_earlier_cited_answers():
+    """History keeps only reply text, so without this a follow-up once called the
+    earlier cited figures "unverified" (seen on the live demo, 2026-11-17)."""
+    prompt = chat_app.SYSTEM_PROMPT
+    assert "earlier replies" in prompt
+    assert "unverified" in prompt
+    assert chat_app.WRAP_UP_PROMPT not in prompt

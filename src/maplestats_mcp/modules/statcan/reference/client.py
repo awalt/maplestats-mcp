@@ -33,6 +33,7 @@ import asyncio
 import heapq
 import itertools
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any
@@ -42,7 +43,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from maplestats_mcp.modules.statcan.lang import current_lang, say, use_lang
-from maplestats_mcp.modules.statcan.reference import constants, pages, pdf
+from maplestats_mcp.modules.statcan.reference import constants, pages, pdf, scans
 from maplestats_mcp.modules.statcan.reference.schemas import (
     Publication,
     PublicationEdition,
@@ -63,6 +64,7 @@ from maplestats_mcp.shared.errors import (
 )
 from maplestats_mcp.shared.executor import run_parse
 from maplestats_mcp.shared.http import new_client
+from maplestats_mcp.shared.ocr import parse_pages
 from maplestats_mcp.shared.rate_limiter import get_limiter
 from maplestats_mcp.shared.retrying import get_with_retry
 
@@ -783,19 +785,32 @@ def _as_of(day: date | None) -> datetime | None:
     return datetime(day.year, day.month, day.day, tzinfo=UTC) if day else None
 
 
-async def _pdf(url: str, tool: str, lang: str) -> tuple[pdf.PdfText, bool]:
-    """A PDF edition's text (pdf.py), downloaded under PDF_MAX_BYTES and cached. On
-    a bilingual two-column page, only the column in `lang` is kept, so the text is
-    cached per language."""
+async def _pdf_download(url: str, tool: str) -> file_download.Downloaded:
+    """A PDF's bytes under PDF_MAX_BYTES, kept in the shared file cache for a few hours:
+    the OCR of its scanned pages reads the same copy."""
 
-    async def fetch() -> pdf.PdfText:
-        downloaded = await file_download.download(
+    async def fetch() -> file_download.Downloaded:
+        return await file_download.download(
             url,
             allow_host=lambda host: host in constants.ALLOWED_HOSTS,
             limiter_for=lambda _host: _LIMITER,
             max_bytes=constants.PDF_MAX_BYTES,
             context=_context(tool),
         )
+
+    downloaded, _ = await file_download.cached_download(
+        file_download.cache_key(url), constants.PDF_BYTES_TTL_SECONDS, fetch
+    )
+    return downloaded
+
+
+async def _pdf(url: str, tool: str, lang: str) -> tuple[pdf.PdfText, bool]:
+    """A PDF edition's text (pdf.py), downloaded under PDF_MAX_BYTES and cached. On
+    a bilingual two-column page, only the column in `lang` is kept, so the text is
+    cached per language."""
+
+    async def fetch() -> pdf.PdfText:
+        downloaded = await _pdf_download(url, tool)
         try:
             return await run_parse(
                 pdf.extract,
@@ -842,14 +857,21 @@ def _pages_read(read: int) -> tuple[str, str]:
     )
 
 
-def _no_text_note(document: pdf.PdfText) -> str:
+def _empty_pages(document: pdf.PdfText, ocr_pages: Sequence[int]) -> list[int]:
+    """The pages with no text layer that OCR did not read: they come back empty."""
+    return [n for n in document.no_text_pages if n not in ocr_pages]
+
+
+def _no_text_note(document: pdf.PdfText, ocr_pages: Sequence[int], *, hint: bool) -> str:
     """The pages that came out empty because the PDF holds only an image of them."""
-    where = _pages_where(document.no_text_pages)
-    where_fr = _pages_where(document.no_text_pages, "sur")
-    count, scanned = len(document.no_text_pages), len(document.scanned_pages)
+    empty = _empty_pages(document, ocr_pages)
+    where = _pages_where(empty)
+    where_fr = _pages_where(empty, "sur")
+    count = len(empty)
+    scanned = len([n for n in document.scanned_pages if n in empty])
     read_en, read_fr = _pages_read(document.pages_read)
     if scanned == count:
-        return say(
+        note = say(
             f"No text layer on {where} ({count} of {read_en} read): the PDF holds only an "
             "image of each page (a scan), so the text comes back empty here. Open the PDF at "
             "the page cited (#page=N) to read it.",
@@ -857,31 +879,43 @@ def _no_text_note(document: pdf.PdfText) -> str:
             "qu'une image par page (numérisation), le texte revient donc vide ici. Ouvrez le "
             "PDF à la page citée (#page=N) pour le lire.",
         )
-    return say(
-        f"No text to read on {where} ({count} of {read_en} read): scans, blank pages or "
-        f"drawings ({scanned} hold an image the size of the page). The text comes back empty "
-        "here. Open the PDF at the page cited (#page=N) to read it.",
-        f"Pas de texte à lire {where_fr} ({count} sur {read_fr}) : numérisations, pages "
-        f"vierges ou dessins ({scanned} contiennent une image de la taille de la page). Le "
-        "texte revient donc vide ici. Ouvrez le PDF à la page citée (#page=N) pour le lire.",
-    )
+    else:
+        note = say(
+            f"No text to read on {where} ({count} of {read_en} read): scans, blank pages or "
+            f"drawings ({scanned} hold an image the size of the page). The text comes back "
+            "empty here. Open the PDF at the page cited (#page=N) to read it.",
+            f"Pas de texte à lire {where_fr} ({count} sur {read_fr}) : numérisations, pages "
+            f"vierges ou dessins ({scanned} contiennent une image de la taille de la page). Le "
+            "texte revient donc vide ici. Ouvrez le PDF à la page citée (#page=N) pour le lire.",
+        )
+    if hint and scanned:
+        note += " " + say(
+            "Where the server enables OCR (MAPLE_OCR), statcan_reference_get_section_text("
+            "publication, section='page=N') reads scanned pages.",
+            "Là où le serveur active la reconnaissance optique (MAPLE_OCR), "
+            "statcan_reference_get_section_text(publication, section='page=N') lit les pages "
+            "numérisées.",
+        )
+    return note
 
 
-def _pdf_coverage(document: pdf.PdfText) -> str | None:
-    """What the PDF's text leaves out: the pages with no text to read."""
-    if not document.no_text_pages:
+def _pdf_coverage(document: pdf.PdfText, ocr_pages: Sequence[int] = ()) -> str | None:
+    """What the PDF's text leaves out: the pages with no text to read, OCR'd or not."""
+    empty = _empty_pages(document, ocr_pages)
+    if not empty:
         return None
     read_en, read_fr = _pages_read(document.pages_read)
-    where = _pages_where(document.no_text_pages)
-    where_fr = _pages_where(document.no_text_pages, "de")
+    where = _pages_where(empty)
+    where_fr = _pages_where(empty, "de")
     return say(
         f"The text of {where} is not included (no text layer; {read_en} read).",
         f"Le texte {where_fr} n'est pas inclus (pas de couche de texte ; {read_fr}).",
     )
 
 
-def _pdf_note(document: pdf.PdfText) -> str:
-    """What a caller should know about text taken from a PDF."""
+def _pdf_note(document: pdf.PdfText, ocr_pages: Sequence[int] = (), *, hint: bool = False) -> str:
+    """What a caller should know about text taken from a PDF. `ocr_pages` are the pages
+    read by OCR, which no longer come back empty; `hint` points to OCR for scanned pages."""
     url = document.page.url
     notes = [
         say(
@@ -895,8 +929,8 @@ def _pdf_note(document: pdf.PdfText) -> str:
             "(l'url de chaque section se termine par #page=N).",
         )
     ]
-    if document.no_text_pages:
-        notes.append(_no_text_note(document))
+    if _empty_pages(document, ocr_pages):
+        notes.append(_no_text_note(document, ocr_pages, hint=hint))
     if document.bilingual_pages:
         notes.append(
             say(
@@ -1044,7 +1078,7 @@ async def get_publication(
     if resolved.pdf_only:
         document, cached = await _pdf(resolved.edition_url, tool, lang)
         sections = _pdf_toc(document, resolved.edition_url)
-        notes = [_pdf_note(document)]
+        notes = [_pdf_note(document, hint=True)]
         if len(sections) > constants.SECTIONS_LISTED_MAX:
             notes.append(
                 say(
@@ -1401,6 +1435,49 @@ def _read_already(text: str, read: list[str]) -> bool:
     return any(passage in f" {page} " for page in read)
 
 
+async def _read_scans(
+    document: pdf.PdfText,
+    edition_url: str,
+    *,
+    section: str | None,
+    mode: str,
+    page_selector: str | None,
+    extraction_cached: bool,
+    lang: str,
+    tool: str,
+) -> scans.Scanned:
+    """The PDF's scanned pages read by OCR, as the call's `ocr`, `pages` and `section` ask
+    (scans.py): the document with their text in place, and what to say about it."""
+    selected = (
+        parse_pages(page_selector, document.page_count, lang, _context(tool))
+        if page_selector is not None
+        else None
+    )
+    scope: list[int] | None = None
+    if selected is None and section is not None and (mode == "force" or document.scanned_pages):
+        # The pages a bookmark or page section spans, so OCR reads those and not the
+        # first scans of the file.
+        _, heading, _, _ = await _locate(section, document.page, edition_url, lang, tool)
+        if heading is not None:
+            scope = scans.section_pages(pages.section_blocks(document.page, heading))
+
+    async def load_body() -> bytes:
+        return (await _pdf_download(edition_url, tool)).body
+
+    return await scans.read_scans(
+        document,
+        edition_url,
+        load_body,
+        mode=mode,
+        selected=selected,
+        scope=scope,
+        # Extraction counts against the same 40 s when it ran in this call.
+        spent=0.0 if extraction_cached else document.seconds,
+        lang=lang,
+        context=_context(tool),
+    )
+
+
 async def get_section_text(
     publication: str,
     *,
@@ -1410,12 +1487,24 @@ async def get_section_text(
     start_char: int = 0,
     max_chars: int = constants.TEXT_MAX_CHARS_DEFAULT,
     limit: int = constants.QUERY_MATCHES_DEFAULT,
+    ocr: str = "auto",
+    page_selector: str | None = None,
     lang: str = "en",
 ) -> PublicationText:
-    """The text of one section of a publication, or of the sections matching a query."""
+    """The text of one section of a publication, or of the sections matching a query.
+
+    `ocr` and `page_selector` (the tool's `pages`) apply to PDF editions: scanned pages
+    are read by OCR where the server has it (scans.py)."""
     use_lang(lang)
     tool = "get_section_text"
     _check_text_args(tool, max_chars, start_char, limit)
+    if ocr not in ("auto", "off", "force"):
+        raise InvalidInput(
+            say(
+                f"{_context(tool)}: ocr must be 'auto', 'off' or 'force', got {ocr!r}.",
+                f"{_context(tool)} : ocr doit valoir 'auto', 'off' ou 'force', reçu {ocr!r}.",
+            )
+        )
     section = section.strip() if section and section.strip() else None
     query = query.strip() if query and query.strip() else None
     if section and query:
@@ -1438,11 +1527,33 @@ async def get_section_text(
     }
     edition_url = resolved.edition_url
     document: pdf.PdfText | None = None
+    scanned: scans.Scanned | None = None
+    if not resolved.pdf_only and (ocr == "force" or page_selector is not None):
+        raise InvalidInput(
+            say(
+                f"{_context(tool)}: pages and ocr='force' read scanned PDF pages, and "
+                f"{edition_url} is an HTML edition.",
+                f"{_context(tool)} : pages et ocr='force' lisent les pages numérisées d'un PDF, "
+                f"et {edition_url} est une édition HTML.",
+            )
+        )
     if resolved.pdf_only:
         document, all_cached = await _pdf(edition_url, tool, lang)
-        main = document.page
         if section is not None:
             section = _pdf_section(section)
+        scanned = await _read_scans(
+            document,
+            edition_url,
+            section=section,
+            mode=ocr,
+            page_selector=page_selector,
+            extraction_cached=all_cached,
+            lang=lang,
+            tool=tool,
+        )
+        document = scanned.document
+        all_cached &= scanned.cached
+        main = document.page
     else:
         main, all_cached = await _page(edition_url, edition_url, tool)
     all_cached &= resolved.cached
@@ -1595,8 +1706,9 @@ async def get_section_text(
             )
     if query is not None:
         notes[0:0] = _query_hints(query, common["catalogue_number"])
-    if document is not None:
-        notes.insert(0, _pdf_note(document))
+    ocr_pages = scanned.ocr_pages if scanned is not None else []
+    if document is not None and scanned is not None:
+        notes[0:0] = [_pdf_note(document, ocr_pages), *scanned.limits]
         pages_read = document.pages_read
     older = _older_note(resolved)
     if older:
@@ -1612,16 +1724,17 @@ async def get_section_text(
         subsections=subsections,
         pages_read=pages_read,
         pages_without_text=len(document.no_text_pages) if document is not None else 0,
+        ocr_pages=ocr_pages,
         provenance=make_provenance(
             source=constants.RATE_LIMIT_SOURCE,
             url=results[0].url if results else edition_url,
             cached=all_cached,
             as_of=_as_of(release),
-            coverage=_pdf_coverage(document) if document is not None else None,
+            coverage=_pdf_coverage(document, ocr_pages) if document is not None else None,
             limits=" ".join(notes) or None,
             schema_name="statcan_reference.PublicationText",
             lang=current_lang(),
-        ),
+        ).model_copy(update={"caveats": scanned.caveats if scanned is not None else []}),
     )
 
 

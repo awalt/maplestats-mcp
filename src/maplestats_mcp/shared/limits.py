@@ -99,7 +99,14 @@ def fit_to_budget[T](
 
 # Lists under these keys are geometry (GeoJSON coordinates, rings of points):
 # keeping a prefix of one would draw a different shape, not a shorter list.
-_UNTRIMMABLE_KEYS = frozenset({"provenance", "geometry", "coordinates", "geometries", "bbox"})
+# `_geometry` is where arcgis_hub_query_feature_layer puts a row's Esri JSON geometry
+# (rings, paths or points), since a row's own fields may be called `geometry`. Left out of
+# this set until 2026-11-17, a result over the budget lost first the y of every vertex and
+# then the end of every ring (live, on Ontario GeoHub, Manitoba and Niagara Region
+# layers); with it here the rows are dropped whole and the note says so.
+_UNTRIMMABLE_KEYS = frozenset(
+    {"provenance", "geometry", "_geometry", "coordinates", "geometries", "bbox"}
+)
 
 # Sibling fields that count the rows of the list beside them; updated when that
 # list is trimmed so the result does not say 5,000 next to 1,200 rows.

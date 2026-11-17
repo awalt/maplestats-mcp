@@ -59,6 +59,32 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## Optional OCR components
+
+Reading scanned PDF pages (`MAPLE_OCR=1`, the `ocr` extra and the Docker image)
+uses the components below. They are installed separately from this package,
+not copied into it, and each keeps its own licence; the full texts ship with
+the packages (Debian's `/usr/share/doc/<package>/copyright`, and the
+`licenses/` folder of the pypdfium2 wheel).
+
+- **Tesseract OCR** (https://github.com/tesseract-ocr/tesseract), Apache
+  License 2.0. Run as a separate program (`tesseract`), through a pipe, never
+  linked.
+- **tessdata** language data (`eng`, `fra`; https://github.com/tesseract-ocr/tessdata_fast),
+  Apache License 2.0.
+- **Leptonica** (http://www.leptonica.org), the image library Tesseract uses,
+  a BSD-style licence.
+- **pypdfium2** (https://github.com/pypdfium2-team/pypdfium2), BSD-3-Clause or
+  Apache License 2.0, and **PDFium** (https://pdfium.googlesource.com/pdfium/)
+  and the libraries bundled in its binary, BSD-3-Clause and Apache License 2.0
+  (the notices are in the wheel's `licenses/` folder).
+
+PyMuPDF and MuPDF (AGPL-3.0, or a commercial licence from Artifex), Ghostscript
+(AGPL) and poppler (GPL) are deliberately not used: their licences do not fit
+redistribution of this package under the MIT License. The other OCR engines
+considered need a runtime weight download, or have no wheel for the Python the
+Docker image runs.
+
 ## Website fonts
 
 The website (`site/assets/fonts/`) serves three font families under the

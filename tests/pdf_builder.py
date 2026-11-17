@@ -9,6 +9,7 @@ characters from it).
 
 from __future__ import annotations
 
+import importlib
 import io
 import zlib
 from collections.abc import Sequence
@@ -23,6 +24,7 @@ class TextPage:
     """Lines of Helvetica text, one text object each (WinAnsi, so accents work)."""
 
     lines: Sequence[str]
+    size: int = 10
 
 
 @dataclass(frozen=True)
@@ -65,9 +67,12 @@ def _escape(line: str) -> bytes:
     return line.encode("cp1252").replace(b"\\", b"\\\\").replace(b"(", b"\\(").replace(b")", b"\\)")
 
 
-def build_pdf(pages: Sequence[Page]) -> bytes:
-    """A PDF of `pages`, in order: objects 1 (catalogue), 2 (page tree) and 3 (font) come
-    first, then each page's content stream, image and page dictionary."""
+def build_pdf(
+    pages: Sequence[Page], *, media: tuple[int, int] = (PAGE_WIDTH, PAGE_HEIGHT)
+) -> bytes:
+    """A PDF of `pages`, in order, each `media` points wide and high: objects 1 (catalogue),
+    2 (page tree) and 3 (font) come first, then each page's content stream, image and
+    page dictionary."""
     objects: list[bytes] = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"",  # the page tree, filled in below
@@ -91,7 +96,7 @@ def build_pdf(pages: Sequence[Page]) -> bytes:
                 % (page.width, page.height, len(packed), packed)
             )
             resources = b"<< /XObject << /Im0 %d 0 R >> >>" % len(objects)
-            top = PAGE_HEIGHT - page.drawn_height
+            top = media[1] - page.drawn_height
             stream = b"q %d 0 0 %d 0 %d cm /Im0 Do Q\n" % (page.drawn_width, page.drawn_height, top)
         else:
             stream = b""
@@ -99,7 +104,7 @@ def build_pdf(pages: Sequence[Page]) -> bytes:
         content = len(objects)
         objects.append(
             b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] /Resources %s /Contents %d 0 R >>"
-            % (PAGE_WIDTH, PAGE_HEIGHT, resources, content)
+            % (media[0], media[1], resources, content)
         )
         kids.append(b"%d 0 R" % len(objects))
     objects[1] = b"<< /Type /Pages /Kids [%s] /Count %d >>" % (b" ".join(kids), len(kids))
@@ -116,3 +121,31 @@ def build_pdf(pages: Sequence[Page]) -> bytes:
     body.write(b"trailer\n<< /Size %d /Root 1 0 R >>\n" % (len(objects) + 1))
     body.write(b"startxref\n%d\n%%%%EOF\n" % xref)
     return body.getvalue()
+
+
+# The three lines the real-engine tests read: Manitoba 1932 headings in both languages,
+# with accents and the figures a table page carries.
+SCAN_LINES = (
+    "Summary of Results / Compte rendu des résultats",
+    "Electoral Division: Arthur   Votes Cast: 2,716   Turn Out: 89.0",
+    "Circonscription électorale: Beautiful Plains   Suffrages exprimés: 4,107",
+)
+
+
+def synthetic_scan(lines: Sequence[str] = SCAN_LINES, dpi: int = 150) -> bytes:
+    """A one-page PDF with no text layer that shows `lines`, drawn as an image.
+
+    The lines are set in a text PDF, PDFium draws that page to an 8-bit gray bitmap at
+    `dpi`, and the bitmap becomes the only content of a new PDF (about 15 KB, built in
+    0.1 s): what a scanner writes, with nothing to extract. Needs pypdfium2.
+    """
+    pdfium = importlib.import_module("pypdfium2")
+    document = pdfium.PdfDocument(build_pdf([TextPage(lines, size=14)]))
+    try:
+        bitmap = document[0].render(scale=dpi / 72, grayscale=True)
+        width, height, stride = bitmap.width, bitmap.height, bitmap.stride
+        buffer = bytes(bitmap.buffer)
+    finally:
+        document.close()
+    raw = b"".join(buffer[y * stride : y * stride + width] for y in range(height))
+    return build_pdf([scan(width, height, raw)])

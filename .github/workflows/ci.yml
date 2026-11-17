@@ -50,11 +50,15 @@ jobs:
     container: python:3.15-slim@sha256:94d3426f1def7db4a106a232ac121bfd975393e5dfd40a619b955fae45fe7913
     steps:
       # The slim image has no git; the tool-surface tests call it. Installed before
-      # checkout, so the checkout is a real repository rather than a tarball.
-      - run: apt-get update && apt-get install -y --no-install-recommends git
+      # checkout, so the checkout is a real repository rather than a tarball. Tesseract
+      # and the ocr extra are the production image's, so a wheel or package that fails on
+      # Python 3.15 shows up here, and the tests marked ocr run (they skip elsewhere).
+      - run: >-
+          apt-get update && apt-get install -y --no-install-recommends
+          git tesseract-ocr tesseract-ocr-eng tesseract-ocr-fra
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - run: pip install --no-cache-dir uv==0.11.7
-      - run: uv sync --locked
+      - run: uv sync --locked --extra ocr
       - run: uv run python --version
       # The full tool-surface comparison (fetch-depth 0, TOOL_SURFACE_REQUIRED) runs on
       # the matrix legs above.
@@ -127,6 +131,30 @@ jobs:
       - run: uv run pytest -q -n auto --dist loadfile -m r_julia
         env:
           MAPLE_REQUIRE_R_JULIA: "1"
+
+  # The tests marked ocr (tests/test_shared_ocr_engine.py) read a scanned page, built in the
+  # test, with the real engine: PDFium from the ocr extra and the tesseract program with its
+  # English and French data. They skip when either is missing, so here
+  # MAPLE_REQUIRE_OCR=1 turns a skip into a failure (conftest.py), and a regression in
+  # the Tesseract command line, the PDFium render or the address-space cap (set through
+  # the Linux launcher) cannot merge green. Its own job, so the apt install does not
+  # slow the matrix.
+  ocr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          version: "0.11.7" # same uv as both Dockerfiles; bump all three together
+      - run: >-
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          tesseract-ocr tesseract-ocr-eng tesseract-ocr-fra
+      - run: tesseract --version
+      - run: uv sync --locked --extra ocr
+      - run: uv run pytest -q -m ocr
+        env:
+          MAPLE_REQUIRE_OCR: "1"
 
   # The chat demo (chat/) is its own project, with its own lock and tests.
   chat:
