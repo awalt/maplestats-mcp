@@ -323,6 +323,8 @@ def test_parse_workbook_refuses_an_oversized_part_before_loading():
         t.writestr("xl/sharedStrings.xml", b" " * (XLSX_MAX_PART_BYTES + 1))
     with pytest.raises(TooLarge, match="sharedStrings"):
         client._parse_workbook(out.getvalue())
+
+
 async def test_malformed_sitemap_raises_upstream_error(httpx_mock):
     httpx_mock.add_response(url=constants.SITEMAP_URL, text="<sitemapindex><sitemap>")
     with pytest.raises(UpstreamError, match="is not valid XML"):
