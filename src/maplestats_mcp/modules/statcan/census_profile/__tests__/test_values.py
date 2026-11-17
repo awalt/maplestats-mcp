@@ -651,7 +651,9 @@ def test_the_store_never_passes_its_byte_cap_and_drops_the_least_recently_used()
 
 
 def test_replacing_a_value_does_not_double_count_it():
-    store = ValueStore(None)
+    # A fixed clock: a real timestamp's printed length can change by a byte between
+    # the two writes, which failed this byte-count check on one CI run.
+    store = ValueStore(None, clock=lambda: 1_000.0)
     key = value_key("en", "DF_PR", BC, "229", "1", "1")
     store.put_many([(key, record("1"))])
     size = store.total_bytes
