@@ -110,4 +110,11 @@ class PublicationText(BaseModel):
     pages_read: int = Field(
         default=0, description="HTML pages of the edition read, or PDF pages for a PDF."
     )
+    pages_without_text: int = Field(
+        default=0,
+        description=(
+            "PDF pages read with no text layer (under 25 characters: a scan, a blank "
+            "page, a drawing): they come back empty, and provenance.limits names them."
+        ),
+    )
     provenance: Provenance

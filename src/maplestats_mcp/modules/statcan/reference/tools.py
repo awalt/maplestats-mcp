@@ -175,7 +175,9 @@ async def statcan_reference_get_section_text(
     carries its own URL to cite, and the result the edition's release
     date. PDF-only editions (and a PDF URL as publication) are read from
     the PDF, a page per section (section='page=192'), with the same
-    query and paging; tables may come out imperfect. On bilingual pages
+    query and paging; tables may come out imperfect. A PDF page with no
+    text layer (a scan) comes back empty and counted in pages_without_text.
+    On bilingual pages
     printed in two columns (15-203-X) only the column in lang is kept. Covers the
     Guide to the Labour Force Survey (71-543-G: exclusions, involuntary
     part-time, quality and release rules), the CPI Reference Paper
