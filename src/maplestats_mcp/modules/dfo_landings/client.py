@@ -47,6 +47,7 @@ from maplestats_mcp.modules.dfo_landings.schemas import (
     LandingsRow,
     LandingsTable,
 )
+from maplestats_mcp.shared import csv_files
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance, raise_localized
 from maplestats_mcp.shared.errors import (
@@ -95,10 +96,9 @@ def _fold(text: str) -> str:
 
 
 def _decode(raw: bytes) -> str:
-    try:
-        return raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        return raw.decode("cp1252")
+    # UTF-8, else Windows-1252, else latin-1: cp1252 alone fails on its five undefined
+    # bytes (0x81, 0x8d, 0x8f, 0x90, 0x9d), and one stray byte lost the whole file.
+    return csv_files.decode(raw)
 
 
 async def _fetch_bytes(url: str, context: str, lang: str) -> bytes:

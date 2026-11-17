@@ -190,3 +190,9 @@ async def test_cipo_dictionary_workbook_that_inflates_past_the_cap_is_refused(
     httpx_mock.add_response(url=ip_constants.DICTIONARY_URLS["patent"], content=archive.getvalue())
     with pytest.raises(UpstreamError, match="unpacks to more than"):
         await ip_horizons.get_dictionary("patent")
+
+
+def test_dfo_landings_decodes_a_file_with_a_cp1252_undefined_byte():
+    # 0x81 is undefined in Windows-1252: the strict decode raised UnicodeDecodeError.
+    text = dfo._decode(b"Year,Species" + bytes([10, 0xE9, 0x81, 10]))
+    assert text.startswith("Year,Species") and text.endswith(chr(0xE9) + chr(0x81) + chr(10))

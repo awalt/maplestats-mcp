@@ -25,7 +25,9 @@
   capped at 20 MB inflated, the limit `remote_zip.read_member` puts on codebooks.
 - `cbsa_tariff` only follows an Access zip link on `www.cbsa-asfc.gc.ca` over
   https; an absolute link to another host on the edition page is ignored.
-  `dfo_landings` only downloads catalogue links on `api-proxy.edh-cde.dfo-mpo.gc.ca`.
+  `dfo_landings` only downloads catalogue links on `api-proxy.edh-cde.dfo-mpo.gc.ca`,
+  and reads a file with a byte Windows-1252 leaves undefined (0x81) instead of
+  failing on it.
 - `fed_*` parses a release in the file-parsing pool instead of a thread of the
   default executor that DNS lookups share, so a 127 MB XML parse no longer
   holds up name resolution.
