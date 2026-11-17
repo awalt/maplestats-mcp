@@ -9,7 +9,10 @@
 import asyncio
 import base64
 import hashlib
+import json
 import re
+import shutil
+import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -26,7 +29,7 @@ def reset_state(monkeypatch):
     chat_app._daily_tokens["n"] = 0
     monkeypatch.setattr(chat_app, "STATS", usage.ChatStats())
 
-    async def fake_model(messages):
+    async def fake_model(messages, emit=None):
         return {"answer": "ok", "tools_used": []}
 
     monkeypatch.setattr(chat_app, "ask_model", fake_model)
@@ -882,3 +885,277 @@ def test_the_mcp_url_carries_the_chat_demo_label():
         == base + "?a=1&client=maplestats-chat"
     )
     assert chat_app.MCP_CALL_URL.endswith("client=maplestats-chat")
+
+
+# 5. Streaming ----
+
+
+def _stream_events(response):
+    return [json.loads(line) for line in response.iter_lines() if line.strip()]
+
+
+def _post_stream(client, messages):
+    return client.post("/api/chat/stream", json={"messages": messages})
+
+
+def test_stream_sends_progress_then_the_same_result(monkeypatch):
+    async def watched_model(messages, emit):
+        emit({"type": "tool", "name": "plan_query"})
+        emit({"type": "text", "delta": "The rate "})
+        emit({"type": "text", "delta": "is 6.9%."})
+        return {"answer": "The rate is 6.9%.", "tools_used": [{"name": "plan_query"}]}
+
+    monkeypatch.setattr(chat_app, "ask_model", watched_model)
+    response = _post_stream(
+        TestClient(chat_app.app), [{"role": "user", "content": "Unemployment?"}]
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/x-ndjson")
+    assert response.headers["cache-control"] == "no-store"
+    events = _stream_events(response)
+    assert [e["type"] for e in events] == ["tool", "text", "text", "final"]
+    assert events[0]["name"] == "plan_query"
+    assert events[-1]["answer"] == "The rate is 6.9%."
+    assert events[-1]["tools_used"] == [{"name": "plan_query"}]
+
+
+def test_stream_turn_is_counted_like_a_plain_one():
+    response = _post_stream(
+        TestClient(chat_app.app), [{"role": "user", "content": "GDP?"}]
+    )
+    assert _stream_events(response)[-1]["type"] == "final"
+    assert chat_app.STATS.snapshot()["outcomes"] == {"answered": 1}
+
+
+def test_stream_reports_a_failed_turn_as_an_error_event(monkeypatch):
+    async def failing(messages, emit):
+        raise chat_app.BackendFailure(billed=True) from RuntimeError("down")
+
+    monkeypatch.setattr(chat_app, "ask_model", failing)
+    response = _post_stream(
+        TestClient(chat_app.app), [{"role": "user", "content": "GDP?"}]
+    )
+    events = _stream_events(response)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["status"] == 502
+    assert "did not answer" in events[-1]["error"]
+    assert chat_app.STATS.snapshot()["outcomes"] == {"failed": 1}
+
+
+def test_stream_refuses_before_any_stream_with_the_plain_status(monkeypatch):
+    client = TestClient(chat_app.app)
+    bad = _post_stream(client, [])
+    assert bad.status_code == 400
+    assert bad.headers["content-type"].startswith("application/json")
+    assert "messages" in bad.json()["error"]
+    wrong_type = client.post(
+        "/api/chat/stream", content="x", headers={"content-type": "text/plain"}
+    )
+    assert wrong_type.status_code == 415
+    monkeypatch.setattr(chat_app, "DAILY_LIMIT", 0)
+    limited = _post_stream(client, [{"role": "user", "content": "GDP?"}])
+    assert limited.status_code == 429
+    assert limited.headers["content-type"].startswith("application/json")
+
+
+def test_stream_pings_while_quiet(monkeypatch):
+    async def slow_model(messages, emit):
+        await asyncio.sleep(0.15)
+        return {"answer": "late", "tools_used": []}
+
+    monkeypatch.setattr(chat_app, "ask_model", slow_model)
+    monkeypatch.setattr(chat_app, "STREAM_PING_SECONDS", 0.02)
+    response = _post_stream(
+        TestClient(chat_app.app), [{"role": "user", "content": "GDP?"}]
+    )
+    types = [e["type"] for e in _stream_events(response)]
+    assert types[-1] == "final"
+    assert "ping" in types
+
+
+def test_stream_ends_with_an_event_even_if_the_turn_crashes(monkeypatch):
+    async def crash(messages, address, emit=None):
+        raise ValueError("a bug")
+
+    monkeypatch.setattr(chat_app, "run_turn", crash)
+    response = _post_stream(
+        TestClient(chat_app.app), [{"role": "user", "content": "GDP?"}]
+    )
+    events = _stream_events(response)
+    assert events[-1] == {
+        "type": "error",
+        "status": 500,
+        "error": "The demo failed. Try again.",
+    }
+
+
+def test_stream_progress_names_the_real_tool_once_its_arguments_are_complete():
+    call = SimpleNamespace(
+        type="mcp_tool_use",
+        name="call_tool",
+        input={"name": "wds_get_data_from_vectors", "arguments": {"vector_ids": [1]}},
+    )
+    done = SimpleNamespace(type="content_block_stop", content_block=call)
+    assert chat_app.stream_progress(done) == {
+        "type": "tool",
+        "name": "wds_get_data_from_vectors",
+    }
+    gateway = SimpleNamespace(
+        type="content_block_stop",
+        content_block=SimpleNamespace(type="mcp_tool_use", name="plan_query", input={}),
+    )
+    assert chat_app.stream_progress(gateway) == {"type": "tool", "name": "plan_query"}
+
+
+def test_stream_progress_passes_text_and_ignores_the_rest():
+    assert chat_app.stream_progress(SimpleNamespace(type="text", text="Hi")) == {
+        "type": "text",
+        "delta": "Hi",
+    }
+    for event in (
+        SimpleNamespace(type="message_start"),
+        SimpleNamespace(
+            type="content_block_start", content_block=SimpleNamespace(type="text")
+        ),
+        SimpleNamespace(
+            type="content_block_stop", content_block=SimpleNamespace(type="text")
+        ),
+        SimpleNamespace(
+            type="content_block_stop",
+            content_block=SimpleNamespace(type="mcp_tool_result"),
+        ),
+        SimpleNamespace(type="input_json", partial_json="{"),
+    ):
+        assert chat_app.stream_progress(event) is None
+
+
+def _fake_streaming_anthropic(monkeypatch, events, final):
+    """A client whose `.stream()` yields these events and ends with this message."""
+    seen: dict = {}
+
+    class FakeStream:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        def __aiter__(self):
+            async def run():
+                for event in events:
+                    yield event
+
+            return run()
+
+        async def get_final_message(self):
+            return final
+
+    class FakeMessages:
+        def stream(self, **kwargs):
+            seen.update(kwargs)
+            return FakeStream()
+
+        async def create(self, **kwargs):
+            raise AssertionError("a watched turn must stream")
+
+    class FakeClient:
+        beta = SimpleNamespace(messages=FakeMessages())
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(chat_app, "AsyncAnthropic", lambda **kwargs: FakeClient())
+    return seen
+
+
+def test_a_watched_anthropic_turn_streams_but_returns_the_same_result(monkeypatch):
+    tool = SimpleNamespace(
+        type="mcp_tool_use", name="plan_query", input={"question": "GDP?"}, id="t1"
+    )
+    result = SimpleNamespace(
+        type="mcp_tool_result", tool_use_id="t1", is_error=False, content="{}"
+    )
+    final = SimpleNamespace(
+        content=[tool, result, SimpleNamespace(type="text", text="Answer")],
+        stop_reason="end_turn",
+        usage=_usage(input_tokens=100, output_tokens=10),
+    )
+    seen = _fake_streaming_anthropic(
+        monkeypatch,
+        [
+            SimpleNamespace(type="content_block_stop", content_block=tool),
+            SimpleNamespace(type="text", text="Answer"),
+        ],
+        final,
+    )
+    emitted: list = []
+    answer = asyncio.run(
+        chat_app.ask_anthropic([{"role": "user", "content": "GDP?"}], emitted.append)
+    )
+    assert emitted == [
+        {"type": "tool", "name": "plan_query"},
+        {"type": "text", "delta": "Answer"},
+    ]
+    assert answer["answer"] == "Answer"
+    assert answer["tools_used"] == [
+        {"name": "plan_query", "arguments": {"question": "GDP?"}}
+    ]
+    # The same request an unwatched turn sends, and the same billing.
+    assert seen["model"] == chat_app.MODEL
+    assert seen["mcp_servers"][0]["url"] == chat_app.MCP_CALL_URL
+    assert chat_app._daily_tokens["n"] == 110
+
+
+def test_an_unwatched_anthropic_turn_does_not_stream(monkeypatch):
+    done = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text="Answer")], stop_reason="end_turn"
+    )
+    _fake_anthropic(monkeypatch, [done])
+    assert _ask()["answer"] == "Answer"
+
+
+def test_a_watched_openai_turn_reports_each_tool_call(monkeypatch):
+    _fake_openai(
+        monkeypatch,
+        [
+            _openai_reply(None, tool_calls=[_tool_call()]),
+            _openai_reply("Done"),
+        ],
+    )
+    emitted: list = []
+    answer = asyncio.run(
+        chat_app.ask_openai_compatible(
+            [{"role": "user", "content": "hi"}], emitted.append
+        )
+    )
+    assert answer["answer"] == "Done"
+    assert emitted == [{"type": "tool", "name": "x"}]
+
+
+def test_the_page_script_parses(tmp_path):
+    """A syntax error in the page script leaves a dead page and no visible error."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    page = chat_app.PAGE.decode("utf-8")
+    scripts = re.findall(r"<script>(.*?)</script>", page, re.DOTALL)
+    assert scripts, "the page has no inline script"
+    path = tmp_path / "page_script.js"
+    path.write_text("\n".join(scripts), encoding="utf-8")
+    checked = subprocess.run(
+        [node, "--check", str(path)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert checked.returncode == 0, checked.stderr
+
+
+def test_the_page_reads_the_stream_route():
+    page = chat_app.PAGE.decode("utf-8")
+    assert "api/chat/stream" in page
+    assert "can take up to a minute while the data server wakes" not in page

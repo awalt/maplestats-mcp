@@ -39,6 +39,30 @@ CHAT_API_KEY=sk-ant-... uv run uvicorn app:app --port 8081
 
 Open <http://localhost:8081>. Run the tests with `uv run pytest`.
 
+## While it works
+
+A question can take a few seconds or a couple of minutes (every tool call is a model
+turn, and StatCan's census profile service alone takes 30 to 45 s a call), so the page
+shows progress instead of a blank wait. It posts to `POST /api/chat/stream`, which runs
+the same turn as `POST /api/chat` (same guards, limits, counts and result) and answers
+with newline-delimited JSON:
+
+- `{"type": "tool", "name": ...}` when a tool call starts (the real tool's name, not
+  `call_tool`);
+- `{"type": "text", "delta": ...}` for a piece of the model's text (the page shows it
+  as plain text and replaces it with the finished answer; text written before a tool
+  call is thinking aloud and is cleared at the next `tool` event);
+- `{"type": "ping"}` every `CHAT_STREAM_PING_SECONDS` (10) of quiet, so no proxy closes
+  an idle connection;
+- last, either `{"type": "final", ...}` with the `/api/chat` body, or `{"type": "error",
+  "status": ..., "error": ...}`.
+
+A request the guards refuse (415, 413, 400, 429) is an ordinary JSON error with its
+status, sent before any stream starts. The Anthropic backend streams the model call
+(`client.beta.messages.stream`); billing, counts and the answer are read from the
+finished message exactly as before. The `openai` backend reports each tool call but
+not the text. `POST /api/chat` stays for scripts and tests.
+
 ## Choose the model
 
 Set three environment variables. Nothing else changes.

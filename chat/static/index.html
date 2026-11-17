@@ -62,6 +62,8 @@
   details.calls { margin-top: 10px; color: var(--muted); font-size: .85rem; }
   details.calls code { display: block; white-space: pre-wrap; word-break: break-all; }
   .err { color: var(--accent); }
+  .status { color: var(--muted); font-size: .9rem; margin: 0; }
+  .live { margin: 8px 0 0; white-space: pre-wrap; }
   /* Result panel: chart, table and sources, all built from the tool results. */
   .result { margin-top: 14px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
   .tabs { display: flex; gap: 2px; background: var(--soft); border-bottom: 1px solid var(--line); }
@@ -450,27 +452,83 @@
     showAnswer(bubble("bot"), turn);
   }
 
+  // What a step means to a visitor. StatCan's census profile service is the slow one
+  // (30 to 45 s a call, measured), so say so instead of looking stuck.
+  function describe(tool) {
+    if (tool === "plan_query") return "planning which sources to use";
+    if (tool === "search_tools") return "finding the right data tool";
+    if (tool.startsWith("statcan_census_profile_get_data")) return "reading the 2021 Census profile (StatCan's service is slow, up to a minute)";
+    if (tool.startsWith("statcan_census_profile_search_geography")) return "finding the place in the census (can take 20 s)";
+    return "calling " + tool;
+  }
+  // Newline-delimited JSON events: progress while the model works, then one
+  // "final" (the result) or "error". Returns the final event.
+  async function readEvents(res, onEvent) {
+    let final = null;
+    const handle = (line) => {
+      if (!line.trim()) return;
+      let event;
+      try { event = JSON.parse(line); } catch (e) { return; }
+      if (event.type === "final") final = event;
+      else if (event.type === "error") throw new Error(event.error || "The demo failed. Try again.");
+      else onEvent(event);
+    };
+    if (!res.body || !res.body.getReader) {
+      (await res.text()).split("\n").forEach(handle);
+    } else {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop();
+        lines.forEach(handle);
+      }
+      handle(buffer + decoder.decode());
+    }
+    if (!final) throw new Error("The connection ended before the answer arrived. Try again.");
+    return final;
+  }
+
   async function ask() {
     const text = box.value.trim();
     if (!text || send.disabled) return;
     box.value = ""; send.disabled = true;
     bubble("user").append(el("p", { text }));
     const pending = bubble("bot");
-    pending.append(el("p", { text: "Looking it up. The first question can take up to a minute while the data server wakes." }));
+    const status = el("p", { class: "status", text: "Starting..." });
+    const live = el("p", { class: "live" });
+    pending.append(status, live);
     const messages = turns.flatMap((t) => [{ role: "user", content: t.q }, { role: "assistant", content: t.answer }]);
     messages.push({ role: "user", content: text });
+    const started = Date.now();
+    let steps = 0, last = "";
+    const showStatus = () => {
+      const seconds = Math.round((Date.now() - started) / 1000);
+      status.textContent = seconds + " s. " + (steps ? "Step " + steps + ": " + describe(last) + "." : "Planning the lookup.");
+    };
+    showStatus();
+    const ticker = setInterval(showStatus, 1000);
     try {
-      const res = await fetch("api/chat", {
+      const res = await fetch("api/chat/stream", {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ messages }),
       });
-      // A gateway error while the host wakes comes back as an HTML page, not JSON.
-      const data = await res.json().catch(() => ({}));
-      // No JSON error means the host answered, not the app: it is waking up or
-      // restarting after a deploy.
-      if (!res.ok || typeof data.answer !== "string") throw new Error(data.error ||
-        "The demo server did not answer (HTTP " + res.status + "). It may be waking up " +
-        "or restarting: try again in a minute.");
+      // A refusal (limits, bad input) is an ordinary JSON error; a gateway error
+      // while the host restarts comes back as an HTML page, not JSON.
+      if (!res.ok || !(res.headers.get("content-type") || "").includes("ndjson")) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ||
+          "The demo server did not answer (HTTP " + res.status + "). It may be restarting: try again in a minute.");
+      }
+      const data = await readEvents(res, (event) => {
+        if (event.type === "tool") { steps += 1; last = event.name; live.textContent = ""; showStatus(); }
+        else if (event.type === "text") { live.textContent += event.delta; }
+      });
+      if (typeof data.answer !== "string") throw new Error("The demo server sent no answer. Try again.");
       const turn = { q: text, answer: data.answer, tools_used: data.tools_used || [],
         data: data.data || [], sources: data.sources || [] };
       turns.push(turn); save();
@@ -482,6 +540,7 @@
       if (!box.value) box.value = text;
       pending.replaceChildren(el("p", { class: "err", text: err.message }));
     } finally {
+      clearInterval(ticker);
       send.disabled = false; box.focus();
     }
   }
