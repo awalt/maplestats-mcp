@@ -152,6 +152,24 @@ TERMS_NOT_STATED = (
     "Do not assume it is openly licensed; check with the publisher before redistributing."
 )
 
+
+# BCER's IRIS bulk files (iris.bcogc.ca/download): no licence statement anywhere. The site-wide
+# Terms of Use (https://www.bc-er.ca/terms/, read 2026-11-17) say the material is owned by the
+# Government of British Columbia and "may not be reproduced or redistributed without the
+# prior written permission" of the Province; the BCER Open Data Licence (based on OGL - BC) is
+# stated only for the GIS Open Data Portal. The maintainer approved building the module on
+# 2026-11-17 knowing the terms are unresolved, hence "unknown", not "allowed".
+BCER_TERMS = (
+    "BC Energy Regulator (BCER) states no licence for these bulk files (iris.bcogc.ca). Its "
+    "website Terms of Use (https://www.bc-er.ca/terms/) say the material is owned by the "
+    "Government of British Columbia and 'may not be reproduced or redistributed without the "
+    "prior written permission' of the Province; the BCER Open Data Licence (based on "
+    "OGL - BC) is stated only for its GIS Open Data Portal, not for these files. The reuse "
+    "terms are therefore unresolved: use the data for personal or internal analysis and "
+    "check with BCER before redistributing or republishing it. Courtesy credit (BCER names "
+    "none): 'Source: BC Energy Regulator.'"
+)
+
 PER_RECORD_LICENCE = (
     "Licences differ by dataset on this platform: each dataset's own licence is in its "
     "licence fields. Check it before reusing."
@@ -205,6 +223,7 @@ SOURCE_LICENCES: dict[str, str] = {
         "the source and not presenting it as official; commercial redistribution needs the "
         "AER's written permission."
     ),
+    "bcer": BCER_TERMS,
     "epcor": terms_not_stated("EPCOR", "https://apps.epcor.ca"),
     "eps": terms_not_stated(
         "Edmonton Police Service", "https://communitysafetydataportal.edmontonpolice.ca"
@@ -487,6 +506,20 @@ LICENCES_FR: dict[str, str] = {
         "(https://www.aer.ca/copyright-and-disclaimer) : la reproduction non commerciale est "
         "permise sans autorisation, en indiquant l'AER comme source et sans la présenter comme "
         "officielle ; la redistribution commerciale exige l'autorisation écrite de l'AER."
+    ),
+    SOURCE_LICENCES["bcer"]: (
+        "La BC Energy Regulator (BCER) n'énonce aucune licence pour ces fichiers massifs "
+        "(iris.bcogc.ca). Les conditions d'utilisation de son site "
+        "(https://www.bc-er.ca/terms/) indiquent que le contenu appartient au gouvernement de "
+        "la Colombie-Britannique et 'may not be reproduced or redistributed without the prior "
+        "written permission' de la province (formulation originale en anglais) ; la BCER Open "
+        "Data Licence (fondée sur la Licence du gouvernement ouvert – Colombie-Britannique) "
+        "n'est énoncée que "
+        "pour son portail de données ouvertes SIG, pas pour ces fichiers. Les conditions de "
+        "réutilisation ne sont donc pas réglées : utilisez les données pour une analyse "
+        "personnelle ou interne et vérifiez auprès de la BCER avant de les redistribuer ou de "
+        "les republier. Mention de courtoisie (la BCER n'en indique aucune) : « Source : BC "
+        "Energy Regulator »."
     ),
     SOURCE_LICENCES["crea"]: (
         "Source : Association canadienne de l'immeuble (ACI), Indice des prix des propriétés "
@@ -826,6 +859,9 @@ _SOURCE_COMMERCIAL_USE: dict[str, CommercialUse] = {
     # "including for commercial purposes", attribution required (read 2026-11-08).
     "toronto": "allowed",
     "aer": "not_allowed",
+    # No licence for the IRIS files; the site terms ask permission to reproduce; the BCER
+    # Open Data Licence covers the GIS portal only (read 2026-11-17).
+    "bcer": "unknown",
     "epcor": "unknown",
     "eps": "unknown",
     "provincial-election-results": "varies",

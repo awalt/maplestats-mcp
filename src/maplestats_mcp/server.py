@@ -797,6 +797,7 @@ Sources, by tool-name prefix:
   House of Commons MPs, roles, party standings, MPs' expenses), senate_ (Senate votes),
   represent_ (who represents a postal code; unofficial Open North).
 - Provincial and municipal sources: aer_ (Alberta Energy Regulator),
+  bcer_ (BC Energy Regulator wells, monthly production, drilling and facility files),
   ab_wildfire_ (Alberta wildfire status), bc_env_ (BC air quality,
   AQHI, snow, groundwater wells, provincial streamflow), bcgw_ (BC Geographic
   Warehouse), bc_lobbyists_ (BC Registrar of Lobbyists), drivebc_ (BC

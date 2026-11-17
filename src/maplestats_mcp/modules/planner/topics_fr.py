@@ -473,6 +473,29 @@ FR: dict[str, str] = {
         "perspectives énergétiques de l'Alberta de l'AER (ST98) : réserves, prévisions pour "
         "les sables bitumineux et le gaz"
     ),
+    "British Columbia gas, oil and water production by month for a well, operator, "
+    "area or the province: well_authorization, operator, from_period": (
+        "production mensuelle de gaz, de pétrole et d'eau de la Colombie-Britannique pour un "
+        "puits, un exploitant, un secteur ou la province : well_authorization, operator, "
+        "from_period"
+    ),
+    "British Columbia wells (BCER well index): authorization number, UWI, status, "
+    "operator, area; also bcer_get_drilling_records, bcer_get_fracture_records": (
+        "puits de la Colombie-Britannique (index des puits de la BCER) : numéro "
+        "d'autorisation, UWI, statut, exploitant, secteur; voir aussi "
+        "bcer_get_drilling_records, bcer_get_fracture_records"
+    ),
+    "BCER's well and production files (bcer_) state no licence and its website terms "
+    "ask for written permission to reproduce them: use them for personal or "
+    "internal analysis and check with BCER before redistributing.": (
+        "Les fichiers de puits et de production de la BCER (bcer_) n'énoncent aucune licence "
+        "et les conditions de son site exigent une autorisation écrite pour les reproduire : "
+        "utilisez-les pour une analyse personnelle ou interne et vérifiez auprès de la BCER "
+        "avant de les redistribuer."
+    ),
+    "BC Energy Regulator wells, production and drilling files": (
+        "fichiers de la BC Energy Regulator sur les puits, la production et le forage"
+    ),
     "CCEI energy information flows (efficiency, supply): query=<topic>": (
         "flux d'information sur l'énergie du CCIE (efficacité, approvisionnement) : query=<sujet>"
     ),
