@@ -554,3 +554,31 @@ def test_a_file_from_before_client_labels_still_loads(tmp_path) -> None:
     snap = UsageStats(("wds_search_cubes",), path=path).snapshot()
     assert snap["calls"] == 5
     assert snap["by_client"] == {"untracked": {"ok": 4, "error": 1}}
+
+
+async def test_a_url_hint_names_the_client_only_when_it_is_a_known_label(monkeypatch) -> None:
+    from fastmcp import FastMCP
+    from mcp.types import Implementation
+
+    from maplestats_mcp.shared.usage import UsageMiddleware
+
+    hint = {"value": "maplestats-chat"}
+    from maplestats_mcp.shared import usage as usage_module
+
+    monkeypatch.setattr(usage_module, "_url_hint", lambda: hint["value"])
+    stats = UsageStats(("ping_tool",))
+    server = FastMCP("t")
+    server.add_middleware(UsageMiddleware(stats))
+
+    @server.tool
+    async def ping_tool() -> str:
+        return "x"
+
+    async with Client(server, client_info=Implementation(name="Some Connector", version="1")) as c:
+        await c.call_tool("ping_tool", {})
+        # A made-up hint is ignored and the announced name decides ("other" here).
+        hint["value"] = "my neighbour's private tool"
+        await c.call_tool("ping_tool", {})
+    snap = stats.snapshot()
+    assert snap["by_client"] == {"chat-demo": {"ok": 1, "error": 0}, "other": {"ok": 1, "error": 0}}
+    assert "neighbour" not in json.dumps(snap)
