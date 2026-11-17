@@ -79,7 +79,19 @@ MAX_ASSISTANT_CHARS = int(os.environ.get("CHAT_MAX_ASSISTANT_CHARS", "16000"))
 MAX_CONVERSATION_CHARS = int(os.environ.get("CHAT_MAX_CONVERSATION_CHARS", "120000"))
 MAX_BODY_BYTES = int(os.environ.get("CHAT_MAX_BODY_BYTES", "524288"))
 MAX_OUTPUT_TOKENS = int(os.environ.get("CHAT_MAX_OUTPUT_TOKENS", "4000"))
-MAX_TOOL_STEPS = int(os.environ.get("CHAT_MAX_TOOL_STEPS", "12"))
+# Model requests per question on the Anthropic path. One request is not one model
+# call: Anthropic's MCP connector runs the tool loop on its own side, takes up to
+# about 10 model steps inside a single request, and ends it with pause_turn when it
+# reaches that limit; this app then resumes it. The old default of 12 requests
+# therefore allowed about 120 steps for one question (a vague one made 17 tool calls
+# over 93 to 158 s). 2 is the first request plus one resume, and the resume is told
+# to wrap up (anthropic_request), so a question takes about 20 steps at most.
+MAX_TOOL_STEPS = int(os.environ.get("CHAT_MAX_TOOL_STEPS", "2"))
+# Model rounds per question on the openai path, where this app runs the loop and a
+# round is one model call and its tool calls. 12 rounds are at most 12 model steps,
+# fewer than the 20 the Anthropic default allows; 2 would leave no room for the
+# plan, a search and a data call, which follow one another, before the answer.
+MAX_TOOL_ROUNDS = int(os.environ.get("CHAT_MAX_TOOL_ROUNDS", "12"))
 TOOL_RESULT_CHARS = int(os.environ.get("CHAT_TOOL_RESULT_CHARS", "20000"))
 RATE_PER_HOUR = int(os.environ.get("CHAT_RATE_PER_HOUR", "20"))
 DAILY_LIMIT = int(os.environ.get("CHAT_DAILY_LIMIT", "500"))
@@ -92,6 +104,15 @@ USAGE_STATS = os.environ.get("CHAT_USAGE_STATS", "1").strip().lower() not in {
     "false",
     "no",
     "off",
+}
+# Prompt caching: cache_control on the system prompt and on the MCP toolset (see
+# anthropic_request). Off unless CHAT_PROMPT_CACHE says so, so it can be tried on
+# the backup deployment before the main one.
+PROMPT_CACHE = os.environ.get("CHAT_PROMPT_CACHE", "0").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
 }
 STATS = usage.stats_from_environment()
 ALLOWED_ORIGINS = [
@@ -150,7 +171,18 @@ SYSTEM_PROMPT = (
     "table when comparing several values.\n"
     "- You can make only a few tool calls per question. When a tool accepts "
     "several places or series at once, ask for them in one call. If you cannot "
-    "get everything, answer with what you have and say what is missing."
+    "get everything, answer with what you have and say what is missing. You also "
+    "have a small budget of steps, so put independent calls in the same step "
+    "instead of one after another."
+)
+
+# Added to the system prompt of the last request a question is allowed, when that
+# request resumes an earlier one (the first request must stay free to call tools).
+WRAP_UP_PROMPT = (
+    "This is your last step: the demo's step budget for this question is spent. "
+    "Do not call any more tools. Answer now with the figures you already have, "
+    "with their reference periods and sources, and say plainly what you could "
+    "not get."
 )
 
 # Shown instead of an empty answer, so a visitor learns what to change. Each one
@@ -368,24 +400,78 @@ def stream_progress(event: Any) -> dict[str, Any] | None:
     return None
 
 
+def system_text(wrap_up: bool) -> str:
+    """The system prompt as one string, with the wrap-up instruction when asked."""
+    return f"{SYSTEM_PROMPT}\n\n{WRAP_UP_PROMPT}" if wrap_up else SYSTEM_PROMPT
+
+
+def anthropic_request(
+    conversation: list[dict[str, Any]], wrap_up: bool = False
+) -> dict[str, Any]:
+    """The keyword arguments of one Messages API request through the MCP connector.
+
+    With PROMPT_CACHE on, the system prompt becomes a list of one text block, and
+    that block and the MCP toolset each carry cache_control {"type": "ephemeral"}:
+    the cached prefix is the tool list plus the system prompt (about 1,800 tokens,
+    above Haiku 5.5's 512-token minimum). With it off the request has no cache
+    fields. The wrap-up instruction (the last request of a question) goes after the
+    cached block, so the cached prefix is the same on every request.
+    """
+    toolset: dict[str, Any] = {"type": "mcp_toolset", "mcp_server_name": "maplestats"}
+    system: str | list[dict[str, Any]]
+    if PROMPT_CACHE:
+        toolset["cache_control"] = {"type": "ephemeral"}
+        blocks: list[dict[str, Any]] = [
+            {
+                "type": "text",
+                "text": SYSTEM_PROMPT,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+        if wrap_up:
+            blocks.append({"type": "text", "text": WRAP_UP_PROMPT})
+        system = blocks
+    else:
+        system = system_text(wrap_up)
+    return {
+        "model": MODEL,
+        "max_tokens": MAX_OUTPUT_TOKENS,
+        "betas": ["mcp-client-2025-11-20"],
+        "system": system,
+        "output_config": {"effort": EFFORT},
+        "mcp_servers": [{"type": "url", "url": MCP_CALL_URL, "name": "maplestats"}],
+        "tools": [toolset],
+        "messages": conversation,
+    }
+
+
+def sampling_steps(usage: Any) -> int:
+    """How many model steps one response ran.
+
+    The connector's tool loop runs several steps inside one request, and the usage
+    lists them in `iterations` (one `message` entry per step). A response without
+    that list counts as one step, so a total is a lower bound there.
+    """
+    iterations = getattr(usage, "iterations", None)
+    if isinstance(iterations, list):
+        steps = sum(1 for item in iterations if getattr(item, "type", "") == "message")
+        if steps:
+            return steps
+    return 1
+
+
 async def anthropic_response(
-    client: Any, conversation: list[dict[str, Any]], emit: Emit | None
+    client: Any,
+    conversation: list[dict[str, Any]],
+    emit: Emit | None,
+    wrap_up: bool = False,
 ) -> Any:
     """One model call; streamed, with progress sent to `emit`, when `emit` is given.
 
     The stream is only for the visitor's wait: the finished message is read the
     same way either way, so billing, counts and the answer do not depend on it.
     """
-    request: dict[str, Any] = {
-        "model": MODEL,
-        "max_tokens": MAX_OUTPUT_TOKENS,
-        "betas": ["mcp-client-2025-11-20"],
-        "system": SYSTEM_PROMPT,
-        "output_config": {"effort": EFFORT},
-        "mcp_servers": [{"type": "url", "url": MCP_CALL_URL, "name": "maplestats"}],
-        "tools": [{"type": "mcp_toolset", "mcp_server_name": "maplestats"}],
-        "messages": conversation,
-    }
+    request = anthropic_request(conversation, wrap_up)
     if emit is None:
         return await client.beta.messages.create(**request)
     async with client.beta.messages.stream(**request) as stream:
@@ -407,17 +493,27 @@ async def ask_anthropic(
     names: dict[str, str] = {}
     tool_errors = 0
     model_calls = 0
+    model_steps = 0
+    wrapped_up = False
     billed = False
+    requests = max(1, MAX_TOOL_STEPS)
 
     try:
         # The client owns an HTTP connection pool, so close it when the request ends.
         async with AsyncAnthropic(api_key=API_KEY or None) as client:
-            for _ in range(max(1, MAX_TOOL_STEPS)):
-                response = await anthropic_response(client, conversation, emit)
+            for number in range(1, requests + 1):
+                # The last request is the wrap-up, unless it is also the first: the
+                # first request must stay free to call tools.
+                wrapped_up = requests > 1 and number == requests
+                response = await anthropic_response(
+                    client, conversation, emit, wrap_up=wrapped_up
+                )
                 billed = True
-                add_tokens(getattr(response, "usage", None))
+                usage_counts = getattr(response, "usage", None)
+                add_tokens(usage_counts)
                 STATS.model_call(getattr(response, "stop_reason", None))
                 model_calls += 1
+                model_steps += sampling_steps(usage_counts)
                 for block in response.content:
                     if block.type == "mcp_tool_use":
                         call = describe_call(block.name, block.input)
@@ -443,12 +539,14 @@ async def ask_anthropic(
         # Counts and the stop reason only, never the question or the answer: enough
         # to tell a step limit, a length limit and a data-server failure apart.
         logger.info(
-            "Turn ended: stop_reason=%s, model calls %d, tool calls %d, "
-            "tool errors %d, answer %s",
+            "Turn ended: stop_reason=%s, model calls %d, model steps %d, "
+            "tool calls %d, tool errors %d, wrap-up %s, answer %s",
             response.stop_reason,
             model_calls,
+            model_steps,
             len(tools_used),
             tool_errors,
+            "yes" if wrapped_up else "no",
             "yes" if answer else "empty",
         )
         if response.stop_reason == "pause_turn":  # still working after the last resume
@@ -457,7 +555,18 @@ async def ask_anthropic(
             answer = answer + CUT_OFF_NOTE if answer else LENGTH_LIMIT_ANSWER
         elif not answer and tool_errors:
             answer = DATA_SERVER_ANSWER
-        return {"answer": answer, "tools_used": tools_used, **results.collect(returned)}
+        elif not answer and wrapped_up:  # told to answer, and wrote nothing
+            answer = STEP_LIMIT_ANSWER
+        return {
+            "answer": answer,
+            "tools_used": tools_used,
+            **results.collect(returned),
+            "work": {
+                "model_requests": model_calls,
+                "model_steps": model_steps,
+                "tool_calls": len(tools_used),
+            },
+        }
     except Exception as error:  # reported with whether it cost money
         raise BackendFailure(billed) from error
 
@@ -492,13 +601,20 @@ async def ask_openai_compatible(
     messages: list[dict[str, str]], emit: Emit | None = None
 ) -> dict[str, Any]:
     """Run the tool loop here, against any OpenAI-compatible chat API."""
-    conversation: list[dict[str, Any]] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        *messages,
-    ]
+    conversation: list[dict[str, Any]] = list(messages)
     tools_used: list[dict[str, Any]] = []
     returned: list[tuple[str, Any]] = []
+    model_calls = 0
     billed = False
+    rounds = max(1, MAX_TOOL_ROUNDS)
+
+    def work() -> dict[str, int]:
+        # One model call per round, so the steps are the calls.
+        return {
+            "model_requests": model_calls,
+            "model_steps": model_calls,
+            "tool_calls": len(tools_used),
+        }
 
     try:
         # The OpenAI client owns an HTTP connection pool, so close it when the request ends.
@@ -509,23 +625,36 @@ async def ask_openai_compatible(
             # The server exposes three tools and they do not change per request.
             tools = await load_openai_tools(mcp)
 
-            for _ in range(MAX_TOOL_STEPS):
+            for number in range(1, rounds + 1):
+                # The last round is the wrap-up, unless it is also the first.
+                wrapping_up = rounds > 1 and number == rounds
                 response = await client.chat.completions.create(
                     model=MODEL,
                     max_tokens=MAX_OUTPUT_TOKENS,
-                    messages=conversation,
+                    messages=[
+                        {"role": "system", "content": system_text(wrapping_up)},
+                        *conversation,
+                    ],
                     tools=tools,
                 )
                 billed = True
+                model_calls += 1
                 add_tokens(getattr(response, "usage", None))
                 STATS.model_call(getattr(response.choices[0], "finish_reason", None))
                 message = response.choices[0].message
                 if not message.tool_calls:
+                    # A wrap-up that wrote nothing is a spent budget, not an empty reply.
+                    empty = STEP_LIMIT_ANSWER if wrapping_up else ""
                     return {
-                        "answer": message.content or "",
+                        "answer": message.content or empty,
                         "tools_used": tools_used,
                         **results.collect(returned),
+                        "work": work(),
                     }
+                if wrapping_up:
+                    # Told to answer and asked for tools anyway: running them would
+                    # spend time and money on results the model can no longer use.
+                    break
 
                 conversation.append(message.model_dump(exclude_none=True))
                 for call in message.tool_calls:
@@ -558,6 +687,7 @@ async def ask_openai_compatible(
             "answer": STEP_LIMIT_ANSWER,
             "tools_used": tools_used,
             **results.collect(returned),
+            "work": work(),
         }
     except Exception as error:  # reported with whether it cost money
         raise BackendFailure(billed) from error
@@ -682,6 +812,8 @@ async def run_turn(
         result = await (
             ask_model(messages) if emit is None else ask_model(messages, emit)
         )
+        # The size of the turn is for /stats only; the visitor's body does not carry it.
+        work = result.pop("work", None)
         # Keep our own answers valid when the browser sends them back on the next turn.
         answer = str(result.get("answer") or "").strip()
         if not answer:
@@ -691,6 +823,12 @@ async def run_turn(
         result["answer"] = answer[:MAX_ASSISTANT_CHARS]
         STATS.outcome("answered")
         STATS.answered_in(time.perf_counter() - started)
+        if isinstance(work, dict):
+            STATS.answer_work(
+                model_requests=work.get("model_requests", 0),
+                tool_calls=work.get("tool_calls", 0),
+                model_steps=work.get("model_steps", 0),
+            )
         return 200, result
     except Exception as error:  # noqa: BLE001 - any backend failure is a 502
         failure = error if isinstance(error, BackendFailure) else None

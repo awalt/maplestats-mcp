@@ -13,8 +13,10 @@
 Kept: counts per UTC day of each outcome (answered, refused and by which limit,
 failed), billed tokens by kind, model and tool calls, tool names (only names
 shaped like a MapleStats tool), the model's stop reasons, and the turn number of
-each question; plus the durations of recent answers. Never kept: the question,
-the answer, tool arguments or results, or the caller's address.
+each question; the size of each answered question as histograms (requests to the
+model, tool calls, model steps; whole numbers only); plus the durations of recent
+answers. Never kept: the question, the answer, tool arguments or results, or the
+caller's address.
 
 By default the counts live in memory and a restart starts them again. With
 CHAT_USAGE_STATS_FILE set they are also kept in that JSON file: read at startup,
@@ -59,12 +61,18 @@ OUTCOMES = (
 )
 TOKEN_KINDS = ("input", "output", "cache_write", "cache_read")
 WORK = ("model_calls", "tool_calls", "tool_errors")
-GROUPS = ("outcomes", "tokens", "work", "tools", "stop_reasons", "turns")
+# How big each answered question was, as a histogram of whole numbers (the keys are
+# numbers or "30+", never text a visitor or a model wrote), so the counts add up
+# across restarts and across revisions like every other counter.
+PER_ANSWER = ("requests_per_answer", "tool_calls_per_answer", "steps_per_answer")
+HISTOGRAM_TOP = 30
+GROUPS = ("outcomes", "tokens", "work", "tools", "stop_reasons", "turns", *PER_ANSWER)
 # Groups also counted per day.
-DAILY_GROUPS = ("outcomes", "tokens", "work")
+DAILY_GROUPS = ("outcomes", "tokens", "work", *PER_ANSWER)
 
 _TOOL_NAME = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _STOP_REASON = re.compile(r"^[a-z_]{1,32}$")
+_SIZE_KEY = re.compile(r"^\d{1,3}\+?$")
 MAX_TOOL_NAMES = 500
 
 Counts = dict[str, Counter[str]]
@@ -76,6 +84,41 @@ def _empty() -> Counts:
 
 def _percentile(ordered: list[float], share: float) -> float:
     return ordered[max(0, math.ceil(share * len(ordered)) - 1)]
+
+
+def _size_key(n: int) -> str:
+    """The histogram bin of a count: its number, or "30+" from HISTOGRAM_TOP up."""
+    n = max(0, int(n))
+    return str(n) if n < HISTOGRAM_TOP else f"{HISTOGRAM_TOP}+"
+
+
+def _size_value(key: str) -> int:
+    return int(key.rstrip("+"))
+
+
+def _by_size(counts: Counter[str]) -> dict[str, int]:
+    return dict(sorted(counts.items(), key=lambda item: _size_value(item[0])))
+
+
+def _size_summary(counts: Counter[str]) -> dict[str, Any]:
+    """p50, p95, the sample count and the bins of a per-answer histogram.
+
+    A value of HISTOGRAM_TOP means that many or more.
+    """
+    bins = sorted(counts.items(), key=lambda item: _size_value(item[0]))
+    total = sum(counts.values())
+    if not total:
+        return {}
+    summary: dict[str, Any] = {}
+    for name, share in (("p50", 0.5), ("p95", 0.95)):
+        rank = max(0, math.ceil(share * total) - 1)  # same rule as _percentile
+        seen = 0
+        for key, n in bins:
+            seen += n
+            if seen > rank:
+                summary[name] = _size_value(key)
+                break
+    return {**summary, "samples": total, "counts": _by_size(counts)}
 
 
 class ChatStats:
@@ -143,6 +186,16 @@ class ChatStats:
     def answered_in(self, seconds: float) -> None:
         self.durations.append(seconds)
 
+    def answer_work(
+        self, model_requests: int, tool_calls: int, model_steps: int
+    ) -> None:
+        """The size of one answered question: requests to the model, tool calls and
+        model steps (a request can run about 10 steps inside Anthropic's connector)."""
+        for group, n in zip(
+            PER_ANSWER, (model_requests, tool_calls, model_steps), strict=True
+        ):
+            self._add(group, _size_key(n), daily=True)
+
     # ---- reporting
 
     def snapshot(self, today: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -168,8 +221,9 @@ class ChatStats:
             "persisted": self.path is not None,
             "note": (
                 "Counts of how questions ended, billed tokens, model and tool calls, "
-                f"tool names and stop reasons only, never questions, answers or "
-                f"addresses; {kept}."
+                "tool names, stop reasons and how many requests, tool calls and "
+                "model steps each answered question took, only, never questions, "
+                f"answers or addresses; {kept}."
             ),
             "questions": sum(outcomes.values()),
             "outcomes": _sorted(outcomes),
@@ -179,9 +233,25 @@ class ChatStats:
             "stop_reasons": _sorted(self.totals["stop_reasons"]),
             "turns": dict(sorted(self.totals["turns"].items(), key=_turn_order)),
             "answer_latency_ms": latency,
+            "per_answer": {
+                "note": (
+                    "Answered questions only. model_requests: requests to the model; "
+                    "model_steps: its sampling steps (the connector runs several inside "
+                    "one request; a response that does not report them counts as one); "
+                    f"{HISTOGRAM_TOP} means {HISTOGRAM_TOP} or more."
+                ),
+                "model_requests": _size_summary(self.totals["requests_per_answer"]),
+                "tool_calls": _size_summary(self.totals["tool_calls_per_answer"]),
+                "model_steps": _size_summary(self.totals["steps_per_answer"]),
+            },
             "today": today or {},
             "by_day": {
-                day: {group: _sorted(counts[group]) for group in DAILY_GROUPS}
+                day: {
+                    group: _by_size(counts[group])
+                    if group in PER_ANSWER
+                    else _sorted(counts[group])
+                    for group in DAILY_GROUPS
+                }
                 for day, counts in sorted(self.days.items())
             },
         }
@@ -263,13 +333,15 @@ def _drop_old_days(days: dict[str, Counts]) -> None:
         del days[old]
 
 
-def _counter(raw: Any) -> Counter[str]:
+def _counter(raw: Any, sizes: bool = False) -> Counter[str]:
     if not isinstance(raw, dict):
         raise TypeError("counts are not an object")
     out: Counter[str] = Counter()
     for key, value in raw.items():
         if not isinstance(key, str):
             raise TypeError("count key is not text")
+        if sizes and not _SIZE_KEY.match(key):
+            raise ValueError(f"not a size bin: {key!r}")
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             raise ValueError(f"not a count: {value!r}")
         if value:
@@ -286,11 +358,13 @@ def _parse(body: Any) -> tuple[datetime, Counts, dict[str, Counts]]:
     totals = _empty()
     for group, raw in body["totals"].items():
         if group in totals:
-            totals[group] = _counter(raw)
+            totals[group] = _counter(raw, sizes=group in PER_ANSWER)
     days: dict[str, Counts] = {}
     for day, groups in body["by_day"].items():
         datetime.strptime(day, "%Y-%m-%d")
-        days[day] = {g: _counter(groups.get(g, {})) for g in DAILY_GROUPS}
+        days[day] = {
+            g: _counter(groups.get(g, {}), sizes=g in PER_ANSWER) for g in DAILY_GROUPS
+        }
     return since, totals, days
 
 
