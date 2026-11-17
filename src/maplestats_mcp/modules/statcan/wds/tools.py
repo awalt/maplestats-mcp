@@ -471,8 +471,8 @@ async def wds_get_series_as_of(
     tables have this history: 12-10-0163, 14-10-0220, 14-10-0223,
     16-10-0012, 16-10-0013, 18-10-0256, 20-10-0003, 20-10-0056,
     20-10-0067, 20-10-0076, 34-10-0035, 34-10-0036, 36-10-0018,
-    36-10-0103, 36-10-0104, 36-10-0434; any other table (the Labour
-    Force Survey's 14-10-0287 too) is an error, not current data.
+    36-10-0103, 36-10-0104, 36-10-0434; any other table is an error,
+    not current data.
     Values are unscaled, as in every WDS tool.
     Keywords: vintage, real-time data, as of date, first estimate,
     revision history, as originally published, past release, unrevised
