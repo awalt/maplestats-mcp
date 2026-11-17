@@ -746,17 +746,20 @@ MapleStats returns official data for information only: when an answer touches
 investing, tax, legal or financial decisions, say it is not advice.
 
 Sources, by tool-name prefix:
-- Statistics Canada: wds_ (tables/cubes, vectors), sdmx_ (filtered
-  series), sdmx_space_ (extra SDMX spaces: CCEI energy with ECCC emissions
-  and NRCan indicators, and the shared space), rdaas_ (classifications,
-  e.g. NAICS), statcan_census_profile_ (2021),
+- Statistics Canada: wds_ (tables/cubes, vectors, revision history), sdmx_
+  (filtered series), sdmx_space_ (extra SDMX spaces: CCEI energy with ECCC
+  emissions and NRCan indicators; the shared space: interprovincial trade,
+  rural, education (PCEIP), Quality of Life), rdaas_ (classifications and
+  concordances, e.g. NAICS), statcan_census_profile_ (2021),
   statcan_census_profile_archive_ (2001-2016 bulk links),
-  statcan_daily_ (The Daily, release calendar), statcan_indicators_,
+  statcan_daily_ (The Daily, release calendar), statcan_indicators_
+  (latest headline figures with growth rates),
   statcan_delta_ (daily bulk-update files, vintage tables),
   statcan_reference_ (definitions, methods, analysis), statcan_surveys_
   (survey directory, IMDB metadata, RDC/RTRA holdings), statcan_geo_
-  (census geography), statcan_sdg_ (SDG hub), statcan_pumf_ (public use
-  microdata: find, downloads, codebooks), statcan_lode_ (open databases:
+  (census boundaries; spatial layers: deprivation, housing need, roads),
+  statcan_sdg_ (SDG hub), statcan_pumf_ (public use microdata: find,
+  codebooks, weighted tables), statcan_lode_ (open databases:
   healthcare, schools, buildings, addresses, proximity), cimt_ (trade by
   HS commodity, partner, province, monthly from 1988).
 - Provincial and territorial statistics agencies: bc_stats_ (BC Stats
