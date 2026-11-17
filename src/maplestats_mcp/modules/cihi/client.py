@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup, Tag
-from defusedxml import ElementTree
+from defusedxml import DefusedXmlException, ElementTree
 
 from maplestats_mcp.modules.cihi import constants
 from maplestats_mcp.modules.cihi.schemas import (
@@ -161,16 +161,28 @@ def _sitemap_pairs(body: str) -> tuple[list[str], dict[str, str]]:
     return children, pairs
 
 
+async def _parse_sitemap(url: str, body: str, lang: str = "en") -> tuple[list[str], dict[str, str]]:
+    # A child sitemap is about 1 MB of XML: parse it off the event loop.
+    try:
+        return await run_parse(_sitemap_pairs, body)
+    except (ElementTree.ParseError, DefusedXmlException) as exc:
+        raise lang_error(
+            UpstreamError,
+            lang,
+            f"cihi: the sitemap at {url} is not valid XML.",
+            f"cihi : le plan du site à {url} n'est pas un XML valide.",
+        ) from exc
+
+
 async def _pairing(lang: str = "en") -> tuple[dict[str, str], bool]:
     """English slug -> French slug, as CIHI's own hreflang alternates pair them."""
 
     async def fetch() -> dict[str, str]:
-        # A child sitemap is about 1 MB of XML: parse it off the event loop.
         index = (await _get(constants.SITEMAP_URL, lang)).text
-        children, pairs = await run_parse(_sitemap_pairs, index)
+        children, pairs = await _parse_sitemap(constants.SITEMAP_URL, index, lang)
         for url in children[: constants.SITEMAP_MAX_PAGES]:
             page = (await _get(url, lang)).text
-            pairs.update((await run_parse(_sitemap_pairs, page))[1])
+            pairs.update((await _parse_sitemap(url, page, lang))[1])
         if not pairs:
             raise lang_error(
                 UpstreamError,

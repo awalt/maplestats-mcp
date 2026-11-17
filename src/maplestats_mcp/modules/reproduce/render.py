@@ -95,7 +95,8 @@ print(as_tibble(data[if (length(varying)) varying else names(data)]), n = 20, wi
 # script. The helpers below keep it inert wherever it lands.
 #
 # Line breaks would end a comment line and start code in any language.
-_LINE_BREAKS = re.compile("[\r\n\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]")
+# NUL too: Python refuses a source file that holds one, even in a comment.
+_LINE_BREAKS = re.compile("[\r\n\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029\x00]")
 # What Stata's do-file parser acts on even inside strings and comments:
 # macro expansion ($name, `name'), block comments (/* */) and line comments
 # (//). "://" in a URL is left alone: // starts a comment only after a blank
@@ -181,7 +182,8 @@ def _join(*blocks: str) -> str:
 
 
 def _quote(value: str) -> str:
-    return json.dumps(value, ensure_ascii=False)
+    # R strings cannot hold a NUL, escaped or not.
+    return json.dumps(value.replace("\x00", ""), ensure_ascii=False)
 
 
 def _either(tests: list[str], operator: str) -> str:
@@ -1149,7 +1151,8 @@ def _jl_filter(item: Filter, nested: bool = False) -> str:
         return found
 
     def cell(column: str) -> str:
-        return f'coalesce(string({field(column)}), "")'
+        # coalesce first: string(missing) is the text "missing".
+        return f'string(coalesce({field(column)}, ""))'
 
     if item.op == "contains":
         needle = jl_quote(str(item.value).lower())

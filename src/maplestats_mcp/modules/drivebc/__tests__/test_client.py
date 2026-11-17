@@ -119,6 +119,23 @@ async def test_area_by_id_number_or_name_and_bbox(httpx_mock):
     assert [e.event_id for e in box.events] == ["drivebc.ca/A2"]
 
 
+async def test_bbox_finds_a_line_that_crosses_the_box_without_a_vertex_inside(httpx_mock):
+    def line(ident: str, coordinates: list[list[float]]) -> dict:
+        return _event(ident, geography={"type": "LineString", "coordinates": coordinates})
+
+    _serve(
+        httpx_mock,
+        [
+            line("C1", [[-123.0, 50.0], [-121.0, 50.0]]),  # crosses the box, no vertex in it
+            line("C2", [[-123.0, 51.0], [-121.0, 51.0]]),  # parallel, above the box
+            line("C3", [[-123.0, 49.0], [-122.2, 49.95]]),  # diagonal that stops short
+            line("C4", [[-122.0, 50.0], [-120.0, 52.0]]),  # a vertex inside the box
+        ],
+    )
+    result = await client.search_events(bbox=[-122.1, 49.9, -121.9, 50.1])
+    assert sorted(e.event_id for e in result.events) == ["drivebc.ca/C1", "drivebc.ca/C4"]
+
+
 async def test_bad_arguments_are_input_errors(httpx_mock):
     with pytest.raises(InvalidInput, match="severity"):
         await client.search_events(severity="huge")

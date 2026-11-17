@@ -346,7 +346,8 @@ async def _structure_from_wds(product_id: int, lang: str) -> list[SdmxDimension]
             )
             for dim in page.dimensions:
                 members[dim.dimension_position_id].extend(dim.members)
-    except (InvalidInput, NotFound, UpstreamError) as exc:
+    except (InvalidInput, NotFound) as exc:
+        # Not UpstreamError: a WDS fault is not "no such table".
         raise _no_table(product_id, lang) from exc
     dimensions: list[SdmxDimension] = []
     for dim in metadata.dimensions:

@@ -39,7 +39,7 @@ from maplestats_mcp.modules.statcan.surveys.schemas import (
     SurveyMetadata,
     SurveyMethodology,
 )
-from maplestats_mcp.shared.cache import cached_fetch
+from maplestats_mcp.shared.cache import cached_fetch, forget
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
 from maplestats_mcp.shared.http import get_raw, new_client
@@ -790,6 +790,9 @@ async def search_rdc_holdings(
     html, was_cached = await _fetch_page(url, "search_rdc_holdings", f"statcan-surveys:rdc:{lang}")
     holdings = _parse_rdc(html)
     if not holdings:
+        # Not the holdings page (a maintenance notice): drop it, or it would
+        # keep failing from the cache for a day after StatCan recovers.
+        forget(f"statcan-surveys:rdc:{lang}")
         raise UpstreamError(
             say(
                 "statcan_surveys:search_rdc_holdings: the page rendered no table rows. "
@@ -902,6 +905,8 @@ async def search_rtra_datasets(
     )
     datasets = _parse_rtra(html)
     if not datasets:
+        # Same as the RDC page: a page with no tables must not stay cached.
+        forget(f"statcan-surveys:rtra:{lang}")
         raise UpstreamError(
             say(
                 "statcan_surveys:search_rtra_datasets: the page rendered no dataset tables. "

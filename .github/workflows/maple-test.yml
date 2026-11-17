@@ -89,7 +89,9 @@ jobs:
       - name: Grade
         run: |
           run=$(ls tests/maple_test/runs/*_ci-${{ github.run_id }}_*.jsonl)
-          uv run python -m tests.maple_test grade "$run"
+          # --verify looks the cited IDs up at the publishers; without it a fresh run's
+          # citations are checked against the committed cache only and read as unverified.
+          uv run python -m tests.maple_test grade "$run" --verify
           cost=$(jq -s 'map(.cost_usd // 0) | add' "$run")
           {
             echo "### Maple Test v1, MapleStats at ${GITHUB_SHA::7}"

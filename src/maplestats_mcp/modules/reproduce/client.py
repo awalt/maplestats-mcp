@@ -65,6 +65,13 @@ _NOT_DATA = (
     "plan_query",
     "search_tools",
     "call_tool",
+    # They compute from series they fetch, then read metadata: the last
+    # request recorded was a metadata one, replayed as if it were the data.
+    "check_answer",
+    "calc_ratio",
+    "calc_rank",
+    "calc_cagr",
+    "calc_count_changes",
 )
 # Tools that return documents or text (articles, release notices,
 # regulations), not data: no script is written for them.

@@ -184,6 +184,34 @@ async def search(
         )
     params: dict[str, Any] = {"format": "text"}
     if event_id:
+        # The lookup is by minute alone: a filter given with it would be ignored
+        # and the caller would read an unfiltered result as a filtered one.
+        ignored = [
+            name
+            for name, given in (
+                ("start", bool(start)),
+                ("end", bool(end)),
+                ("min_magnitude", min_magnitude is not None),
+                ("max_magnitude", max_magnitude is not None),
+                ("latitude", latitude is not None),
+                ("longitude", longitude is not None),
+                ("radius_km", radius_km is not None),
+                ("bbox", bbox is not None),
+            )
+            if given
+        ]
+        if ignored:
+            names = ", ".join(ignored)
+            raise lang_error(
+                InvalidInput,
+                lang,
+                f"event_id cannot be combined with {names}: the lookup is by UTC minute only "
+                "and would ignore them. Drop event_id to filter, or drop the filters to look "
+                "up the minute.",
+                f"event_id ne peut pas être combiné avec {names} : la recherche se fait par "
+                "minute UTC seulement et les ignorerait. Retirez event_id pour filtrer, ou "
+                "retirez les filtres pour chercher la minute.",
+            )
         event_id = event_id.strip()
         if _CATALOGUE_ID.match(event_id):
             raise lang_error(

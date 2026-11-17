@@ -87,6 +87,7 @@ _SMOOTHABLE = ("diff", "pct_change", "yoy_diff", "yoy_pct_change", "annualized_p
 MAX_WINDOW = 120
 # Daily data: a month whose first or last observation is further than this
 # from the month's edge was cut by the requested window (or is still running).
+# Sparser data (weekly) widens it to one observation's spacing less a day.
 _EDGE_DAYS = 4
 
 
@@ -414,6 +415,10 @@ def aggregate(
     if not groups:
         return [], set()
     first_day, last_day = points[0][0], points[-1][0]
+    # Weekly data's last observation of a complete month can sit six days
+    # from its end, so the edge tolerance follows the usual spacing.
+    gaps = sorted((b[0] - a[0]).days for a, b in pairwise(points))
+    edge_days = max(_EDGE_DAYS, gaps[len(gaps) // 2] - 1) if gaps else _EDGE_DAYS
     starts = list(groups)
     out: list[tuple[date, float | None]] = []
     incomplete: set[date] = set()
@@ -430,9 +435,9 @@ def aggregate(
                 continue
             values = [v for _, v in members if v is not None]
         else:
-            cut_start = start == starts[0] and (first_day - start).days > _EDGE_DAYS
+            cut_start = start == starts[0] and (first_day - start).days > edge_days
             cut_end = (
-                start == starts[-1] and (period_end(start, target_ppy) - last_day).days > _EDGE_DAYS
+                start == starts[-1] and (period_end(start, target_ppy) - last_day).days > edge_days
             )
             values = [v for _, v in members if v is not None]
             if cut_start or cut_end:

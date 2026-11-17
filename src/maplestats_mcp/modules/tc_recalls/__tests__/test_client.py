@@ -150,6 +150,15 @@ async def test_empty_result_set_and_validation(httpx_mock):
         await client.search(year_from=2020, year_to=2010)
 
 
+async def test_dot_only_make_or_model_is_rejected_not_normalised_away():
+    # httpx resolves "." and ".." out of the URL path, which would drop the filter.
+    for dots in (".", "..", "..."):
+        with pytest.raises(InvalidInput, match="unsupported characters"):
+            await client.search(make=dots)
+        with pytest.raises(InvalidInput, match="unsupported characters"):
+            await client.search(make="Honda", model=dots)
+
+
 async def test_provenance_reports_cache_hits(httpx_mock):
     httpx_mock.add_response(url=re.compile(r".*page=1.*"), json={"ResultSet": [_SEARCH_ROW]})
     first = await client.search(make="Honda", year_from=2019, year_to=2019)

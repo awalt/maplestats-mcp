@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Any, Self
 
@@ -54,7 +55,9 @@ def _parse_body(response: httpx.Response, request_id: int) -> dict[str, Any]:
         return response.json()
     messages: list[dict[str, Any]] = []
     data: list[str] = []
-    for line in [*response.text.splitlines(), ""]:
+    # Not str.splitlines: it also breaks on U+2028, U+0085 and others, which
+    # JSON text may hold unescaped; server-sent events end lines at CR or LF only.
+    for line in [*re.split(r"\r\n|\r|\n", response.text), ""]:
         if line.startswith("data:"):
             data.append(line[5:].lstrip(" "))
         elif line == "" and data:

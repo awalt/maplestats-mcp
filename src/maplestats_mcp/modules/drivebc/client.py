@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import UTC, datetime
+from itertools import pairwise
 from typing import Any
 
 import httpx
@@ -275,6 +276,48 @@ def _points(geography: dict[str, Any]) -> list[tuple[float, float]]:
     return points
 
 
+def _segment_crosses(
+    box: tuple[float, float, float, float],
+    start: tuple[float, float],
+    end: tuple[float, float],
+) -> bool:
+    """Liang-Barsky: True when the segment start-end passes through the box."""
+    west, south, east, north = box
+    (x0, y0), (x1, y1) = start, end
+    t_in, t_out = 0.0, 1.0
+    for p, q in (
+        (x0 - x1, x0 - west),
+        (x1 - x0, east - x0),
+        (y0 - y1, y0 - south),
+        (y1 - y0, north - y0),
+    ):
+        if p == 0:
+            # Parallel to this edge: it misses the box unless it lies between the edges.
+            if q < 0:
+                return False
+            continue
+        t = q / p
+        if p < 0:
+            t_in = max(t_in, t)
+        else:
+            t_out = min(t_out, t)
+        if t_in > t_out:
+            return False
+    return True
+
+
+def _touches_box(box: tuple[float, float, float, float], points: list[tuple[float, float]]) -> bool:
+    """True when a vertex is in the box or a segment between consecutive vertices crosses it.
+
+    A long road segment can cross a small box with no vertex inside it, so
+    the vertices alone miss it. `_points` returns one Point or one LineString
+    (the only types DriveBC sends), so consecutive points are one line.
+    """
+    if any(box[0] <= lon <= box[2] and box[1] <= lat <= box[3] for lon, lat in points):
+        return True
+    return any(_segment_crosses(box, a, b) for a, b in pairwise(points))
+
+
 def _road_matches(raw: dict[str, Any], road: str) -> bool:
     """'Highway 1', 'hwy 1', '1' all match Highway 1 but not Highway 16."""
     wanted = road.strip().casefold()
@@ -330,10 +373,7 @@ def _filter(
             continue
         if road and not _road_matches(raw, road):
             continue
-        if box and not any(
-            box[0] <= lon <= box[2] and box[1] <= lat <= box[3]
-            for lon, lat in _points(raw.get("geography") or {})
-        ):
+        if box and not _touches_box(box, _points(raw.get("geography") or {})):
             continue
         if needle and needle not in str(raw.get("description") or "").casefold():
             continue

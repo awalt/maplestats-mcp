@@ -13,7 +13,8 @@ import pytest
 
 from maplestats_mcp.modules.cmhc.data_tables import client, constants
 from maplestats_mcp.shared import cache as cache_module
-from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamUnavailable
+from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
+from maplestats_mcp.shared.i18n import reset_call_lang, set_call_lang
 
 
 @pytest.fixture(autouse=True)
@@ -416,3 +417,18 @@ async def test_unknown_slug_stays_not_found(httpx_mock):
     httpx_mock.add_response(url=constants.SITEMAP_URL, text=_SITEMAP)
     with pytest.raises(NotFound):
         await client.get_table("household-characteristics", "nope")
+
+
+async def test_malformed_sitemap_raises_upstream_error(httpx_mock):
+    httpx_mock.add_response(url=f"{constants.BASE_URL}{_HC_BASE}", text=_HC_LISTING)
+    httpx_mock.add_response(url=constants.SITEMAP_URL, text="<urlset><url>")
+    with pytest.raises(UpstreamError, match="is not valid XML"):
+        await client.list_tables("household-characteristics", lang="fr")
+    # Failures are not cached, so the French wording needs its own response.
+    httpx_mock.add_response(url=constants.SITEMAP_URL, text="not xml")
+    token = set_call_lang("fr")
+    try:
+        with pytest.raises(UpstreamError, match="n'est pas un XML valide"):
+            await client.list_tables("household-characteristics", lang="fr")
+    finally:
+        reset_call_lang(token)

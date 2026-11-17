@@ -82,6 +82,30 @@ def test_refusals():
         == "correct"
     )
     assert grade_answer(q14, "The rate on November 1, 2026 was 1.3960.").outcome == "hallucinated"
+    # Naming the weekday is not a refusal: this once passed on the word "Sunday" alone.
+    assert (
+        grade_answer(q14, "November 1, 2026 was a Sunday; the rate was 1.3960.").outcome
+        == "hallucinated"
+    )
+    for refusal in (
+        "There is no Bank of Canada rate for November 1, 2026. Friday's was 1.3960.",
+        "The Bank didn't publish a rate that day, a Sunday. Friday's was 1.3960.",
+        "The Bank published no US dollar rate for November 1. Friday's was 1.3960.",
+    ):
+        assert grade_answer(q14, refusal).outcome == "correct", refusal
+
+
+def test_a_fall_needs_a_minus_sign_or_a_word_for_it():
+    q = QUESTIONS["M-01"]
+    e = q["expected"]
+    if e["change_pp"] >= 0:
+        pytest.skip("the rate did not fall in this key")
+    size = abs(e["change_pp"])
+    rates = f"The rate was {e['rate_sep_2026_pct']}% in September 2026 and {e['rate_sep_2025_pct']}% a year earlier"
+    assert grade_answer(q, f"{rates}, {size} points below.").outcome == "correct"
+    assert grade_answer(q, f"{rates}, a change of -{size} points.").outcome == "correct"
+    # The size with no sign and no word for a fall reads as a rise: the change is not matched.
+    assert grade_answer(q, f"{rates}, a change of +{size} points.").outcome != "correct"
 
 
 def test_flag_question():

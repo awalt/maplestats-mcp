@@ -295,11 +295,19 @@ def _labels(variable: PumfVariable) -> dict[str, str]:
     labels: dict[str, str] = {}
     for value in variable.values:
         labels[value.code] = value.label
-        try:
-            labels[str(int(float(value.code)))] = value.label
-        except ValueError:
-            pass
+        canon = _canon(value.code)
+        if canon != value.code:
+            labels.setdefault(canon, value.label)
     return labels
+
+
+def _canon(code: str) -> str:
+    """ "01" and "1.0" as "1"; anything else (text, "1.5") unchanged."""
+    try:
+        number = float(code)
+    except ValueError:
+        return code
+    return str(int(number)) if math.isfinite(number) and number.is_integer() else code
 
 
 @dataclass(frozen=True)
@@ -1018,7 +1026,11 @@ async def tabulate(
         cells.append(
             TableCell(
                 groups=[
-                    TableGroup(variable=name, code=code, label=labels[name].get(code))
+                    TableGroup(
+                        variable=name,
+                        code=code,
+                        label=labels[name].get(code) or labels[name].get(_canon(code)),
+                    )
                     for name, code in zip(upper_rows, codes, strict=True)
                 ],
                 estimate=estimate,

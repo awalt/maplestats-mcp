@@ -439,7 +439,9 @@ async def search_datasets(
         "package_search",
         params,
         constants.CACHE_TTL_SEARCH_SECONDS,
-        f"{query}:{fq}:{rows}:{start}:{sort}",
+        # repr of a tuple, not a ":" join: the free-text arguments can hold ":",
+        # which let two different requests share one cached answer.
+        repr((query, fq, rows, start, sort)),
         lang,
     )
     raw = list_or_empty(result, "results")
@@ -1004,7 +1006,7 @@ async def datastore_search(
         "datastore_search",
         params,
         constants.CACHE_TTL_DATASTORE_SECONDS,
-        f"{resource_id}:{filters}:{query}:{sort}:{fields}:{limit}:{offset}",
+        repr((resource_id, filters, query, sort, fields, limit, offset)),
         lang,
     )
     records = list_or_empty(result, "records")

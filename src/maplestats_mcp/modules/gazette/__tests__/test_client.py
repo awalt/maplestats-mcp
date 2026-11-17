@@ -8,7 +8,7 @@ import pytest
 
 from maplestats_mcp.modules.gazette import client, constants
 from maplestats_mcp.shared import cache as cache_module
-from maplestats_mcp.shared.errors import InvalidInput, NotFound
+from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError
 
 
 @pytest.fixture(autouse=True)
@@ -159,3 +159,19 @@ async def test_french_provenance_and_errors(httpx_mock):
 async def test_english_messages_are_unchanged():
     with pytest.raises(InvalidInput, match=r"^part must be 1 or 2, got 3\.$"):
         await client.list_issues(3)
+
+
+async def test_malformed_feed_raises_upstream_error_and_is_not_cached(httpx_mock):
+    url = constants.FEED_URL.format(part=1, lang="eng")
+    httpx_mock.add_response(url=url, content=b"<rss><channel><item>")
+    with pytest.raises(UpstreamError, match="is not valid XML"):
+        await client.list_issues(1)
+    # The bad body is forgotten, so the next call reads the repaired feed.
+    httpx_mock.add_response(url=url, content=_FEED)
+    result = await client.list_issues(1)
+    assert result.total_in_feed == 2
+    httpx_mock.add_response(
+        url=constants.FEED_URL.format(part=1, lang="fra"), content=b"not xml at all"
+    )
+    with pytest.raises(UpstreamError, match="n'est pas un XML valide"):
+        await client.list_issues(1, lang="fr")

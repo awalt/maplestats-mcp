@@ -17,7 +17,7 @@ against the v1 and v2 hand reviews.
 
 The judge runs headless Claude Code (`claude -p`) with no tools and a JSON schema, as the
 arms do, so it needs the same logged-in CLI (README, "Running it"). Verdicts are cached in
-`v4/judge_cache.jsonl` by model, rubric version and answer text, so re-grading is free.
+`v4/judge_cache.jsonl` by model, rubric version, answer key and answer text, so re-grading is free.
 """
 
 from __future__ import annotations
@@ -168,7 +168,9 @@ def prompt(question: dict[str, Any], answer: str) -> str:
 
 
 def _cache_key(model: str, question: dict[str, Any], answer: str) -> str:
-    raw = f"{model}|{RUBRIC_VERSION}|{question['id']}|{answer}"
+    # The whole prompt, not the question id: a verdict given against an answer key that
+    # has since been rebuilt (a revised figure, a new alternative) must not be reused.
+    raw = f"{model}|{RUBRIC_VERSION}|{GENERAL}|{prompt(question, answer)}"
     return hashlib.sha256(raw.encode()).hexdigest()
 
 

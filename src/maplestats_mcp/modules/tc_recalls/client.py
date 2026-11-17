@@ -35,7 +35,9 @@ _LIMITER = get_limiter(
     rate=constants.RATE_LIMIT_PER_SECOND,
     capacity=constants.RATE_LIMIT_CAPACITY,
 )
-_NAME = re.compile(r"^[\w .&'-]{1,60}$")
+# A name of dots only ("." or "..") is a path segment: httpx resolves it away,
+# which would drop the make or model from the URL and widen the search.
+_NAME = re.compile(r"^(?!\.+$)[\w .&'-]{1,60}$")
 
 # The French search answers the same values as the English one (live
 # 2026-09-23: only the column labels change), so a French caller is told

@@ -10,6 +10,7 @@ response shapes, so this client uses `shared/http.py`'s ordinary
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any
 
 import httpx
@@ -105,15 +106,19 @@ def _summary_from_meta(code: str, meta: dict[str, Any]) -> SdgIndicatorSummary:
     )
 
 
-async def _get_index(framework: str, lang: str) -> dict[str, Any]:
+def _fold(text: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+
+async def _get_index(framework: str, lang: str) -> tuple[dict[str, Any], bool]:
     url = f"{_base_url(framework)}/{lang}/meta/all.json"
     cache_key = f"statcan-sdg:index:{framework}:{lang}"
 
     async def fetch() -> Any:
         return await _get_json(f"statcan_sdg:{framework}", url)
 
-    body, _ = await cached_fetch(cache_key, constants.CACHE_TTL_INDEX_SECONDS, fetch)
-    return body
+    return await cached_fetch(cache_key, constants.CACHE_TTL_INDEX_SECONDS, fetch)
 
 
 async def search_indicators(
@@ -137,12 +142,13 @@ async def search_indicators(
             )
         )
 
-    index = await _get_index(framework, lang)
-    needle = query.strip().lower()
+    index, was_cached = await _get_index(framework, lang)
+    # Accents folded on both sides, so "education" finds "Éducation".
+    needle = _fold(query.strip())
     matches = [
         (code, meta)
         for code, meta in index.items()
-        if not needle or needle in meta.get("indicator_name", "").lower()
+        if not needle or needle in _fold(meta.get("indicator_name", ""))
     ]
     summaries = [_summary_from_meta(code, meta) for code, meta in matches[:limit]]
     return SdgIndicatorSearchResult(
@@ -154,7 +160,7 @@ async def search_indicators(
         provenance=make_provenance(
             source=constants.RATE_LIMIT_SOURCE,
             url=f"{_base_url(framework)}/{lang}/meta/all.json",
-            cached=True,
+            cached=was_cached,
             schema_name="statcan_sdg.SdgIndicatorSearchResult",
             lang=lang,
         ),

@@ -61,6 +61,10 @@ def _say(lang: str, en: str, fr: str) -> str:
     return say(en, fr, lang)
 
 
+class _NotJson(UpstreamError):
+    """A 200 whose body is not JSON; the empty-body callers below catch it."""
+
+
 async def _get(
     path: str,
     *,
@@ -97,8 +101,17 @@ async def _get(
         raise UpstreamError(
             _say(lang, f"RDaaS answered HTTP {status}.", f"RDaaS a répondu HTTP {status}.")
         ) from exc
-    except httpx.DecodingError:
-        raise
+    except httpx.DecodingError as exc:
+        # A 200 that is not JSON (an HTML maintenance page): shared/http.py
+        # raises its NotJsonResponse, a DecodingError, which must not reach
+        # the caller untyped.
+        raise _NotJson(
+            _say(
+                lang,
+                "RDaaS answered with a page that is not JSON. Try again shortly.",
+                "RDaaS a répondu par une page qui n'est pas du JSON. Réessayez sous peu.",
+            )
+        ) from exc
     except httpx.HTTPError as exc:
         raise UpstreamUnavailable(
             _say(
@@ -315,7 +328,7 @@ async def _get_or_empty(
     """
     try:
         return await _get(path, params=params, lang=lang)
-    except httpx.DecodingError:
+    except _NotJson:
         return {}
 
 

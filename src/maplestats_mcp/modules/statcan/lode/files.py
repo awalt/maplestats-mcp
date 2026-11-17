@@ -325,6 +325,8 @@ async def stream_member(
     inflater = zlib.decompressobj(-15) if member.method == 8 else None
     chunks: list[bytes] = []
     read = 0
+    inflated = 0
+    cut = False
     while read < member.compressed_size and read < max_compressed:
         end = min(
             start + read + constants.RANGE_CHUNK_BYTES - 1,
@@ -333,10 +335,19 @@ async def stream_member(
         )
         data = await _range(url, start + read, end)
         read += len(data)
-        chunks.append(inflater.decompress(data) if inflater else data)
+        if inflater:
+            left = constants.PREVIEW_INFLATED_MAX_BYTES - inflated
+            chunks.append(inflater.decompress(data, left))
+            cut = bool(inflater.unconsumed_tail)
+        else:
+            chunks.append(data)
+        inflated += len(chunks[-1])
+        if cut or inflated >= constants.PREVIEW_INFLATED_MAX_BYTES:
+            cut = True
+            break
         if inflater and inflater.eof:
             break
-    return chunks, read, read >= member.compressed_size
+    return chunks, read, read >= member.compressed_size and not cut
 
 
 def decode_lines(chunks: list[bytes], complete: bool) -> Iterator[str]:

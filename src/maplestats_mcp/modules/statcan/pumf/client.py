@@ -188,6 +188,10 @@ async def list_files(catalogue_number: str, *, lang: str = "en") -> PumfFileList
 
 
 async def _members(url: str) -> tuple[list[remote_zip.ZipMember], int, bool]:
+    # Checked here, at the one place a ZIP is first requested, so no caller
+    # (statcan_pumf_tabulate once did) can fetch a host other than StatCan's.
+    _check_url(url)
+
     async def fetch() -> tuple[list[remote_zip.ZipMember], int]:
         await _LIMITER.acquire()
         return await remote_zip.list_members(url)

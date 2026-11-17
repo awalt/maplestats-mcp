@@ -8,7 +8,7 @@ from urllib.parse import urldefrag, urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup, Tag
-from defusedxml import ElementTree
+from defusedxml import DefusedXmlException, ElementTree
 
 from maplestats_mcp.modules.gazette import constants
 from maplestats_mcp.modules.gazette.schemas import (
@@ -18,7 +18,7 @@ from maplestats_mcp.modules.gazette.schemas import (
     Notice,
     NoticeText,
 )
-from maplestats_mcp.shared.cache import cached_fetch
+from maplestats_mcp.shared.cache import cached_fetch, forget
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
 from maplestats_mcp.shared.fr_typography import fr_or_en, lang_error
@@ -43,6 +43,10 @@ _SOFT_404 = re.compile(r"<title>[^<]*\((?:Error|Erreur) 404\)", re.IGNORECASE)
 
 def _lang(lang: str) -> str:
     return "fra" if lang == "fr" else "eng"
+
+
+def _cache_key(url: str) -> str:
+    return f"gazette:{url}"
 
 
 def _part(part: int, lang: str = "en") -> int:
@@ -92,7 +96,7 @@ async def _fetch(url: str, ttl: int, lang: str = "en") -> tuple[bytes, bool]:
             )
         return content
 
-    return await cached_fetch(f"gazette:{url}", ttl, fetch)
+    return await cached_fetch(_cache_key(url), ttl, fetch)
 
 
 def _clean(text: str) -> str:
@@ -122,7 +126,18 @@ async def list_issues(
         )
     url = constants.FEED_URL.format(part=part, lang=_lang(lang))
     feed, cached = await _fetch(url, constants.CACHE_TTL_FEED_SECONDS, lang)
-    root = ElementTree.fromstring(feed)
+    try:
+        root = ElementTree.fromstring(feed)
+    except (ElementTree.ParseError, DefusedXmlException) as exc:
+        # The raw bytes were cached before parsing: drop them so one bad body
+        # is not served for the whole feed TTL.
+        forget(_cache_key(url))
+        raise lang_error(
+            UpstreamError,
+            lang,
+            f"gazette: the feed at {url} is not valid XML.",
+            f"gazette : le fil à {url} n'est pas un XML valide.",
+        ) from exc
     issues: list[Issue] = []
     for item in root.findall("./channel/item"):
         link = (item.findtext("link") or "").strip()

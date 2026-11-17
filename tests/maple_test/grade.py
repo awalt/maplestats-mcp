@@ -114,14 +114,27 @@ ABSENT = re.compile(
     r"\b(not (?:yet )?(?:been )?(?:published|released|available|out)|no (?:rate|figure|data|"
     r"value|observation|series|estimate)s? (?:was |were |is |are )?(?:published|available|for|"
     r"exists?)|has(?:n't|n’t| not) (?:yet )?been (?:published|released)|does(?:n't|n’t| not) "
-    r"(?:publish|exist)|weekend|sunday|saturday|not a business day|market(?:s)? (?:was|were) "
+    r"(?:publish|exist)|not a business day|market(?:s)? (?:was|were) "
     r"closed|isn't out|is not out|doesn't exist yet|does not exist yet|hasn't ended|"
     # Found in v2 runs: correct refusals the phrases above missed ("isn't available yet",
     # "Statistics Canada hasn't published", "has no 2025 value").
     r"(?:is|are)(?:n't|n’t| not) (?:yet )?(?:available|published|released|out) yet|"
     r"(?:has|have)(?:n't|n’t| not) (?:yet )?(?:published|released)|"
     r"(?:has|have) no (?:\d{4} )?(?:value|figure|data|estimate|observation)s?\b|"
-    r"there is no (?:\w+ )?(?:figure|value|number|data))",
+    r"there is no (?:\w+ )?(?:figure|value|number|data)|"
+    # A weekday's name alone once counted ("was a Sunday; the rate was 1.3960" passed as a
+    # refusal). These are what the v1 answers that named the day went on to say.
+    r"(?:did(?:n't|n’t| not)|does(?:n't|n’t| not)) publish|published no\b|"
+    r"no (?:[\w-]+ ){1,4}(?:rate|figure|value|observation|estimate)s? for\b|"
+    r"only (?:on|for) business days|on business days only)",
+    re.IGNORECASE,
+)
+# A fall the key holds as a negative number is usually written as a size and a word
+# ("fell by 68,300"); without one of these, or a minus sign, the size alone is a rise.
+DECREASE = re.compile(
+    r"\b(f[ae]ll(?:s|en|ing)?|declin\w*|decreas\w*|drop\w*|down|lower\w*|los[ts]\w*|loss\w*|"
+    r"shr[aiu]nk\w*|contract\w*|negative|minus|shed\w*|reduc\w*|cut\w*|slid\w*|slipp?\w*|"
+    r"fewer|less|below|under|dipp?\w*|weaken\w*|eas(?:ed|ing)|retreat\w*|baiss\w*|recul\w*|diminu\w*)\b",
     re.IGNORECASE,
 )
 MISMATCH = re.compile(
@@ -388,9 +401,13 @@ def _alternative_matched(question: dict[str, Any], text: str) -> dict[str, Any] 
 
 
 def _matches(question: dict[str, Any], text: str) -> dict[str, bool]:
-    seen = [abs(n) for n in numbers_in(text)]
+    stated = numbers_in(text)
+    falls = bool(DECREASE.search(text))
     matched: dict[str, bool] = {}
     for key, value in _expected_numbers(question).items():
+        # The sign was once dropped on both sides, so "+0.6 points" matched a key of -0.6.
+        # A negative key value needs a minus sign on the number or a word for a fall.
+        seen = [abs(n) for n in stated if value >= 0 or falls or n < 0]
         hit = any(abs(n - abs(value)) <= tolerance(key, value, question) for n in seen)
         # A value keyed in thousands or millions may be written out in full ("68,300 jobs"
         # for a change of -68.3 thousand).

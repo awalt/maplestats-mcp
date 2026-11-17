@@ -200,7 +200,8 @@ async def search_datasets(
             lang=lang,
         )
 
-    cache_key = f"{config.source}:search:{query}:{tag}:{item_type}:{limit}:{offset}"
+    # repr of a tuple, not a ":" join: free text can hold ":" (see socrata rows).
+    cache_key = f"{config.source}:search:{(query, tag, item_type, limit, offset)!r}"
     result, was_cached = await cached_fetch(cache_key, constants.CACHE_TTL_SEARCH_SECONDS, fetch)
     features = list_or_empty(result, "features")
     total_count = get_or(result, "numberMatched", len(features))
@@ -452,10 +453,18 @@ async def query_feature_layer(
             lang=lang,
         )
 
-    cache_key = (
-        f"{config.source}:query:{item_id}:{resolved_layer_index}:{where_clause}:{out_fields}:"
-        f"{order_by}:{return_geometry}:{limit}:{offset}"
+    # repr of a tuple, not a ":" join: free text can hold ":" (see socrata rows).
+    request_key = (
+        item_id,
+        resolved_layer_index,
+        where_clause,
+        out_fields,
+        order_by,
+        return_geometry,
+        limit,
+        offset,
     )
+    cache_key = f"{config.source}:query:{request_key!r}"
     body, was_cached = await cached_fetch(cache_key, constants.CACHE_TTL_ROWS_SECONDS, fetch)
     features = list_or_empty(body, "features")
     rows: list[dict[str, Any]] = []

@@ -53,7 +53,7 @@ from maplestats_mcp.modules.statcan.reference.schemas import (
     SectionText,
 )
 from maplestats_mcp.shared import file_download
-from maplestats_mcp.shared.cache import cached_fetch
+from maplestats_mcp.shared.cache import cached_fetch, forget
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import (
     InvalidInput,
@@ -309,7 +309,13 @@ async def _search(
 
     cache_key = f"statcan-reference:{catalogue}:{lang}:{query.strip().lower()}:{count}:{page}"
     html, was_cached = await cached_fetch(cache_key, constants.CACHE_TTL_SECONDS, fetch)
-    documents, total_matched = _parse_results(html, context)
+    try:
+        documents, total_matched = _parse_results(html, context)
+    except UpstreamError:
+        # A 200 that is not a results page (maintenance notice) must not stay
+        # cached for the TTL, failing every retry after StatCan recovers.
+        forget(cache_key)
+        raise
 
     # The catalogue requires every word of the keyword to match (checked live
     # 2026-11-09: "CPI" finds 19 reference documents, "owned accommodation

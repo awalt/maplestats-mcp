@@ -199,6 +199,15 @@ async def query_file(
             )
     filtered = csv_files.exact_filter(rows, columns_lookup, filters)
     date_column = columns_lookup.first_of(constants.DATE_COLUMNS)
+    if not date_column and (start_date or end_date):
+        _raise(
+            InvalidInput,
+            "start and end need a date or year column, and this file has none "
+            f"(columns: {columns_lookup.names}). Drop them or use filters.",
+            "start et end exigent une colonne de date ou d'année, et ce fichier n'en a "
+            f"aucune (colonnes : {columns_lookup.names}). Retirez-les ou utilisez filters.",
+            lang,
+        )
 
     def keep(row: dict[str, Any]) -> bool:
         if date_column and (start_date or end_date):

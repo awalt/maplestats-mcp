@@ -388,6 +388,18 @@ def parse_table(rows: Iterable[Sequence[Any]]) -> ParsedTable:
         filled = _filled(row)
         first = text(row[0]) if row else ""
         found = _header_years(row)
+        # Values between 1990 and 2100 under the current year columns, with no
+        # block title before them, are data (revenue of 1,995), unless the row
+        # repeats the header or carries a "(MP)" year.
+        if (
+            found
+            and years
+            and pending_block is None
+            and set(found) == set(years)
+            and found != years
+            and not any(mobile for _, mobile in found.values())
+        ):
+            found = {}
         if found and not in_notes:
             years, qualifiers, first_year = found, {}, min(found)
             block, pending_block, carried = pending_block, None, []

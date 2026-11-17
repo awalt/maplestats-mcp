@@ -323,3 +323,14 @@ def test_parse_workbook_refuses_an_oversized_part_before_loading():
         t.writestr("xl/sharedStrings.xml", b" " * (XLSX_MAX_PART_BYTES + 1))
     with pytest.raises(TooLarge, match="sharedStrings"):
         client._parse_workbook(out.getvalue())
+
+
+async def test_malformed_sitemap_raises_upstream_error(httpx_mock):
+    httpx_mock.add_response(url=constants.SITEMAP_URL, text="<sitemapindex><sitemap>")
+    with pytest.raises(UpstreamError, match="is not valid XML"):
+        await client._pairing()
+    # A child sitemap that fails is reported the same way, in French here.
+    httpx_mock.add_response(url=constants.SITEMAP_URL, text=_SITEMAP_INDEX)
+    httpx_mock.add_response(url=f"{constants.SITEMAP_URL}?page=1", text="<urlset>")
+    with pytest.raises(UpstreamError, match="le plan du site"):
+        await client._pairing("fr")
