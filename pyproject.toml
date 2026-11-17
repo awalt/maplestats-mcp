@@ -79,6 +79,14 @@ semantic = [
     "sentencepiece>=0.2.0",
     "numpy>=1.26.0",
 ]
+# MAPLE_OCR=1: pages of a scanned PDF are rendered here and read by the system's
+# tesseract program (shared/ocr.py). pypdfium2 is BSD-3-Clause or Apache-2.0 over
+# PDFium (BSD-3-Clause); one 4 MB `py3` wheel that installs on every Python the
+# server supports, 3.15 included (checked 2026-11-16), with no numpy or Pillow.
+# PyMuPDF (AGPL), Ghostscript and poppler are left out on purpose.
+ocr = [
+    "pypdfium2>=5,<6",
+]
 
 [project.urls]
 Homepage = "https://github.com/dsanchezp18/maplestats-mcp"
@@ -121,6 +129,7 @@ testpaths = ["tests", "src"]
 python_files = ["test_*.py"]
 markers = [
     "r_julia: runs R or Julia; CI's r-julia job runs these and fails one that skips",
+    "ocr: runs Tesseract and pypdfium2; CI's ocr job runs these and fails one that skips",
 ]
 
 [tool.ruff]

@@ -114,7 +114,15 @@ class PublicationText(BaseModel):
         default=0,
         description=(
             "PDF pages read with no text layer (under 25 characters: a scan, a blank "
-            "page, a drawing): they come back empty, and provenance.limits names them."
+            "page, a drawing): they come back empty unless listed in ocr_pages, and "
+            "provenance.limits names them."
+        ),
+    )
+    ocr_pages: list[int] = Field(
+        default_factory=list,
+        description=(
+            "PDF pages whose text was recognised by OCR from a scan, not taken from the "
+            "publisher's text layer (see provenance.limits and caveats)."
         ),
     )
     provenance: Provenance

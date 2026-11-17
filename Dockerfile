@@ -6,6 +6,22 @@ RUN groupadd -r appuser && useradd -r -g appuser -m appuser
 
 WORKDIR /app
 
+# OCR for scanned PDFs (MAPLE_OCR=1, shared/ocr.py): the tesseract program with its English
+# and French data, from Debian. Without recommended packages the CI build of 2026-11-17
+# installed 71 packages (33.6 MB to download, 107 MB on disk): Tesseract 5.5.0 and
+# Leptonica 1.84.1, with Debian's tessdata 4.1.0 files for eng, fra and osd. The base image
+# is pinned by digest but apt installs what Debian holds on the day of the build, so the
+# version is not reproducible (pinning tesseract-ocr=5.5.0-1+b1 would fail the day Debian
+# replaces it, and snapshot.debian.org is the way to freeze it if that ever matters): the
+# build prints the version, and fails if the English or French data are missing. A 512 MB
+# host that leaves MAPLE_OCR off never starts the program.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-fra \
+    && rm -rf /var/lib/apt/lists/* \
+    && tesseract --version \
+    && tesseract --list-langs 2>&1 | grep -qx eng \
+    && tesseract --list-langs 2>&1 | grep -qx fra
+
 # Pinned: an unpinned uv could read uv.lock differently from the version that wrote it.
 RUN pip install --no-cache-dir uv==0.11.7
 
@@ -13,8 +29,9 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src/ src/
 
 # --locked fails the build if uv.lock is out of date with pyproject.toml,
-# rather than silently resolving different versions than were tested.
-RUN uv sync --locked --no-dev
+# rather than silently resolving different versions than were tested. The ocr extra is
+# pypdfium2 (a 4 MB wheel, no numpy or Pillow), which draws the pages Tesseract reads.
+RUN uv sync --locked --no-dev --extra ocr
 
 # PUMF, CIPO patent, StatCan open-database (LODE) and CBSA tariff caches; named
 # volumes mounted here inherit this owner. docker-compose.yml points
