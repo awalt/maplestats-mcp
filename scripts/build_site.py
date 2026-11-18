@@ -3407,7 +3407,7 @@ def finale_context(counts: dict[str, Any], modules: list[ModuleDoc], lang: Lang)
             "Statistics Canada tables" if en else "tableaux de Statistique Canada",
         ),
         (
-            counts["statcan_reference_search_data"]["product_count"],
+            counts["borealis_odesi_search_datasets"]["total_matched"],
             "microdata files" if en else "fichiers de microdonnées",
         ),
         (
@@ -3485,7 +3485,7 @@ def case_context(lang: Lang, modules: list[ModuleDoc]) -> dict[str, str]:
         context.update(builders[key](case, lang))
         context[f"how_{key}"] = how_block(case, key, lang)
     counts = {call["name"]: call["response"] for call in load_case("counts")["calls"]}
-    context["count_pumf"] = number(counts["statcan_reference_search_data"]["product_count"], lang)
+    context["count_pumf"] = number(counts["borealis_odesi_search_datasets"]["total_matched"], lang)
     context["count_ircc"] = number(counts["ircc_monthly_list_tables"]["returned_count"], lang)
     context["count_tables"] = number(counts["wds_search_cubes"]["total_count"], lang)
     context["count_series"] = number(counts["boc_search_series"]["total_count"], lang)
