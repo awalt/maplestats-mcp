@@ -475,6 +475,17 @@ class FullTableDownloadLink(BaseModel):
         "(size, each column's values, the first and last rows) instead of the rows. Run "
         "one and read its output rather than fetching the table's rows into the conversation.",
     )
+    file_check: Literal["downloadable", "blocked", "not_checked"] = Field(
+        default="not_checked",
+        description="What StatCan answered when MapleStats asked for the file's first bytes just "
+        "now: 'downloadable' (a script can fetch it), 'blocked' (StatCan's captcha, which only a "
+        "person in a web browser can pass; see notes) or 'not_checked'.",
+    )
+    notes: list[str] = Field(
+        default_factory=list,
+        description="How to get the file when StatCan blocks automated downloads, and what still "
+        "works automatically. Pass these on to the user.",
+    )
     provenance: Provenance
 
 

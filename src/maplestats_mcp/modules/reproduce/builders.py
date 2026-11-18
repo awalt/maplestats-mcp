@@ -47,6 +47,34 @@ def _suffix(args: dict[str, Any]) -> str:
 # StatCan --------------------------------------------------------------------
 
 
+def _get_cansim(dashed: str, language: str, pid: str, suffix: str) -> str:
+    """get_cansim, with what to do when StatCan's captcha stops it.
+
+    Since 2026-11-18 Statistics Canada answers automated full-table downloads with
+    a Cloudflare check only a person in a browser can pass, and get_cansim() fails
+    (reported by the {cansim} maintainer). The vector functions still work.
+    """
+    url = f"https://www150.statcan.gc.ca/n1/tbl/csv/{pid}-{suffix}.zip"
+    return (
+        "# Statistics Canada answers automated full-table downloads with a captcha\n"
+        "# (since November 2026) that only a person in a web browser can pass, which\n"
+        "# stops get_cansim(). The {cansim} maintainer publishes a workaround for\n"
+        "# interactive sessions (see github.com/mountainMath/cansim).\n"
+        "data <- tryCatch(\n"
+        f'  get_cansim("{dashed}"{language}),\n'
+        "  error = function(e) {\n"
+        "    stop(\n"
+        '      "get_cansim() could not download the table: ", conditionMessage(e), "\\n",\n'
+        '      "Statistics Canada now answers automated full-table downloads with a captcha. ",\n'
+        f'      "Open {url} in a web browser, pass the check, and read the saved file; ",\n'
+        '      "or use the {cansim} workaround in an interactive session.",\n'
+        "      call. = FALSE\n"
+        "    )\n"
+        "  }\n"
+        ")\n"
+    )
+
+
 def table_spec(product_id: Any, lang: str) -> Spec:
     pid = str(product_id).replace("-", "")[:8]
     if not pid.isdigit() or len(pid) != 8:
@@ -65,7 +93,7 @@ def table_spec(product_id: Any, lang: str) -> Spec:
         file_name=f"{pid}-{suffix}.zip",
         method="exact: full table from the product id",
         title=f"StatCan table {dashed}",
-        native={"r": Code(["cansim"], f'data <- get_cansim("{dashed}"{language})\n')},
+        native={"r": Code(["cansim"], _get_cansim(dashed, language, pid, suffix))},
         notes=["The full table is downloaded; filter it to the rows the tool returned."],
         # French tables name their columns in French (VALEUR, IDENTIFICATEUR SCALAIRE).
         source="statcan_table" if lang == "en" else "statcan_table_fr",

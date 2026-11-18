@@ -184,7 +184,12 @@ def offline_wds(monkeypatch):
 
     monkeypatch.setattr(wds_client, "_require_known_table", known)
     monkeypatch.setattr(wds_client, "get_cube_metadata", metadata)
+
+    async def check(url):
+        return "not_checked"
+
     monkeypatch.setattr(wds_client, "_get", get)
+    monkeypatch.setattr(wds_client, "check_file", check)
     return state
 
 

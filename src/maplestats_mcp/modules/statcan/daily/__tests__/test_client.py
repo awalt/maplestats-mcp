@@ -4,7 +4,7 @@ import pytest
 
 from maplestats_mcp.modules.statcan.daily import client, constants
 from maplestats_mcp.shared import cache as cache_module
-from maplestats_mcp.shared.errors import InvalidInput, UpstreamError
+from maplestats_mcp.shared.errors import CloudflareChallenge, InvalidInput, UpstreamError
 
 
 @pytest.fixture(autouse=True)
@@ -220,3 +220,33 @@ async def test_search_archive_upstream_5xx_becomes_upstream_error(httpx_mock):
         httpx_mock.add_response(url=_ARCHIVE_URL, status_code=500)
     with pytest.raises(UpstreamError):
         await client.search_archive("")
+
+
+async def test_get_releases_behind_the_captcha_reads_the_release_archive(
+    httpx_mock, cloudflare_challenge
+):
+    # Live 2026-11-18: the RSS feeds answer with Cloudflare's challenge; the archive
+    # JSON on the same host still answers.
+    httpx_mock.add_response(url=f"{constants.BASE_URL}/0-eng.atom", **cloudflare_challenge)
+    httpx_mock.add_response(
+        url=_ARCHIVE_URL,
+        json=[
+            *_ARCHIVE_BODY,
+            {"date": "2999-01-01", "title": "Future release", "url": "", "description": ""},
+        ],
+    )
+    result = await client.get_releases("all", limit=2)
+    dates = [r.published_at.date() for r in result.releases if r.published_at]
+    assert dates == sorted(dates, reverse=True) and len(dates) == 2
+    assert all(r.url.startswith("https://www150.statcan.gc.ca/") for r in result.releases)
+    assert "Future release" not in [r.title for r in result.releases]
+    assert result.truncated and result.total_in_feed == 3
+    assert "RSS feeds" in (result.provenance.limits or "")
+
+
+async def test_get_releases_for_one_subject_behind_the_captcha_says_what_still_works(
+    httpx_mock, cloudflare_challenge
+):
+    httpx_mock.add_response(url=f"{constants.BASE_URL}/46-eng.atom", **cloudflare_challenge)
+    with pytest.raises(CloudflareChallenge, match="subject='all'"):
+        await client.get_releases("housing")

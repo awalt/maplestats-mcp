@@ -53,6 +53,7 @@ from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.concurrency import gather_or_cancel
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import (
+    CloudflareChallenge,
     DataLocked,
     InvalidInput,
     NotFound,
@@ -76,6 +77,25 @@ NS = constants.SDMX_NS
 
 _PERIOD = re.compile(constants.PERIOD_PATTERN)
 _KEY = re.compile(r"^[A-Za-z0-9_+.\-]*$")
+
+# Said whenever an answer came from WDS because SDMX showed StatCan's captcha.
+_BLOCKED_NOTE_EN = (
+    "Statistics Canada now answers automated requests to its SDMX service with a "
+    "Cloudflare check only a person in a browser can pass (since November 2026), so "
+    "MapleStats read this from StatCan's Web Data Service (WDS) instead: the same "
+    "table, members, values and status codes."
+)
+_BLOCKED_NOTE_FR = (
+    "Statistique Canada répond désormais aux requêtes automatisées vers son service SDMX "
+    "par une vérification Cloudflare que seule une personne dans un navigateur peut "
+    "passer (depuis novembre 2026) ; MapleStats a donc lu ceci dans le Service de "
+    "données Web (WDS) de StatCan : le même tableau, les mêmes membres, valeurs et codes "
+    "de statut."
+)
+
+
+def _blocked_note(lang: str) -> str:
+    return _say(lang, _BLOCKED_NOTE_EN, _BLOCKED_NOTE_FR)
 
 
 def _qn(prefix: str, tag: str) -> str:
@@ -387,6 +407,9 @@ async def _load_structure(product_id: int, lang: str) -> tuple[str, list[SdmxDim
             raise _no_table(product_id, lang) from exc
         except (_BadBodyError, NotFound):
             return f"DF_{product_id}", await _structure_from_wds(product_id, lang), "wds"
+        except CloudflareChallenge:
+            # StatCan's captcha on SDMX (since 2026-11): the same codes come from WDS.
+            return f"DF_{product_id}", await _structure_from_wds(product_id, lang), "wds-blocked"
         return dataflow_id or f"DF_{product_id}", dimensions, "sdmx"
 
     value, _ = await cached_fetch(
@@ -473,6 +496,8 @@ async def get_structure(
                     "les identifiants et les noms des membres sont identiques.",
                 )
                 if source == "wds"
+                else _blocked_note(lang)
+                if source == "wds-blocked"
                 else None
             ),
             limits=(
@@ -981,6 +1006,153 @@ def transform_params(
     return params
 
 
+def _wds_period_range(params: dict[str, Any], metadata: dict[str, Any]) -> tuple[str, str]:
+    """startPeriod/endPeriod as the YYYY-MM-DD range WDS takes; an open end is the table's own."""
+    start = str(params.get("startPeriod") or "")
+    end = str(params.get("endPeriod") or "")
+    first = parse_period(start)[0] if start else None
+    if end:
+        last, ppy = parse_period(end)
+        last = period_end(last, ppy) if ppy else last
+    else:
+        last = date.today()
+    if first is None:
+        first = date.fromisoformat(str(metadata.get("cubeStartDate") or "1900-01-01")[:10])
+    return first.isoformat(), last.isoformat()
+
+
+async def _series_from_wds(
+    product_id: int, key: str, params: dict[str, Any], lang: str
+) -> tuple[list[SdmxSeries], bool, str]:
+    """(series, any truncated, source URL): the SDMX query answered through WDS.
+
+    Used when StatCan's SDMX service answers with its Cloudflare check (since
+    2026-11; WDS on the same host still answers). The key's members are WDS
+    member ids (the SDMX codelists equal WDS members, see _structure_from_wds),
+    so each combination of the key's members is a WDS coordinate. A wildcard
+    segment takes every member of its dimension; combinations StatCan does not
+    publish come back from WDS as failures and are left out, as SDMX leaves
+    them out. lastNObservations becomes latestN; startPeriod/endPeriod become a
+    reference-period range on the series' vectors.
+    """
+    try:
+        metadata, _ = await wds_client.cube_metadata_raw(product_id)
+    except (InvalidInput, NotFound) as exc:
+        raise _no_table(product_id, lang) from exc
+    dims = sorted(metadata.get("dimension") or [], key=lambda d: int(d["dimensionPositionId"]))
+    segments = _key_segments(key)
+    if len(segments) != len(dims):
+        raise InvalidInput(
+            _say(
+                lang,
+                f"key {key!r} has {len(segments)} segment(s); table {product_id} has "
+                f"{len(dims)} dimensions, so the key needs {len(dims)} dot-separated segments "
+                "(see sdmx_get_structure).",
+                f"la clé {key!r} a {len(segments)} segment(s) ; le tableau {product_id} a "
+                f"{len(dims)} dimensions, la clé doit donc avoir {len(dims)} segments séparés "
+                "par des points (voir sdmx_get_structure).",
+            )
+        )
+    choices = [
+        segment or [str(m["memberId"]) for m in dim.get("member") or []]
+        for segment, dim in zip(segments, dims, strict=True)
+    ]
+    combinations = math.prod(len(c) for c in choices)
+    if combinations > wds_constants.WDS_MAX_LIST:
+        widest = max(range(len(dims)), key=lambda i: len(choices[i]))
+        name = dims[widest].get("dimensionNameFr" if lang == "fr" else "dimensionNameEn")
+        raise InvalidInput(
+            _say(
+                lang,
+                "Statistics Canada now answers automated requests to its SDMX service with a "
+                "Cloudflare check only a person in a browser can pass (since November 2026), so "
+                "MapleStats reads this table through StatCan's Web Data Service (WDS) instead. "
+                f"WDS takes at most {wds_constants.WDS_MAX_LIST} series per call and key {key!r} covers {combinations:,} combinations of members. Name "
+                f"members instead of a wildcard, starting with dimension {widest + 1} ({name}, "
+                f"{len(choices[widest])} members), or use wds_get_full_table_download for the "
+                "whole table.",
+                "Statistique Canada répond désormais aux requêtes automatisées vers son service "
+                "SDMX par une vérification Cloudflare que seule une personne dans un navigateur "
+                "peut passer (depuis novembre 2026) ; MapleStats lit donc ce tableau par le "
+                "Service de données Web (WDS) de StatCan. Le WDS accepte au plus "
+                f"{wds_constants.WDS_MAX_LIST} séries par appel et la clé {key!r} couvre {combinations:,} combinaisons de membres. "
+                f"Nommez des membres au lieu d'un joker, en commençant par la dimension "
+                f"{widest + 1} ({name}, {len(choices[widest])} membres), ou utilisez "
+                "wds_get_full_table_download pour le tableau entier.",
+            )
+        )
+    coordinates = [".".join(c) for c in itertools.product(*choices)]
+    ppy = wds_transforms.FREQUENCY_PPY.get(int(metadata.get("frequencyCode") or 0))
+    latest_n = params.get("lastNObservations")
+    if latest_n is not None:
+        found = await wds_client.get_data_from_cube_pid_coords_and_latest_n_periods(
+            product_id, coordinates, int(latest_n)
+        )
+        vectors = found.series or [found]
+        url = f"{wds_constants.BASE_URL}getDataFromCubePidCoordAndLatestNPeriods"
+    else:
+        # The vectors first (one latest period each), then their range by reference period.
+        found = await wds_client.get_data_from_cube_pid_coords_and_latest_n_periods(
+            product_id, coordinates, 1
+        )
+        start, end = _wds_period_range(params, metadata)
+        ranged = await wds_client.get_data_from_vector_by_reference_period_range(
+            [v.vector_id for v in found.series or [found]], start, end
+        )
+        coordinate_of = {v.vector_id: v.coordinate for v in found.series or [found]}
+        vectors = [
+            v.model_copy(update={"coordinate": coordinate_of.get(v.vector_id, v.coordinate)})
+            for v in ranged.series
+        ]
+        url = f"{wds_constants.BASE_URL}getDataFromVectorByReferencePeriodRange"
+    uom_dims = [i for i, d in enumerate(dims) if d.get("hasUom")]
+    members = [{str(m["memberId"]): m for m in d.get("member") or []} for d in dims]
+    series_list: list[SdmxSeries] = []
+    truncated = False
+    for vector in vectors:
+        ids = vector.coordinate.split(".")[: len(dims)]
+        uom = next(
+            (
+                members[i][ids[i]].get("memberUomCode")
+                for i in uom_dims
+                if ids[i] in members[i] and members[i][ids[i]].get("memberUomCode") is not None
+            ),
+            None,
+        )
+        rows = sorted(vector.observations, key=lambda o: o.ref_period)
+        if len(rows) > constants.MAX_ROWS:
+            rows = rows[-constants.MAX_ROWS :]
+            truncated = True
+        first = rows[0] if rows else None
+        series_list.append(
+            SdmxSeries(
+                series_key={
+                    _dimension_id(str(d.get("dimensionNameEn") or "")): member
+                    for d, member in zip(dims, ids, strict=True)
+                },
+                vector_id=vector.vector_id,
+                scalar_factor=first.scalar_factor_code if first else None,
+                decimals=first.decimals if first else None,
+                uom_code=str(uom) if uom is not None else None,
+                observations=[
+                    SdmxObservation(
+                        period=period_label(o.ref_period, ppy),
+                        value=o.value,
+                        # SDMX sends these attributes only when they flag something.
+                        status_code=o.status_code or None,
+                        status=o.status if o.status_code else None,
+                        symbol_code=o.symbol_code or None,
+                        symbol=o.symbol if o.symbol_code else None,
+                        security_level_code=o.security_level_code or None,
+                        security_level=o.security_level if o.security_level_code else None,
+                    )
+                    for o in rows
+                ],
+            )
+        )
+    return series_list, truncated, url
+
+
 async def get_data(
     product_id: int,
     key: str,
@@ -1055,13 +1227,16 @@ async def get_data(
         "ressemblent à 2026-03.",
     )
 
-    async def data() -> tuple[Element, bool]:
+    async def data() -> tuple[Element | None, bool]:
         try:
             return await _data_xml(url, params, lang=lang, hint=hint)
         except _BadBodyError as exc:
             # Confirmed live: a key matching no series answers HTTP 200 with a
             # GenericData document whose only Series tag is a stray closing one.
             raise NotFound(await _no_series_message(product_id, key, lang)) from exc
+        except CloudflareChallenge:
+            # StatCan's captcha on SDMX (since 2026-11): read the same series from WDS.
+            return None, False
 
     # The code legend (getCodeSets) and the table metadata behind the
     # newer-data note do not depend on the data; asked together they cost one
@@ -1071,9 +1246,15 @@ async def get_data(
         wds_client.observation_legend(),
         _newer_data(product_id, end_period, lang),
     )
-    series, any_series_truncated = _parse_data(
-        root, max_rows=constants.MAX_ROWS, legend=legend, lang=lang
-    )
+    source_url = url
+    if root is None:
+        series, any_series_truncated, source_url = await _series_from_wds(
+            product_id, key, params, lang
+        )
+    else:
+        series, any_series_truncated = _parse_data(
+            root, max_rows=constants.MAX_ROWS, legend=legend, lang=lang
+        )
     # Before the MAX_SERIES cut, so a member is not reported missing only
     # because its series fell past the cap.
     missing_note = await _missing_members_note(product_id, key, series, lang)
@@ -1139,6 +1320,8 @@ async def get_data(
         )
     if newer:
         notes.insert(0, newer)
+    if root is None:
+        notes.insert(0, _blocked_note(lang))
     fetched = ", ".join(f"{name}={value}" for name, value in params.items())
     return SdmxData(
         dataflow_id=dataflow_id,
@@ -1147,8 +1330,8 @@ async def get_data(
         row_count=row_count,
         series_total=series_total if series_total > constants.MAX_SERIES else None,
         provenance=make_provenance(
-            source="statcan-sdmx",
-            url=url,
+            source="statcan-sdmx" if root is not None else "statcan-wds",
+            url=source_url,
             cached=was_cached,
             schema_name="statcan.sdmx.SdmxData",
             coverage=(

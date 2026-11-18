@@ -53,13 +53,15 @@ from maplestats_mcp.modules.statcan.wds.schemas import (
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import (
+    CloudflareChallenge,
     DataLocked,
     InvalidInput,
     NotFound,
+    TooLarge,
     UpstreamError,
     UpstreamUnavailable,
 )
-from maplestats_mcp.shared.http import api_get, api_post
+from maplestats_mcp.shared.http import api_get, api_post, get_raw
 from maplestats_mcp.shared.json_utils import list_or_empty
 from maplestats_mcp.shared.rate_limiter import get_limiter
 
@@ -1534,6 +1536,80 @@ async def _check_members(
     return checked
 
 
+# StatCan announced on 2026-11-16 that it would stop serving full-table files to
+# automated clients; on 2026-11-18 the {cansim} maintainer reported them behind its
+# Cloudflare captcha, while from this project's cloud host the same day they still
+# downloaded. Which networks are blocked differs, so each link is checked when given.
+_FILE_NOTES = {
+    "blocked": (
+        (
+            "Statistics Canada answered this file's link with its captcha (a Cloudflare check "
+            "that only a person in a web browser can pass): since November 2026 it blocks "
+            "automated full-table downloads, so no script, package or MapleStats can fetch it. "
+            "Open download_url in a web browser, pass the check, and save the file in data/raw/ "
+            "under its own name; the scripts here then read that copy. For part of the table "
+            "without a browser, the WDS series tools still work: wds_get_data_from_cube_coord "
+            "(table and coordinates, up to 300 per call), wds_get_data_from_vectors, or "
+            "wds_get_data_by_reference_period_range for a date range."
+        ),
+        (
+            "Statistique Canada a répondu au lien de ce fichier par sa vérification anti-robot "
+            "(un contrôle Cloudflare que seule une personne dans un navigateur peut passer) : "
+            "depuis novembre 2026, il bloque les téléchargements automatisés de tableaux "
+            "complets, si bien qu'aucun script, paquet ni MapleStats ne peut le récupérer. "
+            "Ouvrez download_url dans un navigateur, passez la vérification et enregistrez le "
+            "fichier dans data/raw/ sous son propre nom ; les scripts fournis lisent alors cette "
+            "copie. Pour une partie du tableau sans navigateur, les outils de séries du WDS "
+            "fonctionnent toujours : wds_get_data_from_cube_coord (tableau et coordonnées, "
+            "jusqu'à 300 par appel), wds_get_data_from_vectors, ou "
+            "wds_get_data_by_reference_period_range pour une période."
+        ),
+    ),
+    "downloadable": (
+        (
+            "Statistics Canada announced in November 2026 that it is blocking automated "
+            "full-table downloads behind a captcha. This link answered a script just now, but "
+            "it may not from another network or later. If a script reports the captcha, open "
+            "download_url in a web browser, pass the check, and save the file in data/raw/; the "
+            "scripts here then read that copy."
+        ),
+        (
+            "Statistique Canada a annoncé en novembre 2026 qu'il bloque les téléchargements "
+            "automatisés de tableaux complets derrière une vérification anti-robot. Ce lien a "
+            "répondu à un script à l'instant, mais il peut ne plus le faire depuis un autre "
+            "réseau ou plus tard. Si un script signale la vérification, ouvrez download_url dans "
+            "un navigateur, passez-la et enregistrez le fichier dans data/raw/ ; les scripts "
+            "fournis lisent alors cette copie."
+        ),
+    ),
+}
+
+
+async def check_file(url: str) -> Literal["downloadable", "blocked", "not_checked"]:
+    """Whether StatCan serves `url` to a script now: its first bytes, or its captcha.
+
+    A Range request reads four bytes; a server that ignores Range and declares the
+    whole file is stopped by max_bytes before the body is read (TooLarge), which
+    still means the file was served. Anything else leaves the link unchecked.
+    """
+    try:
+        response = await get_raw(
+            url, headers={"Range": "bytes=0-3"}, timeout=20.0, max_bytes=64 * 1024
+        )
+    except CloudflareChallenge:
+        return "blocked"
+    except TooLarge:
+        return "downloadable"
+    except (httpx.HTTPError, UpstreamError, UpstreamUnavailable):
+        return "not_checked"
+    return "downloadable" if response.content[:2] == b"PK" else "not_checked"
+
+
+def _file_notes(check: str) -> list[str]:
+    note = _FILE_NOTES.get(check)
+    return [_m(*note)] if note else []
+
+
 async def get_full_table_download_csv(
     product_id: int | str,
     lang: str = "en",
@@ -1555,12 +1631,16 @@ async def get_full_table_download_csv(
     spec.summary = True
     scripts, _ = render_scripts(spec, "wds_get_full_table_download", ["python", "r"])
     data = await _get(method, path_suffix=f"/{pid}/{lang}")
+    download_url = _download_url(data, method)
+    check = await check_file(download_url)
     return FullTableDownloadLink(
         product_id=pid,
         format="csv",
         language=lang,
-        download_url=_download_url(data, method),
+        download_url=download_url,
         scripts=scripts,
+        file_check=check,
+        notes=_file_notes(check),
         provenance=make_provenance(
             source="statcan-wds",
             url=f"{constants.BASE_URL}{method}/{pid}/{lang}",
@@ -1580,11 +1660,15 @@ async def get_full_table_download_sdmx(product_id: int | str) -> FullTableDownlo
     pid = normalize_product_id(product_id)
     await _require_known_table(pid)
     data = await _get(method, path_suffix=f"/{pid}")
+    download_url = _download_url(data, method)
+    check = await check_file(download_url)
     return FullTableDownloadLink(
         product_id=pid,
         format="sdmx",
         language="en+fr",
-        download_url=_download_url(data, method),
+        download_url=download_url,
+        file_check=check,
+        notes=_file_notes(check),
         provenance=make_provenance(
             source="statcan-wds",
             url=f"{constants.BASE_URL}{method}/{pid}",

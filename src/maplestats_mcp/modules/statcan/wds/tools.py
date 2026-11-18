@@ -765,7 +765,12 @@ async def wds_get_full_table_download(
     short summary. For a large table, run the Python script and reason
     over its printout instead of pulling the rows into the conversation.
     `lang` picks the CSV language edition. An unknown table number,
-    dimension or member is an error, not a dead link.
+    dimension or member is an error, not a dead link. Since November 2026
+    StatCan blocks some automated full-table downloads with a captcha only
+    a person in a browser can pass: `file_check` says whether a script
+    could fetch the file just now, and `notes` say what to do when not
+    (download it in a browser into data/raw/, where the scripts read it;
+    or take part of the table with the wds_ series tools, which still work).
     Keywords: statcan, csv, sdmx, xml, download, full table, bulk,
     export, wds, Statistics Canada, vector column, join, reconcile,
     hundreds of series, offline, large table, summary script.

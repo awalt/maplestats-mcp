@@ -1558,3 +1558,28 @@ async def test_ircc_program_is_one_phrase_across_name_and_program():
     code = _render(spec)
     assert "contains('canadian experience class', literal=True)" in code["python"]
     assert "contains('canadian', literal=True)" not in code["python"]
+
+
+@pytest.mark.parametrize("kind", ["zip", "zip_csv", "csv"])
+def test_statcan_file_scripts_keep_a_copy_saved_past_the_captcha(kind):
+    # Since November 2026 StatCan answers some automated downloads with a captcha.
+    # A refused download must not overwrite a copy saved by hand, and must say how
+    # to get one; other publishers' downloads are unchanged.
+    from maplestats_mcp.modules.reproduce.spec import Spec
+
+    url = "https://www150.statcan.gc.ca/n1/pub/71m0001x/2021001/2026-10-CSV.zip"
+    spec = Spec(kind=kind, url=url, file_name="2026-10-CSV.zip", method="exact: test")
+    r, _ = RENDERERS["r"](spec, "statcan_pumf_list_zip")
+    python, _ = RENDERERS["python"](spec, "statcan_pumf_list_zip")
+    stata, _ = RENDERERS["stata"](spec, "statcan_pumf_list_zip")
+    assert "download_tmp <- tempfile()" in r and 'file.exists("data/raw/2026-10-CSV.zip")' in r
+    assert 'file.remove("data/raw/2026-10-CSV.zip")' not in r
+    ast.parse(python)
+    assert 'response.headers.get("cf-mitigated", "").lower() == "challenge"' in python
+    assert "if challenged and not raw_path.exists():" in python
+    # Stata runs each Python compound statement on its own: no if/else pair.
+    assert "if not challenged:" in stata and "\nelse:" not in stata
+
+    other = Spec(kind=kind, url="https://example.invalid/a.zip", file_name="a.zip", method="x")
+    assert "challenged" not in RENDERERS["python"](other, "x")[0]
+    assert "download_tmp" not in RENDERERS["r"](other, "x")[0]

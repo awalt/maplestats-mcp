@@ -763,6 +763,11 @@ Sources, by tool-name prefix:
   codebooks, weighted tables), statcan_lode_ (open databases:
   healthcare, schools, buildings, addresses, proximity), cimt_ (trade by
   HS commodity, partner, province, monthly from 1988).
+  Since November 2026 StatCan answers some automated requests (SDMX, CIMT
+  trade, catalogue and search pages, possibly full-table files) with a
+  captcha only a person in a browser can pass. An error or note naming it
+  is StatCan's block, not a MapleStats outage: tell the user so, and use
+  the route it names; wds_ still answers.
 - Provincial and territorial statistics agencies: bc_stats_ (BC Stats
   Excel tables), isq_ (Institut de la statistique du Quebec), nl_stats_
   (NL Statistics Agency workbooks), yukon_stats_ (Yukon Bureau of
