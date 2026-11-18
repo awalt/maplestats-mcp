@@ -7,7 +7,11 @@ the tool downloads a whole file and filters it itself (CER,
 GC InfoBase, CIHI, IRCC, StatCan indicators, PHAC Health Infobase in
 phac_infobase.py, IP Horizons), the tool parses HTML tables itself (CFIA
 in cfia.py), or a better
-native path exists (cansim for StatCan tables).
+native path exists (cansim's vector functions for WDS series).
+
+StatCan full-table zips get no script since November 2026 (StatCan blocks
+automated full-table downloads); reproduce/client.py refuses them through
+shared/challenge_notes.script_refusal.
 
 Each builder takes the tool's arguments and its result payload (the tool
 has already run) and returns a Spec.
@@ -47,34 +51,6 @@ def _suffix(args: dict[str, Any]) -> str:
 # StatCan --------------------------------------------------------------------
 
 
-def _get_cansim(dashed: str, language: str, pid: str, suffix: str) -> str:
-    """get_cansim, with what to do when StatCan's captcha stops it.
-
-    Since 2026-11-18 Statistics Canada answers automated full-table downloads with
-    a Cloudflare check only a person in a browser can pass, and get_cansim() fails
-    (reported by the {cansim} maintainer). The vector functions still work.
-    """
-    url = f"https://www150.statcan.gc.ca/n1/tbl/csv/{pid}-{suffix}.zip"
-    return (
-        "# Statistics Canada answers automated full-table downloads with a captcha\n"
-        "# (since November 2026) that only a person in a web browser can pass, which\n"
-        "# stops get_cansim(). The {cansim} maintainer publishes a workaround for\n"
-        "# interactive sessions (see github.com/mountainMath/cansim).\n"
-        "data <- tryCatch(\n"
-        f'  get_cansim("{dashed}"{language}),\n'
-        "  error = function(e) {\n"
-        "    stop(\n"
-        '      "get_cansim() could not download the table: ", conditionMessage(e), "\\n",\n'
-        '      "Statistics Canada now answers automated full-table downloads with a captcha. ",\n'
-        f'      "Open {url} in a web browser, pass the check, and read the saved file; ",\n'
-        '      "or use the {cansim} workaround in an interactive session.",\n'
-        "      call. = FALSE\n"
-        "    )\n"
-        "  }\n"
-        ")\n"
-    )
-
-
 def table_spec(product_id: Any, lang: str) -> Spec:
     pid = str(product_id).replace("-", "")[:8]
     if not pid.isdigit() or len(pid) != 8:
@@ -86,14 +62,12 @@ def table_spec(product_id: Any, lang: str) -> Spec:
         )
     suffix = "eng" if lang == "en" else "fra"
     dashed = f"{pid[:2]}-{pid[2:4]}-{pid[4:8]}-01"
-    language = ', language = "fr"' if lang == "fr" else ""
     return Spec(
         kind="zip_csv",
         url=f"https://www150.statcan.gc.ca/n1/tbl/csv/{pid}-{suffix}.zip",
         file_name=f"{pid}-{suffix}.zip",
         method="exact: full table from the product id",
         title=f"StatCan table {dashed}",
-        native={"r": Code(["cansim"], _get_cansim(dashed, language, pid, suffix))},
         notes=["The full table is downloaded; filter it to the rows the tool returned."],
         # French tables name their columns in French (VALEUR, IDENTIFICATEUR SCALAIRE).
         source="statcan_table" if lang == "en" else "statcan_table_fr",
@@ -260,10 +234,6 @@ def vector_spec(vector_ids: Any, latest_n: int) -> Spec:
         notes=["WDS returns one object per vector; values are under vectorDataPoint."],
         source="statcan_vectors",
     )
-
-
-async def _table(args: dict[str, Any], result: dict[str, Any]) -> Spec:
-    return table_spec(args["product_id"], str(args.get("lang", "en")))
 
 
 def sdmx_spec(data_url: str, args: dict[str, Any], title: str) -> Spec:
@@ -1261,13 +1231,17 @@ async def _vectors(args: dict[str, Any], result: dict[str, Any]) -> Spec:
 
 
 async def _cube_coord(args: dict[str, Any], result: dict[str, Any]) -> Spec:
-    """wds_get_data_from_cube_coord with a transform: the vectors the tool read
-    (one per coordinate, in `series` when several were asked for)."""
+    """wds_get_data_from_cube_coord: the vectors the tool read (one per coordinate,
+    in `series` when several were asked for), fetched through WDS.
+
+    Until 2026-11-18 the script downloaded the whole table's zip instead; StatCan
+    blocks automated full-table downloads since November 2026, while WDS answers.
+    """
     request = transform_request(args)
-    if request is None:
-        return await _table(args, result)
     latest_n = _count(args.get("latest_n", 12), "latest_n")
-    ids = [s["vector_id"] for s in _series_payloads(result)]
+    ids = [s["vector_id"] for s in _series_payloads(result) if s.get("vector_id")]
+    if request is None:
+        return vector_spec(ids, latest_n)
     return await _vectors_transformed(ids, latest_n, result, request)
 
 
@@ -1661,7 +1635,7 @@ BUILDERS: dict[str, Builder] = {
     "cfia_avian_influenza": _cfia_avian_influenza,
 }
 
-_ONLY_WITH_TRANSFORM = {"wds_get_data_from_cube_coord", "wds_get_data_by_reference_period_range"}
+_ONLY_WITH_TRANSFORM = {"wds_get_data_by_reference_period_range"}
 
 # Tools rebuilt from arguments alone, without running the tool first.
 ARGUMENT_ONLY = {
@@ -1703,16 +1677,13 @@ def _require_tool_name(tool: str) -> None:
 def builder_for(tool: str, args: dict[str, Any]) -> Builder | None:
     """The builder for a tool, including the product-id and PUMF families."""
     _require_tool_name(tool)
-    # Without a transform these two are reproduced as before: the full table
-    # for a coordinate, and the recorded request for a reference-period range.
+    # Without a transform, a reference-period range replays the recorded request.
     if tool in _ONLY_WITH_TRANSFORM and transform_request(args) is None:
-        if tool == "wds_get_data_from_cube_coord":
-            return _table
         return None
     if tool in BUILDERS:
         return BUILDERS[tool]
-    if "product_id" in args and tool.startswith(("wds_", "sdmx_")):
-        return _table
+    # Other wds_ tools replay the WDS request they made. They used to download the
+    # whole table's zip, which StatCan blocks for scripts since November 2026.
     if tool.startswith("statcan_pumf_") and str(args.get("url", "")).endswith(".zip"):
         return _pumf
     return None
@@ -1725,7 +1696,5 @@ def argument_only(tool: str, args: dict[str, Any]) -> bool:
     if tool == "sdmx_get_vector_data" and (args.get("start_period") or args.get("end_period")):
         return False  # the SDMX key comes from the tool's WDS lookup
     if tool in ARGUMENT_ONLY:
-        return True
-    if "product_id" in args and tool.startswith(("wds_", "sdmx_")):
         return True
     return tool.startswith("statcan_pumf_") and str(args.get("url", "")).endswith(".zip")

@@ -2911,10 +2911,11 @@ STATCAN_TABLES = Topic(
     ),
     (
         (
-            "wds_get_full_table_download gives a link, not rows, and a Python script that "
-            "downloads the file, keeps the members asked for and prints a summary: run it and "
-            "read that. A large table can hold hundreds of thousands of rows across every "
-            "geography and measure, so filter after downloading."
+            "wds_get_full_table_download gives a link for the user to open in a browser, not "
+            "rows and no script: since November 2026 StatCan blocks automated full-table "
+            "downloads with a captcha. For data a script can fetch, use the vector or "
+            "coordinate tools (up to 300 series per call); reproduce_code writes scripts for "
+            "those."
         ),
         (
             "The vector tools return every observation inline, several fields each: fine for a "

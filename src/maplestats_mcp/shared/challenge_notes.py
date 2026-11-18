@@ -28,6 +28,7 @@ day, so the notes say what to do when a path is challenged, not that it is.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 
 @dataclass(frozen=True)
@@ -98,13 +99,10 @@ NOTES: tuple[ChallengeNote, ...] = (
         "www150.statcan.gc.ca",
         ("/n1/tbl/", "/n1/delta/"),
         "This is a file download: open the link in a web browser, pass the check, and save "
-        "the file (scripts from wds_get_full_table_download read a copy saved in data/raw/). "
-        "For a part of the table, the wds_ series tools (by vector, or by table and "
+        "the file. For a part of the table, the wds_ series tools (by vector, or by table and "
         "coordinate) still work automatically.",
         "Il s'agit d'un téléchargement de fichier : ouvrez le lien dans un navigateur, "
-        "passez la vérification et enregistrez le fichier (les scripts de "
-        "wds_get_full_table_download lisent une copie enregistrée dans data/raw/). Pour une "
-        "partie du tableau, les outils de séries wds_ (par vecteur, ou par tableau et "
+        "passez la vérification et enregistrez le fichier. Pour une partie du tableau, les outils de séries wds_ (par vecteur, ou par tableau et "
         "coordonnée) fonctionnent toujours automatiquement.",
     ),
     ChallengeNote(
@@ -169,3 +167,51 @@ def note_for(host: str, path: str) -> tuple[str, str] | None:
     parts_en = [p for p in (publisher[0] if publisher else None, specific and specific.en) if p]
     parts_fr = [p for p in (publisher[1] if publisher else None, specific and specific.fr) if p]
     return " ".join(parts_en), " ".join(parts_fr)
+
+
+# Where reproduce_code writes no script: services StatCan blocks for automated
+# clients (live 2026-11-18), and the full-table files it announced it would block
+# (2026-11-16; already blocked on some networks). A script there would fail when
+# run, so the user is told why instead. WDS (/t1/wds/rest/), the Delta File,
+# PUMF and LODE zips, and The Daily's archive JSON still get scripts.
+_NO_SCRIPT_PREFIXES: dict[str, tuple[str, ...]] = {
+    "www150.statcan.gc.ca": (
+        "/t1/wds/sdmx/",
+        "/t1/cimt/",
+        "/n1/rss/",
+        "/n1/tbl/",
+        "/n1/en/",
+        "/n1/fr/",
+    ),
+    "www12.statcan.gc.ca": ("",),
+}
+
+_NO_SCRIPT_EN = (
+    "No script: Statistics Canada blocks automated access to {url} (since November 2026 "
+    "it answers scripts with a captcha only a person in a web browser can pass), so a "
+    "script would fail when run. Scripts are still written for StatCan's Web Data "
+    "Service: reproduce wds_get_data_from_vectors or wds_get_data_from_cube_coord for "
+    "the same series."
+)
+_NO_SCRIPT_FR = (
+    "Aucun script : Statistique Canada bloque l'accès automatisé à {url} (depuis novembre "
+    "2026, il répond aux scripts par une vérification anti-robot que seule une personne "
+    "dans un navigateur peut passer), si bien qu'un script échouerait. Des scripts sont "
+    "toujours écrits pour le Service de données Web de StatCan : reproduisez "
+    "wds_get_data_from_vectors ou wds_get_data_from_cube_coord pour les mêmes séries."
+)
+
+
+def script_refusal(url: str) -> tuple[str, str] | None:
+    """(English, French) saying why no script is written for `url`, or None when one can be.
+
+    A /n1/pub/ page is blocked but its .zip files are not, so only pages count there.
+    """
+    parsed = urlsplit(url)
+    host, path = parsed.hostname or "", parsed.path
+    blocked = any(path.startswith(p) for p in _NO_SCRIPT_PREFIXES.get(host, ()))
+    if host == "www150.statcan.gc.ca" and path.startswith("/n1/pub/"):
+        blocked = not path.lower().endswith(".zip")
+    if not blocked:
+        return None
+    return _NO_SCRIPT_EN.format(url=url), _NO_SCRIPT_FR.format(url=url)

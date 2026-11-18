@@ -247,44 +247,31 @@ def _statcan_file(spec: Spec) -> bool:
     """A plain GET of a Statistics Canada file, which StatCan may answer with its captcha.
 
     Since November 2026 StatCan answers some automated requests with a Cloudflare
-    check only a person in a browser can pass (its full-table zips among them, as
-    reported on 2026-11-18). Scripts for these files keep a copy the user saved by
-    hand in data/raw/ and say how to get one, instead of failing on a bad zip.
+    check only a person in a browser can pass. reproduce_code writes no script for
+    the services it blocks (shared/challenge_notes.py); for the files that still
+    download (PUMF and LODE zips, the Delta File), the script stops with a plain
+    message if StatCan starts answering with the captcha, instead of failing later
+    on a "bad zip" built from the captcha page.
     """
     host = urlparse(spec.url).hostname or ""
     return (host == "statcan.gc.ca" or host.endswith(".statcan.gc.ca")) and not _needs_request(spec)
 
 
+_CAPTCHA_MESSAGE = (
+    "Statistics Canada answered with its captcha instead of the file: since November 2026 "
+    "it blocks some automated downloads, and a script cannot pass the check."
+)
+
+
 def _r_download(spec: Spec, path: str) -> str:
     """download.file for a plain GET; httr2 when the request needs a body or headers."""
     if _statcan_file(spec):
-        # Into a temporary file first, so a refused download never overwrites a copy
-        # the user saved by hand.
         return (
-            "# Statistics Canada answers some automated downloads with a captcha (since\n"
-            "# November 2026) that only a person in a web browser can pass. If it does,\n"
-            "# this script reads a copy saved by hand at the path below.\n"
-            "download_tmp <- tempfile()\n"
-            "downloaded <- tryCatch(\n"
-            f'  {{ download.file({_quote(spec.url)}, download_tmp, mode = "wb"); TRUE }},\n'
-            "  error = function(e) FALSE,\n"
-            "  warning = function(w) FALSE\n"
+            "tryCatch(\n"
+            f'  download.file({_quote(spec.url)}, "{path}", mode = "wb"),\n'
+            f"  error = function(e) stop({_quote(_CAPTCHA_MESSAGE + ' ')}, conditionMessage(e), "
+            "call. = FALSE)\n"
             ")\n"
-            "if (downloaded) {\n"
-            f'  file.copy(download_tmp, "{path}", overwrite = TRUE)\n'
-            f'}} else if (file.exists("{path}")) {{\n'
-            '  message("Statistics Canada refused the download; reading the copy saved at '
-            f'{path}")\n'
-            "} else {\n"
-            "  stop(\n"
-            '    "Statistics Canada refused the download (it answers some automated downloads ",\n'
-            '    "with a captcha that only a person in a web browser can pass). Open ",\n'
-            f"    {_quote(spec.url)},\n"
-            f'    " in a browser, pass the check, save the file as {path}",\n'
-            '    " and run this script again.",\n'
-            "    call. = FALSE\n"
-            "  )\n"
-            "}\n"
         )
     if not _needs_request(spec):
         return f'download.file({_quote(spec.url)}, "{path}", mode = "wb")\n'
@@ -349,9 +336,8 @@ def _r_read(spec: Spec) -> tuple[list[str], str]:
         code = (
             f"{download}"
             f'zip::unzip("{path}", exdir = "{folder}")\n'
-            # A StatCan file is kept: it may be the copy saved by hand past the captcha.
-            + ("\n" if _statcan_file(spec) else f'file.remove("{path}")\n\n')
-            + f'data_files <- list.files("{folder}", full.names = TRUE, recursive = TRUE)\n'
+            f'file.remove("{path}")\n\n'
+            f'data_files <- list.files("{folder}", full.names = TRUE, recursive = TRUE)\n'
         )
         if spec.kind == "zip":
             return ["zip", *fetch_packages], code
@@ -651,26 +637,11 @@ def _py_fetch(spec: Spec) -> str:
         ") as client:\n"
         f"    response = {call}\n"
         + (
-            # Checked before writing, so a refused download never overwrites a copy
-            # the user saved by hand.
-            "# Statistics Canada answers some automated downloads with a captcha (since\n"
-            "# November 2026) that only a person in a web browser can pass. If it does,\n"
-            "# this script reads a copy saved by hand at raw_path.\n"
-            # Separate ifs, no else: Stata runs each compound statement on its own.
-            'challenged = response.headers.get("cf-mitigated", "").lower() == "challenge"\n'
-            "if challenged and not raw_path.exists():\n"
-            "    raise RuntimeError(\n"
-            '        "Statistics Canada answered with its captcha instead of the file. Open "\n'
-            f"        + {spec.url!r}\n"
-            '        + " in a web browser, pass the check, save the file as "\n'
-            "        + str(raw_path)\n"
-            '        + " and run this script again."\n'
-            "    )\n"
-            "if challenged:\n"
-            '    print("Statistics Canada answered with its captcha; reading the copy saved at", raw_path)\n'
-            "if not challenged:\n"
-            "    response.raise_for_status()\n"
-            "    raw_path.write_bytes(response.content)\n"
+            # Checked before writing, so the captcha page is never saved as the file.
+            'if response.headers.get("cf-mitigated", "").lower() == "challenge":\n'
+            f"    raise RuntimeError({_CAPTCHA_MESSAGE!r})\n"
+            "response.raise_for_status()\n"
+            "raw_path.write_bytes(response.content)\n"
             if _statcan_file(spec)
             else "response.raise_for_status()\nraw_path.write_bytes(response.content)\n"
         )

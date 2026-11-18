@@ -53,15 +53,28 @@ from the {cansim} maintainer's.
   is blocked, for `subject="all"`: titles, dates and article links, with the
   reference period as the summary. One subject still errors, and the error
   points to `subject="all"` and `statcan_daily_search_archive`.
-- **`wds_get_full_table_download` checks its link.** It asks for the file's
-  first four bytes and returns `file_check` (`downloadable`, `blocked` or
-  `not_checked`) and `notes`: how to save the file from a browser into
-  `data/raw/`, and which `wds_` tools give part of the table without one.
-- **Scripts for StatCan files keep working with a saved copy.** Python, R and
-  Stata scripts that download a StatCan file check for the captcha before
-  writing, so a refused download never overwrites a copy saved by hand. They
-  read that copy, or stop with the link and the steps to get one. The R script
-  for a full table wraps `get_cansim()` with the same message.
+- **Scripts only where a script can work.** `reproduce_code` writes scripts
+  for StatCan's Web Data Service (vectors, coordinates, reference-period
+  ranges), which StatCan still serves. `wds_get_data_from_cube_coord` and the
+  other `wds_` tools now replay their WDS request; they used to download the
+  whole table's zip. For a blocked service (SDMX, CIMT, RSS feeds, catalogue
+  pages, www12) and for full-table zips, it writes no script and says why
+  (`shared/challenge_notes.script_refusal`). Scripts never rely on a file
+  saved by hand.
+- **`wds_get_full_table_download` gives the link for a browser, with no
+  script.** StatCan announced it blocks automated full-table downloads, so a
+  script built on the file could stop working at any time, even where it
+  downloads today. `file_check` says what the link served just now, and
+  `notes` name the WDS tools a script can use. Its `members`, `start_period`
+  and `end_period` arguments, which only filtered the scripts, are gone.
+- **No `get_cansim()`.** The R scripts used it only for full tables. The
+  {cansim} vector functions (`get_cansim_vector_for_latest_periods`) read WDS
+  and still work, so the R vector scripts keep them.
+- **Scripts that download a StatCan file that still works** (PUMF and LODE
+  zips, the Delta File) stop with a plain message if StatCan answers with the
+  captcha, instead of failing later on a "bad zip".
+- **Scripts name themselves.** They send "MapleStats MCP reproduction script"
+  as their User-Agent, never a browser-like one.
 
 ## What has no workaround
 
@@ -72,5 +85,5 @@ from the {cansim} maintainer's.
   `statcan_pumf_search`, `statcan_pumf_list_files`, `statcan_lode_list_databases`).
   Tables are still found through `wds_search_cubes`. PUMF and LODE files still
   download when their link is known.
-- **Full tables, where the zip is blocked.** A person downloads the file in a
-  browser. The `wds_` series tools give part of a table automatically.
+- **Full tables.** A person downloads the file in a browser. The `wds_`
+  series tools give up to 300 series per call automatically.

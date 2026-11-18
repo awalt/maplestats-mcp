@@ -168,8 +168,9 @@ MODULE_DESCRIPTION = (
     "(the sdmx_ tools then read the same series from WDS), the CIMT trade "
     "API, The Daily's RSS feeds (statcan_daily_get_releases then reads the "
     "release archive), catalogue, search and publication pages, and on some "
-    "networks the full-table files (wds_get_full_table_download checks its "
-    "link and says what to do). Errors from a blocked page say so and name "
+    "networks the full-table files (wds_get_full_table_download gives the "
+    "link for a browser, with no script). reproduce_code writes no script for "
+    "a blocked service; WDS scripts still work. Errors from a blocked page say so and name "
     "the closest route that still works."
 )
 MODULE_DESCRIPTION_FR = (
@@ -359,7 +360,9 @@ MODULE_DESCRIPTION_FR = (
     "CICM, les fils RSS du Quotidien (statcan_daily_get_releases lit alors "
     "l'archive des diffusions), les pages de catalogue, de recherche et de "
     "publication, et sur certains réseaux les fichiers de tableaux complets "
-    "(wds_get_full_table_download vérifie son lien et dit quoi faire). Les "
+    "(wds_get_full_table_download donne le lien pour un navigateur, sans "
+    "script). reproduce_code n'écrit pas de script pour un service bloqué ; "
+    "les scripts du WDS fonctionnent toujours. Les "
     "erreurs d'une page bloquée le disent et nomment l'accès le plus proche "
     "qui fonctionne encore."
 )

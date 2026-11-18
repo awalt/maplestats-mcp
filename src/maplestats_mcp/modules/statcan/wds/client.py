@@ -1477,109 +1477,46 @@ def _download_url(body: Any, method: str) -> str:
     return str(_unwrap_one(body, method)) if isinstance(body, dict) else str(body)
 
 
-async def _check_members(
-    pid: int, members: dict[str, list[str]], lang: str
-) -> dict[str, list[str]]:
-    """The members keyed by dimension name and spelled as the CSV spells them.
-
-    A dimension the table lacks would leave the script filtering a column that
-    does not exist. A member is checked, and its spelling taken from the
-    metadata (the script matches case but not accents), only when the metadata
-    lists the whole dimension: it is capped at MEMBER_LIMIT_MAX members.
-    """
-    metadata = await get_cube_metadata(pid, member_limit=constants.MEMBER_LIMIT_MAX)
-    checked: dict[str, list[str]] = {}
-    for name, given in members.items():
-        values: list[str] = [given] if isinstance(given, str) else list(given)
-        wanted = _fold(name.strip())
-        dimension = next(
-            (
-                d
-                for d in metadata.dimensions
-                if wanted in (_fold(d.dimension_name_en), _fold(d.dimension_name_fr))
-                or (d.dimension_position_id == 1 and wanted == "geo")
-            ),
-            None,
-        )
-        if dimension is None:
-            known = ", ".join(
-                d.dimension_name_en if lang == "en" else d.dimension_name_fr
-                for d in metadata.dimensions
-            )
-            raise InvalidInput(
-                _m(
-                    f"Table {pid} has no dimension {name!r}. Its dimensions: {known}.",
-                    f"Le tableau {pid} n'a pas de dimension {name!r}. Ses dimensions : {known}.",
-                )
-            )
-        if dimension.member_count == len(dimension.members):
-            spelled = {
-                _fold(label.strip()): label
-                for m in dimension.members
-                for label in [m.member_name_en if lang == "en" else m.member_name_fr]
-            }
-            unknown = [v for v in values if _fold(v.strip()) not in spelled]
-            values = [spelled.get(_fold(v.strip()), v) for v in values]
-            if unknown:
-                raise InvalidInput(
-                    _m(
-                        f"{', '.join(map(repr, unknown))} is not a member of {name!r} in table "
-                        f"{pid}; wds_get_cube_metadata lists the members.",
-                        f"{', '.join(map(repr, unknown))} n'est pas un membre de {name!r} dans le "
-                        f"tableau {pid} ; wds_get_cube_metadata donne la liste des membres.",
-                    )
-                )
-        # The CSV names its columns after the dimensions, in the file's
-        # language, except the geography, which is GEO (GÉO in French).
-        column = dimension.dimension_name_en if lang == "en" else dimension.dimension_name_fr
-        checked[column] = values
-    return checked
-
-
 # StatCan announced on 2026-11-16 that it would stop serving full-table files to
 # automated clients; on 2026-11-18 the {cansim} maintainer reported them behind its
 # Cloudflare captcha, while from this project's cloud host the same day they still
 # downloaded. Which networks are blocked differs, so each link is checked when given.
+_NO_SCRIPT = (
+    (
+        "No script is given for a full table: Statistics Canada announced in November 2026 "
+        "that it blocks automated full-table downloads with a captcha (a Cloudflare check "
+        "that only a person in a web browser can pass), so a script that downloads this file "
+        "can stop working at any time. download_url is for a person to open in a browser. "
+        "For data a script can fetch, use the WDS series tools, which StatCan still serves: "
+        "wds_get_data_from_cube_coord (table and coordinates, up to 300 per call), "
+        "wds_get_data_from_vectors, or wds_get_data_by_reference_period_range; "
+        "reproduce_code writes scripts for those."
+    ),
+    (
+        "Aucun script n'est fourni pour un tableau complet : Statistique Canada a annoncé en "
+        "novembre 2026 qu'il bloque les téléchargements automatisés de tableaux complets par "
+        "une vérification anti-robot (un contrôle Cloudflare que seule une personne dans un "
+        "navigateur peut passer) ; un script qui télécharge ce fichier peut donc cesser de "
+        "fonctionner à tout moment. download_url sert à une personne, dans un navigateur. "
+        "Pour des données qu'un script peut récupérer, utilisez les outils de séries du WDS, "
+        "que StatCan sert toujours : wds_get_data_from_cube_coord (tableau et coordonnées, "
+        "jusqu'à 300 par appel), wds_get_data_from_vectors ou "
+        "wds_get_data_by_reference_period_range ; reproduce_code écrit des scripts pour ceux-ci."
+    ),
+)
 _FILE_NOTES = {
     "blocked": (
-        (
-            "Statistics Canada answered this file's link with its captcha (a Cloudflare check "
-            "that only a person in a web browser can pass): since November 2026 it blocks "
-            "automated full-table downloads, so no script, package or MapleStats can fetch it. "
-            "Open download_url in a web browser, pass the check, and save the file in data/raw/ "
-            "under its own name; the scripts here then read that copy. For part of the table "
-            "without a browser, the WDS series tools still work: wds_get_data_from_cube_coord "
-            "(table and coordinates, up to 300 per call), wds_get_data_from_vectors, or "
-            "wds_get_data_by_reference_period_range for a date range."
-        ),
-        (
-            "Statistique Canada a répondu au lien de ce fichier par sa vérification anti-robot "
-            "(un contrôle Cloudflare que seule une personne dans un navigateur peut passer) : "
-            "depuis novembre 2026, il bloque les téléchargements automatisés de tableaux "
-            "complets, si bien qu'aucun script, paquet ni MapleStats ne peut le récupérer. "
-            "Ouvrez download_url dans un navigateur, passez la vérification et enregistrez le "
-            "fichier dans data/raw/ sous son propre nom ; les scripts fournis lisent alors cette "
-            "copie. Pour une partie du tableau sans navigateur, les outils de séries du WDS "
-            "fonctionnent toujours : wds_get_data_from_cube_coord (tableau et coordonnées, "
-            "jusqu'à 300 par appel), wds_get_data_from_vectors, ou "
-            "wds_get_data_by_reference_period_range pour une période."
-        ),
+        "Just now this link answered MapleStats with the captcha, not the file.",
+        "À l'instant, ce lien a répondu à MapleStats par la vérification, et non par le fichier.",
     ),
     "downloadable": (
         (
-            "Statistics Canada announced in November 2026 that it is blocking automated "
-            "full-table downloads behind a captcha. This link answered a script just now, but "
-            "it may not from another network or later. If a script reports the captcha, open "
-            "download_url in a web browser, pass the check, and save the file in data/raw/; the "
-            "scripts here then read that copy."
+            "Just now this link still served the file to MapleStats, but that can differ by "
+            "network and change without notice."
         ),
         (
-            "Statistique Canada a annoncé en novembre 2026 qu'il bloque les téléchargements "
-            "automatisés de tableaux complets derrière une vérification anti-robot. Ce lien a "
-            "répondu à un script à l'instant, mais il peut ne plus le faire depuis un autre "
-            "réseau ou plus tard. Si un script signale la vérification, ouvrez download_url dans "
-            "un navigateur, passez-la et enregistrez le fichier dans data/raw/ ; les scripts "
-            "fournis lisent alors cette copie."
+            "À l'instant, ce lien servait encore le fichier à MapleStats, mais cela peut varier "
+            "selon le réseau et changer sans préavis."
         ),
     ),
 }
@@ -1607,29 +1544,15 @@ async def check_file(url: str) -> Literal["downloadable", "blocked", "not_checke
 
 def _file_notes(check: str) -> list[str]:
     note = _FILE_NOTES.get(check)
-    return [_m(*note)] if note else []
+    return [_m(*_NO_SCRIPT), *([_m(*note)] if note else [])]
 
 
 async def get_full_table_download_csv(
-    product_id: int | str,
-    lang: str = "en",
-    members: dict[str, list[str]] | None = None,
-    start_period: str | None = None,
-    end_period: str | None = None,
+    product_id: int | str, lang: str = "en"
 ) -> FullTableDownloadLink:
-    # Lazy import: reproduce's builders reach other modules' code at import.
-    from maplestats_mcp.modules.reproduce.builders import full_table_spec
-    from maplestats_mcp.modules.reproduce.client import render_scripts
-
     method = "getFullTableDownloadCSV"
     pid = normalize_product_id(product_id)
     await _require_known_table(pid)
-    if members:
-        members = await _check_members(pid, members, lang)
-    # Built before the request so a bad period fails without a WDS call.
-    spec = full_table_spec(pid, lang, members, start_period, end_period)
-    spec.summary = True
-    scripts, _ = render_scripts(spec, "wds_get_full_table_download", ["python", "r"])
     data = await _get(method, path_suffix=f"/{pid}/{lang}")
     download_url = _download_url(data, method)
     check = await check_file(download_url)
@@ -1638,7 +1561,6 @@ async def get_full_table_download_csv(
         format="csv",
         language=lang,
         download_url=download_url,
-        scripts=scripts,
         file_check=check,
         notes=_file_notes(check),
         provenance=make_provenance(

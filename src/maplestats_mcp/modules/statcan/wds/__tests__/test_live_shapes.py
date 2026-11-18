@@ -284,10 +284,10 @@ async def test_download_link_for_a_known_table(httpx_mock):
     # Live 2026-11-18 from a cloud host: the zip still downloads, but StatCan has
     # announced the block, so the note says what to do if a script meets it.
     assert link.file_check == "downloadable"
-    assert "captcha" in link.notes[0] and "data/raw/" in link.notes[0]
+    assert "No script" in link.notes[0] and "still served the file" in link.notes[1]
 
 
-async def test_download_link_behind_statcans_captcha_says_how_to_get_the_file(
+async def test_download_link_behind_statcans_captcha_says_why_there_is_no_script(
     httpx_mock, cloudflare_challenge
 ):
     # Reported 2026-11-18 by the {cansim} maintainer: full-table zips answer with
@@ -305,11 +305,8 @@ async def test_download_link_behind_statcans_captcha_says_how_to_get_the_file(
     )
     link = await client.get_full_table_download_csv("18-10-0004-01")
     assert link.file_check == "blocked"
-    assert "web browser" in link.notes[0] and "wds_get_data_from_cube_coord" in link.notes[0]
-    # The scripts read a copy saved by hand, and say how to get one.
-    python, r = (s.code for s in link.scripts)
-    assert 'response.headers.get("cf-mitigated"' in python and "raw_path.exists()" in python
-    assert "get_cansim() could not download the table" in r
+    assert "No script" in link.notes[0] and "wds_get_data_from_cube_coord" in link.notes[0]
+    assert "captcha, not the file" in link.notes[1]
 
 
 async def test_download_link_check_that_fails_leaves_the_link_unchecked(httpx_mock):
@@ -327,7 +324,7 @@ async def test_download_link_check_that_fails_leaves_the_link_unchecked(httpx_mo
         is_reusable=True,
     )
     link = await client.get_full_table_download_csv("18-10-0004-01")
-    assert link.file_check == "not_checked" and link.notes == []
+    assert link.file_check == "not_checked" and len(link.notes) == 1
 
 
 async def test_download_link_for_a_bulk_only_real_time_table(httpx_mock):
