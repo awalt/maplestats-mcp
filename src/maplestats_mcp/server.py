@@ -721,9 +721,10 @@ for every field and the full provenance.
 For a French question, pass lang='fr' to plan_query and every tool.
 For a handful of series use the vector tools (every observation inline);
 for averages, sums or rankings over a few series, wds_query_series (where the
-server offers it; off over HTTP by default) runs SQL server-side. For a whole StatCan table, or hundreds of series, use
-wds_get_full_table_download (a CSV link, not the rows) and offer the Python
-script it returns; run it only if the user agrees.
+server offers it; off over HTTP by default) runs SQL server-side. For hundreds of
+series, batch the vector or coordinate tools (up to 300 per call). For a whole
+StatCan table, wds_get_full_table_download gives a CSV link for the user to
+open in a browser, with no script: StatCan blocks automated full-table downloads.
 Cite every figure you report: a StatCan series carries context.citation
 (table, vector, release date) to quote with each value's reference period;
 other results name their source in provenance. Keep StatCan quality flags
@@ -763,6 +764,11 @@ Sources, by tool-name prefix:
   codebooks, weighted tables), statcan_lode_ (open databases:
   healthcare, schools, buildings, addresses, proximity), cimt_ (trade by
   HS commodity, partner, province, monthly from 1988).
+  Since November 2026 StatCan answers some automated requests (SDMX, CIMT
+  trade, catalogue and search pages, possibly full-table files) with a
+  captcha only a person in a browser can pass. An error or note naming it
+  is StatCan's block, not a MapleStats outage: tell the user so, and use
+  the route it names; wds_ still answers.
 - Provincial and territorial statistics agencies: bc_stats_ (BC Stats
   Excel tables), isq_ (Institut de la statistique du Quebec), nl_stats_
   (NL Statistics Agency workbooks), yukon_stats_ (Yukon Bureau of

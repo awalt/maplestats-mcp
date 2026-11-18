@@ -132,6 +132,48 @@ async def test_cloudflare_challenge_is_unavailable_not_a_403(httpx_mock, cloudfl
     assert len(httpx_mock.get_requests()) == 1
 
 
+@pytest.mark.parametrize(
+    ("url", "route"),
+    [
+        ("https://www150.statcan.gc.ca/t1/wds/sdmx/statcan/rest/data/DF_1/1", "switch to WDS"),
+        ("https://www150.statcan.gc.ca/t1/cimt/rest/getReport/x", "12-10-0011-01"),
+        ("https://www150.statcan.gc.ca/n1/tbl/csv/18100004-eng.zip", "open the link in a web"),
+        ("https://www150.statcan.gc.ca/n1/rss/dai-quo/0-eng.atom", "subject='all'"),
+        ("https://www150.statcan.gc.ca/n1/en/type/data?text=x", "wds_search_cubes"),
+        ("https://www12.statcan.gc.ca/census-recensement/x", "statcan_census_profile_"),
+    ],
+)
+async def test_a_statcan_challenge_explains_the_change_and_the_route_left(
+    httpx_mock, cloudflare_challenge, url, route
+):
+    # Live 2026-11-18: StatCan challenges these paths of www150, not WDS.
+    httpx_mock.add_response(url=url, **cloudflare_challenge)
+    with pytest.raises(CloudflareChallenge) as raised:
+        await get_raw(url)
+    message = str(raised.value)
+    assert "Statistics Canada started putting parts of its website behind this check" in message
+    assert "wds_ tools" in message and route in message
+
+
+async def test_a_statcan_challenge_is_explained_in_french(httpx_mock, cloudflare_challenge):
+    url = "https://www150.statcan.gc.ca/t1/cimt/rest/getReport/x"
+    httpx_mock.add_response(url=url, **cloudflare_challenge)
+    token = set_call_lang("fr")
+    try:
+        with pytest.raises(CloudflareChallenge, match="changement de StatCan") as raised:
+            await get_raw(url)
+    finally:
+        reset_call_lang(token)
+    assert "12-10-0011-01" in str(raised.value)
+
+
+async def test_other_publishers_get_no_statcan_note(httpx_mock, cloudflare_challenge):
+    httpx_mock.add_response(url="https://example.invalid/x", **cloudflare_challenge)
+    with pytest.raises(CloudflareChallenge) as raised:
+        await get_raw("https://example.invalid/x")
+    assert "Statistics Canada" not in str(raised.value)
+
+
 async def test_cloudflare_challenge_is_recognised_on_every_request_helper(
     httpx_mock, cloudflare_challenge
 ):

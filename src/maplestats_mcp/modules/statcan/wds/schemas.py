@@ -13,7 +13,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from maplestats_mcp.modules.reproduce.schemas import Script
 from maplestats_mcp.shared.models import Provenance
 from maplestats_mcp.shared.transform import TransformedSeries
 
@@ -468,12 +467,18 @@ class FullTableDownloadLink(BaseModel):
     format: str  # "csv" or "sdmx"
     language: str  # "en" or "fr"
     download_url: str
-    scripts: list[Script] = Field(
+    file_check: Literal["downloadable", "blocked", "not_checked"] = Field(
+        default="not_checked",
+        description="What StatCan answered when MapleStats asked for the file's first bytes just "
+        "now: 'downloadable' (the file came back), 'blocked' (StatCan's captcha, which only a "
+        "person in a web browser can pass) or 'not_checked'. Either way no script relies on "
+        "the file: StatCan announced in November 2026 that it blocks automated full-table "
+        "downloads.",
+    )
+    notes: list[str] = Field(
         default_factory=list,
-        description="CSV only: Python and R scripts that download the zipped CSV to "
-        "data/raw/, keep the members and periods asked for, and print a short summary "
-        "(size, each column's values, the first and last rows) instead of the rows. Run "
-        "one and read its output rather than fetching the table's rows into the conversation.",
+        description="Why no script is given, and which WDS tools a script can still use. "
+        "Pass these on to the user.",
     )
     provenance: Provenance
 

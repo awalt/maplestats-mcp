@@ -50,7 +50,7 @@ from tenacity import (
 )
 
 from maplestats_mcp import __version__
-from maplestats_mcp.shared import upstream_wait
+from maplestats_mcp.shared import challenge_notes, upstream_wait
 from maplestats_mcp.shared.breaker import BREAKER, is_failure_status, one_call
 from maplestats_mcp.shared.errors import CloudflareChallenge, TooLarge
 from maplestats_mcp.shared.fr_typography import call_error
@@ -347,16 +347,18 @@ def raise_if_cloudflare_challenge(response: httpx.Response) -> None:
         # BreakerClient counted the challenges that carry Cf-Mitigated already.
         if response.headers.get("cf-mitigated", "").lower() != "challenge":
             BREAKER.record_failure(host, "cloudflare")
+        # The publisher's own context and the closest route still open, when known.
+        note = challenge_notes.note_for(host, response.request.url.path)
         raise call_error(
             CloudflareChallenge,
             f"{host} is behind a Cloudflare bot challenge (HTTP {response.status_code}, "
             "Cf-Mitigated: challenge) that automated clients cannot pass, so this "
             "service is unavailable from MapleStats until its publisher lifts it. MapleStats "
-            "does not try to bypass it.",
+            "does not try to bypass it." + (f" {note[0]}" if note else ""),
             f"{host} est protégé par un défi anti-robot Cloudflare (HTTP {response.status_code}, "
             "Cf-Mitigated : challenge) que les clients automatisés ne peuvent pas franchir ; ce "
             "service est donc indisponible depuis MapleStats tant que son éditeur ne le "
-            "lève pas. MapleStats n'essaie pas de le contourner.",
+            "lève pas. MapleStats n'essaie pas de le contourner." + (f" {note[1]}" if note else ""),
         )
 
 

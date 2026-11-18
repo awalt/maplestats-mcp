@@ -280,22 +280,11 @@ async def main() -> int:
     ok &= await raises(
         NotFound, "unknown table has no download", client.get_full_table_download_csv(99999999)
     )
-    # The summary scripts: members checked against the metadata, spelled as the
-    # French CSV spells them, and a member the table lacks refused.
-    filtered = await client.get_full_table_download_csv(
-        "34-10-0130", "fr", members={"geo": ["Montreal, Quebec"]}, start_period="2020"
-    )
-    python = filtered.scripts[0].code if filtered.scripts else ""
+    # No script for a full table (StatCan blocks automated full-table downloads);
+    # the notes say why and name the WDS tools a script can use.
     ok &= check(
-        [s.language for s in filtered.scripts] == ["python", "r"]
-        and "'montréal, québec'," in python
-        and "4. Summarize" in python,
-        "summary scripts keep the members asked for",
-    )
-    ok &= await raises(
-        InvalidInput,
-        "a member the table lacks is refused",
-        client.get_full_table_download_csv("34-10-0130", members={"Geography": ["Atlantis"]}),
+        bool(csv.notes) and "wds_get_data_from_cube_coord" in csv.notes[0],
+        "full-table notes say why there is no script",
     )
 
     # wds_get_code_sets: capped, one category, filter.
