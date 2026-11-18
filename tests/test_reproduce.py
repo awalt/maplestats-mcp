@@ -1583,3 +1583,15 @@ def test_statcan_file_scripts_keep_a_copy_saved_past_the_captcha(kind):
     other = Spec(kind=kind, url="https://example.invalid/a.zip", file_name="a.zip", method="x")
     assert "challenged" not in RENDERERS["python"](other, "x")[0]
     assert "download_tmp" not in RENDERERS["r"](other, "x")[0]
+
+
+def test_scripts_name_themselves_and_never_pose_as_a_browser():
+    # The project owner asked (2026-11-18) that no code look like an attempt to get
+    # past a publisher's bot check.
+    from maplestats_mcp.modules.reproduce.render import SCRIPT_USER_AGENT
+    from maplestats_mcp.modules.reproduce.spec import Spec
+
+    spec = Spec(kind="csv", url="https://example.invalid/a.csv", file_name="a.csv", method="x")
+    python, _ = RENDERERS["python"](spec, "x")
+    assert f'"User-Agent": "{SCRIPT_USER_AGENT}"' in python
+    assert "Mozilla" not in python and "MapleStats" in SCRIPT_USER_AGENT

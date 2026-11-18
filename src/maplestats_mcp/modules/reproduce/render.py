@@ -614,6 +614,22 @@ def _py_filter(item: Filter) -> str:
     return f"{column} {symbol} {item.value!r}"
 
 
+# What a generated script tells a server it is: MapleStats' own name and address, the
+# same as the CFIA scripts (reproduce/cfia.py). Scripts never pose as a web browser.
+SCRIPT_USER_AGENT = (
+    "MapleStats MCP reproduction script (https://github.com/dsanchezp18/maplestats-mcp)"
+)
+
+# NOT USED. Kept only as a record, for the project owner to decide on later.
+# Until 2026-11-18 the Python scripts sent this browser-like User-Agent, added
+# because some government file servers answer 403 to httpx's default one. Since
+# Statistics Canada began blocking automated clients with a captcha (November
+# 2026), the owner asked that no code look like an attempt to get past such a
+# block, so scripts send SCRIPT_USER_AGENT instead. If a server is found that
+# refuses SCRIPT_USER_AGENT but accepts this, record it here before deciding.
+_RETIRED_BROWSER_LIKE_USER_AGENT = "Mozilla/5.0 (compatible; research script)"
+
+
 def _py_fetch(spec: Spec) -> str:
     # http2=True is required: StatCan drops TLS connections from clients that
     # offer only HTTP/1.1 (see shared/http.py), so a plain httpx.get fails there.
@@ -624,13 +640,14 @@ def _py_fetch(spec: Spec) -> str:
         call = f"client.post({spec.url!r}, data={spec.post_form!r}{headers})"
     else:
         call = f"client.get({spec.url!r}{headers})"
-    # Some government file servers answer 403 to httpx's default User-Agent.
+    # Some government file servers answer 403 to httpx's default User-Agent, so the
+    # script names itself (see SCRIPT_USER_AGENT).
     return (
         "with httpx.Client(\n"
         "    http2=True,\n"
         "    follow_redirects=True,\n"
         "    timeout=300,\n"
-        '    headers={"User-Agent": "Mozilla/5.0 (compatible; research script)"},\n'
+        f'    headers={{"User-Agent": "{SCRIPT_USER_AGENT}"}},\n'
         ") as client:\n"
         f"    response = {call}\n"
         + (

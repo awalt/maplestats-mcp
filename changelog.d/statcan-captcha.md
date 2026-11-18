@@ -33,3 +33,11 @@
   breaker (it still shows in `/stats`). StatCan challenges SDMX and CIMT on
   www150 while WDS on the same host answers, so a few blocked calls in a row
   used to refuse every WDS tool for a minute.
+
+### Security
+
+- Python scripts from `reproduce_code` now identify themselves as "MapleStats MCP
+  reproduction script" with the project's address, instead of a browser-like
+  User-Agent (`Mozilla/5.0 (compatible; research script)`). No MapleStats code
+  poses as a web browser. The old value is kept, unused, in
+  `reproduce/render.py` as a record.
