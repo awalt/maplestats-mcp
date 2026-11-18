@@ -7,7 +7,7 @@ import sys
 from collections.abc import Awaitable
 from typing import Any
 
-from maplestats_mcp.modules.ckan import client, constants
+from maplestats_mcp.modules.ckan import client, constants, documents
 from maplestats_mcp.shared.errors import CloudflareChallenge, NotFound
 
 # One DataStore-active resource per portal, confirmed live when each
@@ -46,6 +46,10 @@ async def check_portal(portal: str) -> int:
         return 1
 
     detail = await _check("get_dataset", client.get_dataset(portal, search.packages[0].id, "fr"))
+    await _check(
+        "get_dataset_documents",
+        documents.get_dataset_documents(portal, search.packages[0].id),
+    )
     if detail.resources:
         await _check("get_resource", client.get_resource(portal, detail.resources[0].id))
 
