@@ -33,6 +33,7 @@ from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.base import ToolResult
 from mcp.types import TextContent
 
+from maplestats_mcp.shared import cache
 from maplestats_mcp.shared.brief import DEFAULT_DETAIL, Detail, normalize_detail, shape
 from maplestats_mcp.shared.brief import exempt as brief_exempt
 from maplestats_mcp.shared.i18n import normalize_lang, pick
@@ -314,7 +315,8 @@ class ResponseBudgetMiddleware(Middleware):
             return await call_next(context)
         token = _inside_call.set(True)
         try:
-            result = await call_next(context)
+            with cache.watching_last_good() as last_good:
+                result = await call_next(context)
         finally:
             _inside_call.reset(token)
         if not isinstance(result, ToolResult):
@@ -322,4 +324,7 @@ class ResponseBudgetMiddleware(Middleware):
         tool, arguments = call_arguments(context)
         budgeted = apply_budget(result, tool, arguments, self.max_bytes)
         lang = normalize_lang(str(arguments.get("lang", "en")))
+        if last_good:
+            # A refresh met a bot check and the cache served its last good copy.
+            budgeted = add_caveats(budgeted, [cache.last_good_note(last_good, lang)])
         return apply_detail(budgeted, tool, detail, lang, arguments)
