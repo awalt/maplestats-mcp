@@ -1175,6 +1175,24 @@ FR: dict[str, str] = {
         "34-10-0036, 36-10-0018, 36-10-0103, 36-10-0104 et 36-10-0434; tout autre tableau, "
         "le 14-10-0287 de l'Enquête sur la population active compris, est une erreur"
     ),
+    # StatCan's bot check
+    "Which StatCan services answer scripts now (StatCan's bot check)": (
+        "Services de StatCan qui répondent aux scripts en ce moment (vérification anti-robot)"
+    ),
+    "which StatCan services answer scripts right now, and which are blocked": (
+        "les services de StatCan qui répondent aux scripts en ce moment, et ceux qui sont bloqués"
+    ),
+    "a whole table from its product_id: the file link for a browser and a script that "
+    "rebuilds it through WDS": (
+        "un tableau complet à partir de son product_id : le lien du fichier pour un "
+        "navigateur et un script qui le reconstruit par le WDS"
+    ),
+    "A blocked service is StatCan's change, not an outage; WDS still answers scripts, "
+    "and each error names the closest route that still works.": (
+        "Un service bloqué est un changement de StatCan, pas une panne ; le WDS répond "
+        "toujours aux scripts, et chaque erreur nomme l'accès le plus proche qui fonctionne "
+        "encore."
+    ),
     # The Daily
     "The Daily: StatCan's release articles, their text and PDFs": (
         "Le Quotidien : les communiqués de Statistique Canada, leur texte et leurs PDF"
@@ -1218,11 +1236,11 @@ FR: dict[str, str] = {
     "the table's dimensions and members, to size a request": (
         "les dimensions et les membres du tableau, pour jauger la taille d'une requête"
     ),
-    "the whole table as one CSV from its product_id (the table number): a download link "
-    "only, no rows; the file has a VECTOR column to join on": (
+    "the whole table as one CSV from its product_id (the table number): the file link and "
+    "a script that rebuilds it through WDS, no rows; the CSV has a VECTOR column to join on": (
         "tout le tableau en un seul CSV à partir de son product_id (le numéro du tableau) : "
-        "un lien de téléchargement seulement, sans lignes; le fichier a une colonne VECTOR "
-        "pour les jointures"
+        "le lien du fichier et un script qui le reconstruit par le WDS, sans lignes; le CSV a "
+        "une colonne VECTOR pour la jointure"
     ),
     "one vector ID to its table and coordinate, or the reverse": (
         "d'un identifiant de vecteur à son tableau et sa coordonnée, ou l'inverse"

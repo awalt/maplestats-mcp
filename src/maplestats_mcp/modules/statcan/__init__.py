@@ -172,7 +172,8 @@ MODULE_DESCRIPTION = (
     "link for a browser and a Python script that rebuilds the table through "
     "WDS). reproduce_code writes no script for a blocked service; WDS scripts "
     "still work. Errors from a blocked page say so and name "
-    "the closest route that still works."
+    "the closest route that still works; statcan_check_access says which "
+    "services answer scripts right now."
 )
 MODULE_DESCRIPTION_FR = (
     "Statistique Canada : le Service de données Web (WDS) pour la "
@@ -365,5 +366,6 @@ MODULE_DESCRIPTION_FR = (
     "script Python qui reconstruit le tableau par le WDS). reproduce_code n'écrit pas de script pour un service bloqué ; "
     "les scripts du WDS fonctionnent toujours. Les "
     "erreurs d'une page bloquée le disent et nomment l'accès le plus proche "
-    "qui fonctionne encore."
+    "qui fonctionne encore ; statcan_check_access indique quels services "
+    "répondent aux scripts en ce moment."
 )

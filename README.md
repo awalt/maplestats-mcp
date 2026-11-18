@@ -285,7 +285,7 @@ by a person
 
 ## What it covers
 
-478 tools in 91 modules. Read `docs://catalogue` (or `docs_read_resource` through `call_tool`) for the full, bilingual list.
+479 tools in 91 modules. Read `docs://catalogue` (or `docs_read_resource` through `call_tool`) for the full, bilingual list.
 
 | Area | Tool prefixes | Covers |
 |---|---|---|
@@ -306,6 +306,17 @@ by a person
 Other federal series (CRA, OSFI, ISED insolvency) are ordinary
 open.canada.ca datasets, reachable with
 `ckan_search_datasets(portal="federal", fq="organization:<org>")`.
+
+Statistics Canada's bot check (November 2026): StatCan now answers some
+automated requests with a check only a person in a web browser can pass. It
+blocks the SDMX service, trade by HS commodity (CIMT), The Daily's RSS feeds,
+the catalogue and publication pages, the census site (www12) and, on some
+networks, the full-table files. MapleStats does not try to get past it. The Web
+Data Service still answers scripts, so the SDMX tools read the same series from
+it, `wds_get_full_table_download` returns a Python script that rebuilds a table
+through it, and a result whose refresh is blocked comes back from the last good
+copy, labelled with its date. `statcan_check_access` says which services answer
+now; details in [docs/findings/statcan-captcha-2026-11.md](docs/findings/statcan-captcha-2026-11.md).
 
 Not covered: CAPP's Statistics Handbook, Petrinex and Payments Canada were
 not built, because their terms or download hosts do not permit automated
