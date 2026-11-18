@@ -85,6 +85,22 @@ from the {cansim} maintainer's.
 - **Scripts name themselves.** They send "MapleStats MCP reproduction script"
   as their User-Agent, never a browser-like one.
 
+- **`statcan_check_access` says what answers now.** It sends one small request
+  to each StatCan service MapleStats reads and reports it as answers, blocked,
+  error or no answer, with the time checked. A daily workflow
+  (`.github/workflows/statcan-access.yml`) runs the same check through
+  `scripts/smoke_test_statcan_access.py --compare` and fails, so the repo owner
+  gets an email, when a service changes from the state recorded in
+  `docs/findings/statcan-access.json`. Record a change with `--write`. The
+  check runs from GitHub's network, which StatCan may treat differently from
+  the server's (sixfigures reported full-table files refused from GitHub
+  runners), so the first scheduled run may need its own record.
+- **Microdata through ODESI.** StatCan's PUMF search and file-list pages are
+  blocked, but its PUMF zips still download, and ODESI on Borealis
+  (`borealis_odesi_search_datasets`) lists StatCan's PUMFs as deposited by
+  university libraries (the Labour Force Survey of September 2026 was there on
+  2026-11-18). Errors from the blocked pages say so.
+
 ## What has no workaround
 
 - **Trade by HS commodity (`cimt_`).** The errors name the closest WDS tables:
