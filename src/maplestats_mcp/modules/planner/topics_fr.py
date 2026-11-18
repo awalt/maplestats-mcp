@@ -402,6 +402,21 @@ FR: dict[str, str] = {
         "fichiers complets des profils du recensement de 2001 à 2016 : year=2001, 2006, "
         "2011 ou 2016"
     ),
+    "2016 (or 1996-2021) census geography from the GeoSuite (re-hosted): codes, unique "
+    "IDs, names, hierarchy and population or dwellings by CSD, CT, DA or DB: "
+    "year=2016, table='CSD', filters={'PRUID': ['35']} or name_contains=<place>": (
+        "géographie du recensement de 2016 (ou de 1996 à 2021) tirée de la GéoSuite (site "
+        "miroir) : codes, identificateurs uniques, noms, hiérarchie et population ou logements "
+        "par SDR, SR, AD ou ID : year=2016, table='CSD', filters={'PRUID': ['35']} ou "
+        "name_contains=<lieu>"
+    ),
+    "the official 2016 Standard Geographical Classification on StatCan's own service "
+    "(provinces, CDs, CSDs; 5,474 codes, retired): "
+    "classification_id='XsUsR9DJcyfpbpgz' (version 2016.1.0), query=<place or code>": (
+        "la Classification géographique type 2016 officielle, sur le service de Statistique "
+        "Canada (provinces, DR, SDR ; 5 474 codes, retirée) : "
+        "classification_id='XsUsR9DJcyfpbpgz' (version 2016.1.0), query=<lieu ou code>"
+    ),
     "census boundary maps and geography layers: year=2021": (
         "cartes des limites et couches géographiques du recensement : year=2021"
     ),
