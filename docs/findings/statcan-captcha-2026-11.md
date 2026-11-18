@@ -61,12 +61,21 @@ from the {cansim} maintainer's.
   pages, www12) and for full-table zips, it writes no script and says why
   (`shared/challenge_notes.script_refusal`). Scripts never rely on a file
   saved by hand.
-- **`wds_get_full_table_download` gives the link for a browser, with no
-  script.** StatCan announced it blocks automated full-table downloads, so a
-  script built on the file could stop working at any time, even where it
-  downloads today. `file_check` says what the link served just now, and
-  `notes` name the WDS tools a script can use. Its `members`, `start_period`
-  and `end_period` arguments, which only filtered the scripts, are gone.
+- **`wds_get_full_table_download` rebuilds whole tables through WDS.** It gives
+  the file link for a person in a browser, and a Python script that asks WDS
+  for every series of the table (`getCubeMetadata`, `getCodeSets`, then
+  `getDataFromCubePidCoordAndLatestNPeriods` in batches) and writes StatCan's
+  own CSV layout. Checked live on 2026-11-18 against StatCan's file, byte for
+  byte: 36-10-0104 whole (69,266 rows, 3 calls), 18-10-0004 from 2024-01
+  (68,125 rows, 36 calls, 44 s) and 14-10-0287 from 2025-06 (152,847 rows,
+  107 calls, 2 min 40 s). `members`, `start_period` and `end_period` keep part
+  of a table; `rebuild` gives the size in WDS calls, and past 2,000 calls there
+  is no script. The idea comes from vrraiv/sixfigures PR #105, which has no
+  licence file, so the code is MapleStats' own.
+- **The last good copy is served when a refresh meets the check.** A cached
+  result whose refresh is answered with the captcha comes back from memory,
+  with a caveat giving the date it was fetched (`MAPLE_LAST_GOOD_MB`, default
+  32). Also from sixfigures, which keeps its last table on a 403.
 - **No `get_cansim()`.** The R scripts used it only for full tables. The
   {cansim} vector functions (`get_cansim_vector_for_latest_periods`) read WDS
   and still work, so the R vector scripts keep them.

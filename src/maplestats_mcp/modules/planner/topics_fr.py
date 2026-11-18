@@ -1233,16 +1233,14 @@ FR: dict[str, str] = {
     "a date window for a few known vectors, returned inline": (
         "une plage de dates pour quelques vecteurs connus, retournée directement"
     ),
-    "wds_get_full_table_download gives a link for the user to open in a browser, not "
-    "rows and no script: since November 2026 StatCan blocks automated full-table "
-    "downloads with a captcha. For data a script can fetch, use the vector or "
-    "coordinate tools (up to 300 series per call); reproduce_code writes scripts for "
-    "those.": (
-        "wds_get_full_table_download donne un lien à ouvrir dans un navigateur, pas des "
-        "lignes ni de script : depuis novembre 2026, StatCan bloque les téléchargements "
-        "automatisés de tableaux complets par une vérification anti-robot. Pour des données "
-        "qu'un script peut récupérer, utilisez les outils par vecteur ou par coordonnée "
-        "(jusqu'à 300 séries par appel) ; reproduce_code écrit des scripts pour ceux-ci."
+    "wds_get_full_table_download gives the file link for a browser (StatCan blocks "
+    "scripted full-table downloads since November 2026) and a Python script that "
+    "rebuilds the same CSV through WDS, keeping the members and periods asked for: "
+    "offer it, and read its output rather than the rows.": (
+        "wds_get_full_table_download donne le lien du fichier pour un navigateur (StatCan "
+        "bloque les téléchargements de tableaux complets par script depuis novembre 2026) et "
+        "un script Python qui reconstruit le même CSV par le WDS, en gardant les membres et "
+        "les périodes demandés : proposez-le, et lisez sa sortie plutôt que les lignes."
     ),
     "The vector tools return every observation inline, several fields each: fine for a "
     "handful of series, the wrong tool for hundreds.": (

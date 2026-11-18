@@ -2911,11 +2911,10 @@ STATCAN_TABLES = Topic(
     ),
     (
         (
-            "wds_get_full_table_download gives a link for the user to open in a browser, not "
-            "rows and no script: since November 2026 StatCan blocks automated full-table "
-            "downloads with a captcha. For data a script can fetch, use the vector or "
-            "coordinate tools (up to 300 series per call); reproduce_code writes scripts for "
-            "those."
+            "wds_get_full_table_download gives the file link for a browser (StatCan blocks "
+            "scripted full-table downloads since November 2026) and a Python script that "
+            "rebuilds the same CSV through WDS, keeping the members and periods asked for: "
+            "offer it, and read its output rather than the rows."
         ),
         (
             "The vector tools return every observation inline, several fields each: fine for a "

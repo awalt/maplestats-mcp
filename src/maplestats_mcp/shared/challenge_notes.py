@@ -99,11 +99,12 @@ NOTES: tuple[ChallengeNote, ...] = (
         "www150.statcan.gc.ca",
         ("/n1/tbl/", "/n1/delta/"),
         "This is a file download: open the link in a web browser, pass the check, and save "
-        "the file. For a part of the table, the wds_ series tools (by vector, or by table and "
-        "coordinate) still work automatically.",
+        "the file. For a full table, wds_get_full_table_download also returns a Python script "
+        "that rebuilds the same CSV through WDS, which StatCan still serves to scripts.",
         "Il s'agit d'un téléchargement de fichier : ouvrez le lien dans un navigateur, "
-        "passez la vérification et enregistrez le fichier. Pour une partie du tableau, les outils de séries wds_ (par vecteur, ou par tableau et "
-        "coordonnée) fonctionnent toujours automatiquement.",
+        "passez la vérification et enregistrez le fichier. Pour un tableau complet, "
+        "wds_get_full_table_download fournit aussi un script Python qui reconstruit le même "
+        "CSV par le WDS, que StatCan sert toujours aux scripts.",
     ),
     ChallengeNote(
         "www150.statcan.gc.ca",
@@ -214,4 +215,14 @@ def script_refusal(url: str) -> tuple[str, str] | None:
         blocked = not path.lower().endswith(".zip")
     if not blocked:
         return None
-    return _NO_SCRIPT_EN.format(url=url), _NO_SCRIPT_FR.format(url=url)
+    english, french = _NO_SCRIPT_EN.format(url=url), _NO_SCRIPT_FR.format(url=url)
+    if path.startswith("/n1/tbl/"):
+        english += (
+            " For a whole table, wds_get_full_table_download returns a Python script that "
+            "rebuilds the same CSV through WDS."
+        )
+        french += (
+            " Pour un tableau complet, wds_get_full_table_download fournit un script Python "
+            "qui reconstruit le même CSV par le WDS."
+        )
+    return english, french

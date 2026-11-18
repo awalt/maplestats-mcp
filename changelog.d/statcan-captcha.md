@@ -29,15 +29,6 @@
 - Scripts that download a StatCan file that still works (PUMF and LODE zips,
   the Delta File) stop with a plain message if StatCan answers with its captcha.
 
-### Removed
-
-- `wds_get_full_table_download`: the `members`, `start_period` and
-  `end_period` arguments and the `scripts` field. Since November 2026 StatCan
-  blocks automated full-table downloads, so the tool gives the link for a
-  person to open in a browser and writes no script. For data a script can
-  fetch, use `wds_get_data_from_cube_coord`, `wds_get_data_from_vectors` or
-  `wds_get_data_by_reference_period_range`, and `reproduce_code` on them.
-
 ### Fixed
 
 - A Cloudflare challenge no longer counts toward opening a host's circuit

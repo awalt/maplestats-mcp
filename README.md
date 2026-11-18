@@ -378,6 +378,7 @@ error that says when to retry, instead of waiting for another timeout. The
 | `MAPLE_ALLOWED_ORIGINS` | project website, localhost | Browser origins allowed on `/mcp` (comma-separated, `*.` and `:*` wildcards); others get 403, clients without an Origin are allowed |
 | `MAPLE_CACHE_MAX_ENTRIES` | `2000` | Response cache size per TTL bucket |
 | `MAPLE_CACHE_MAX_MB` | `128` | Estimated memory cap for the response cache, all buckets together |
+| `MAPLE_LAST_GOOD_MB` | `32` | Memory for the last good copy of each result, served (with its date) when a refresh meets a bot check; 0 turns it off |
 | `MAPLE_PARSE_WORKERS` / `MAPLE_PARSE_TIMEOUT_SECONDS` | `4` / `60` | Threads for parsing Excel and CSV files, and the time one parse may take |
 | `MAPLE_TOOL_TIMEOUT_SECONDS` | `120` | Longest a tool call may run |
 | `MAPLE_OCR`, `MAPLE_OCR_MEMORY_MB` | `0`, `1024` | `1` lets `statcan_reference_get_section_text` read the pages of a scanned PDF (no text layer) by OCR: the `[ocr]` extra (`pip install "maplestats-mcp[ocr]"`, pypdfium2) and the system's `tesseract` program with its English and French data (the Docker image has both) must be installed; otherwise those pages come back empty with a note. One page is read at a time, 10 pages at most per call (5 by default), within the 40 s PDF budget, at up to 12 megapixels a page. The memory value caps the tesseract child's address space (enforced on Linux only; `0` turns it off) |

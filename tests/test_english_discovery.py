@@ -211,9 +211,9 @@ CASES = [
     ("list the tables in a health workforce workbook", "cihi_workforce_list_tables"),
     ("drug price review board annual report", "pmprb_list_report_tables"),
     ("download full StatCan table as CSV", "wds_get_full_table_download"),
-    # Since 2026-11-18 these go to the WDS vector tools: StatCan blocks automated
-    # full-table downloads, and wds_get_full_table_download writes no script.
-    ("reconcile a workbook of vector IDs against a published table", "wds_get_data_from_vectors"),
+    # The full-table tool rebuilds a table through WDS since StatCan blocked its files.
+    ("reconcile a workbook of vector IDs against a published table", "wds_get_full_table_download"),
+    # Since 2026-11-18 this goes to the WDS vector tools first.
     ("get hundreds of StatCan series at once", "wds_get_data_from_vectors"),
     ("Quebec population estimates ISQ", "isq_search_tables"),
     ("research data repository Canadian universities", "borealis_search_ivt"),
