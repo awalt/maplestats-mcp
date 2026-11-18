@@ -382,3 +382,55 @@ class FileRows(BaseModel):
     offset: int
     truncated: bool
     provenance: Provenance
+
+
+class DictionaryField(BaseModel):
+    name: str
+    type: str
+    label: str | None = None
+    description: str | None = Field(
+        default=None, description="The publisher's own note on the field (DataStore `info.notes`)."
+    )
+
+
+class DataDictionary(BaseModel):
+    resource_ids: list[str] = Field(
+        description="The DataStore resources with this field list (one, or several sharing it)."
+    )
+    resource_names: list[str]
+    fields: list[DictionaryField]
+    fields_total: int = Field(description="Fields in the resource before `query` or the cap.")
+
+
+class DocumentLink(BaseModel):
+    title: str
+    url: str
+    kind: str = Field(
+        description="'information page' (the dataset's own page about it), 'linked in the "
+        "description', or 'documentation file' (a readme, data dictionary, methodology or "
+        "guide attached to the dataset)."
+    )
+    format: str | None = None
+
+
+class DatasetDocuments(BaseModel):
+    portal: str
+    dataset_id: str
+    title: str
+    landing_page_url: str
+    description: str = Field(description="The dataset's description, as published.")
+    about: dict[str, Any] = Field(
+        default_factory=dict,
+        description="The portal's own documentation fields for the dataset, such as limitations, "
+        "collection method, refresh rate, owner and information page.",
+    )
+    data_dictionary: list[DataDictionary] = Field(
+        default_factory=list,
+        description="What each column means, from the DataStore's field notes.",
+    )
+    documents: list[DocumentLink] = Field(
+        default_factory=list,
+        description="Pages and files that document the dataset, listed but not opened.",
+    )
+    notes: list[str] = Field(default_factory=list)
+    provenance: Provenance

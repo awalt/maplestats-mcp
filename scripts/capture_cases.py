@@ -247,11 +247,11 @@ CASES: dict[str, list[dict[str, Any]]] = {
     ],
     # The counts in the verse: how much each audience can reach.
     "counts": [
-        # every page of the Data catalogue's microdata results, counted by product
+        # StatCan's public use microdata files listed on ODESI (Borealis). StatCan's own
+        # Data catalogue has answered scripts with a captcha since November 2026.
         {
-            "name": "statcan_reference_search_data",
-            "arguments": {"query": "public use microdata", "count": 100},
-            "all_pages": True,
+            "name": "borealis_odesi_search_datasets",
+            "arguments": {"query": "", "collection": "pumfs", "limit": 1},
         },
         {"name": "ircc_monthly_list_tables", "arguments": {}},
         {"name": "wds_search_cubes", "arguments": {"lite": True}},
@@ -280,6 +280,8 @@ def _trim(name: str, arguments: dict[str, Any], response: Any) -> Any:
             "total_tables": response["total_tables"],
             "provenance": response["provenance"],
         }
+    if name == "borealis_odesi_search_datasets":
+        return {"total_matched": response["total_matched"], "provenance": response["provenance"]}
     if name == "cmhc_list_categories":
         return {"total_count": response["total_count"], "provenance": response["provenance"]}
     if name == "ised_ip_horizons_search_patents":
