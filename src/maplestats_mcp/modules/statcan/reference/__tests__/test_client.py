@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -7,7 +8,12 @@ import pytest
 from maplestats_mcp.modules.statcan.reference import client, constants
 from maplestats_mcp.shared import cache as cache_module
 from maplestats_mcp.shared import retrying
-from maplestats_mcp.shared.errors import InvalidInput, UpstreamError, UpstreamUnavailable
+from maplestats_mcp.shared.errors import (
+    CloudflareChallenge,
+    InvalidInput,
+    UpstreamError,
+    UpstreamUnavailable,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -294,3 +300,24 @@ async def test_persistent_rate_limit_still_raises(httpx_mock, no_sleep):
     with pytest.raises(UpstreamError, match="429"):
         await client.search_documents("housing")
     assert len(no_sleep) == retrying.RETRY_ATTEMPTS - 1
+
+
+_CHALLENGE = {"status_code": 403, "headers": {"cf-mitigated": "challenge", "server": "cloudflare"}}
+
+
+async def test_search_documents_behind_a_cloudflare_challenge_is_unavailable(httpx_mock):
+    # Live 2026-11-17: www150 answers every automated request with Cloudflare's
+    # challenge. It used to surface as "returned HTTP 403" (UpstreamError, "retry").
+    httpx_mock.add_response(url=_BASE_URL_EN, html="Just a moment...", **_CHALLENGE)
+    with pytest.raises(CloudflareChallenge, match="Cloudflare"):
+        await client.search_documents("housing")
+
+
+async def test_get_publication_behind_a_cloudflare_challenge_is_unavailable(httpx_mock):
+    httpx_mock.add_response(
+        url=re.compile(r"https://www150\.statcan\.gc\.ca/n1/en/catalogue/.*"),
+        html="Just a moment...",
+        **_CHALLENGE,
+    )
+    with pytest.raises(CloudflareChallenge):
+        await client.get_publication("71-543-G")

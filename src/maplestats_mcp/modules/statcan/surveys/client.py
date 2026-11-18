@@ -21,6 +21,7 @@ import asyncio
 import re
 import unicodedata
 from collections.abc import Sequence
+from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup, Tag
@@ -42,7 +43,7 @@ from maplestats_mcp.modules.statcan.surveys.schemas import (
 from maplestats_mcp.shared.cache import cached_fetch, forget
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
-from maplestats_mcp.shared.http import get_raw, new_client
+from maplestats_mcp.shared.http import get_raw, new_client, raise_if_cloudflare_challenge
 from maplestats_mcp.shared.rate_limiter import get_limiter
 from maplestats_mcp.shared.retrying import RETRY_STATUSES, get_with_retry
 
@@ -59,6 +60,20 @@ _NOT_FOUND_PAGE = "srvmsg404"
 _warmed_list_langs: set[str] = set()
 
 
+async def _get(url: str, **kwargs: Any) -> httpx.Response:
+    """get_with_retry, with Cloudflare's bot challenge raised as CloudflareChallenge.
+
+    www150 (the survey directory) has answered every automated request with the
+    challenge (HTTP 403, Cf-Mitigated: challenge; seen live 2026-11-17). As a bare
+    403 it became UpstreamError, so search_surveys never fell back to IMDB's index
+    on www23, which still answers; CloudflareChallenge is an UpstreamUnavailable,
+    the fallback's trigger.
+    """
+    response = await get_with_retry(_client, url, **kwargs)
+    raise_if_cloudflare_challenge(response)
+    return response
+
+
 def _list_url(lang: str) -> str:
     return constants.SURVEY_LIST_URL_FR if lang == "fr" else constants.SURVEY_LIST_URL_EN
 
@@ -70,7 +85,7 @@ def _imdb_url(lang: str) -> str:
 async def _warm_up_list(lang: str, *, force: bool = False) -> None:
     if lang in _warmed_list_langs and not force:
         return
-    response = await get_with_retry(_client, _list_url(lang))
+    response = await _get(_list_url(lang))
     response.raise_for_status()
     _warmed_list_langs.add(lang)
 
@@ -113,7 +128,7 @@ async def _imdb_index(lang: str) -> tuple[list[SurveyListing], bool]:
 
     async def page(letter: str) -> list[SurveyListing]:
         await _LIMITER.acquire()
-        response = await get_with_retry(_client, template.format(letter=letter))
+        response = await _get(template.format(letter=letter))
         if response.status_code == 404:
             return []
         response.raise_for_status()
@@ -173,7 +188,7 @@ async def search_surveys(
         await _LIMITER.acquire()
         try:
             await _warm_up_list(lang)
-            response = await get_with_retry(_client, url)
+            response = await _get(url)
             response.raise_for_status()
             if _has_survey_links(response.text):
                 return response.text
@@ -182,7 +197,7 @@ async def search_surveys(
             # renders no links without one): re-warm once rather than cache
             # "no surveys" for the whole TTL.
             await _warm_up_list(lang, force=True)
-            response = await get_with_retry(_client, url)
+            response = await _get(url)
             response.raise_for_status()
             if not _has_survey_links(response.text):
                 _warmed_list_langs.discard(lang)
@@ -629,11 +644,9 @@ async def get_survey_metadata(
         try:
             # The unknown-survey page answers 500 or 503 (see below): no retry
             # until we know the redirect did not end there.
-            response = await get_with_retry(
-                _client, url, retry_statuses=RETRY_STATUSES - {500, 503}
-            )
+            response = await _get(url, retry_statuses=RETRY_STATUSES - {500, 503})
             if response.status_code == 503 and _NOT_FOUND_PAGE not in str(response.url):
-                response = await get_with_retry(_client, url, retry_statuses=RETRY_STATUSES - {500})
+                response = await _get(url, retry_statuses=RETRY_STATUSES - {500})
         except httpx.HTTPError as exc:
             raise UpstreamUnavailable(
                 say(
