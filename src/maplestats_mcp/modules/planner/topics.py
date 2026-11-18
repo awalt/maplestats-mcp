@@ -321,6 +321,32 @@ CENSUS_GEOGRAPHY_IDS = (
     "Canada 1, NL 2, PE 7, NS 10, NB 16, QC 26, ON 56, MB 104, SK 111, AB 121, BC 141, "
     "YT 170, NT 172, NU 174"
 )
+# Census geography lookups (codes, UIDs, names, small areas) for the GeoSuite and SGC steps.
+_CENSUS_GEOGRAPHY_TERMS = (
+    "geosuite",
+    "census geograph*",
+    "geographic code*",
+    "geography code*",
+    "census subdivision code*",
+    "census tract*",
+    "dissemination area*",
+    "dissemination block*",
+    "csduid",
+    "dauid",
+    "dbuid",
+    "ctuid",
+    "dguid",
+    "geographie du recensement",
+    "code geographique*",
+    "codes geographiques",
+    "secteur de recensement",
+    "secteurs de recensement",
+    "aire de diffusion",
+    "aires de diffusion",
+    "ilot de diffusion",
+    "ilots de diffusion",
+)
+
 CENSUS_COUNTS_STEP = (
     "2021 Census population and dwellings for Canada, provinces, metro areas and "
     "agglomerations (under 1 s): product_id=98-10-0005, coordinate=<geography id>.<count id> "
@@ -1093,6 +1119,16 @@ TOPICS: tuple[Topic, ...] = (
             "revenu",
             "langue",
             "autochtone",
+            "geosuite",
+            "dissemination area*",
+            "dissemination block*",
+            "census tract*",
+            "aire de diffusion",
+            "aires de diffusion",
+            "ilot de diffusion",
+            "ilots de diffusion",
+            "secteur de recensement",
+            "secteurs de recensement",
         ),
         (
             PlanStep(
@@ -1133,6 +1169,20 @@ TOPICS: tuple[Topic, ...] = (
                 "statcan_census_profile_archive_list_geography_levels",
                 "2001-2016 census profile bulk files: year=2001, 2006, 2011 or 2016",
                 ("2001", "2006", "2011", "historical census"),
+            ),
+            PlanStep(
+                "statcan_geosuite_query",
+                "2016 (or 1996-2021) census geography from the GeoSuite (re-hosted): codes, unique "
+                "IDs, names, hierarchy and population or dwellings by CSD, CT, DA or DB: "
+                "year=2016, table='CSD', filters={'PRUID': ['35']} or name_contains=<place>",
+                _CENSUS_GEOGRAPHY_TERMS,
+            ),
+            PlanStep(
+                "rdaas_get_classification_categories_detailed",
+                "the official 2016 Standard Geographical Classification on StatCan's own service "
+                "(provinces, CDs, CSDs; 5,474 codes, retired): "
+                "classification_id='XsUsR9DJcyfpbpgz' (version 2016.1.0), query=<place or code>",
+                ("standard geographical classification", "sgc", "cgt", *_CENSUS_GEOGRAPHY_TERMS),
             ),
             PlanStep(
                 "statcan_geo_list_services",

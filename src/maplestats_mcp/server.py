@@ -752,6 +752,7 @@ Sources, by tool-name prefix:
   rural, education (PCEIP), Quality of Life), rdaas_ (classifications and
   concordances, e.g. NAICS), statcan_census_profile_ (2021),
   statcan_census_profile_archive_ (2001-2016 bulk links),
+  statcan_geosuite_ (census geography tables 1996-2021, re-hosted),
   statcan_daily_ (The Daily, release calendar), statcan_indicators_
   (latest headline figures with growth rates),
   statcan_delta_ (daily bulk-update files, vintage tables),

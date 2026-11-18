@@ -285,7 +285,7 @@ by a person
 
 ## What it covers
 
-475 tools in 91 modules. Read `docs://catalogue` (or `docs_read_resource` through `call_tool`) for the full, bilingual list.
+478 tools in 91 modules. Read `docs://catalogue` (or `docs_read_resource` through `call_tool`) for the full, bilingual list.
 
 | Area | Tool prefixes | Covers |
 |---|---|---|
@@ -318,7 +318,7 @@ files (as opposed to its DataStore tables) are not read: its portal's robots.txt
 disallows automated file downloads. The
 City of Hamilton's portal is left out because it answers automated requests
 with a Cloudflare challenge (Niagara Open Data did too until 2026-11-08, and is
-now covered). The 2006-2016 census data tables and the 2016 Census Profile service were removed because Statistics Canada's www12 host answers automated clients with a bot challenge, 503 errors or timeouts (the 2021 profile and the WDS tables remain, and `statcan_census_profile_archive_*` still lists the links to the 2001-2016 Census Profile bulk files without opening them). Justice Laws (federal statutes and
+now covered). The 2006-2016 census data tables and the 2016 Census Profile service were removed because Statistics Canada's www12 host answers automated clients with a bot challenge, 503 errors or timeouts (the 2021 profile and the WDS tables remain, and `statcan_census_profile_archive_*` still lists the links to the 2001-2016 Census Profile bulk files without opening them; the 1996-2021 Census GeoSuite geography tables are read from MountainMath's checked re-host, `statcan_geosuite_*`). Justice Laws (federal statutes and
 regulations) is out of scope, because legislation text is not data this
 server carries, and the Saskatchewan Bureau of Statistics' Provincial
 Economic Accounts were not built: they are under Crown copyright, for

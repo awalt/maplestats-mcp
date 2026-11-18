@@ -1024,6 +1024,10 @@ FAMILIES: dict[str, tuple[str, str]] = {
         "Geography: census boundaries, road network and map layers",
         "Géographie : limites du recensement, réseau routier et couches cartographiques",
     ),
+    "statcan/geosuite": (
+        "Census GeoSuite: geography tables 1996-2021",
+        "GéoSuite du recensement : tables géographiques 1996-2021",
+    ),
     "statcan/indicators": ("Indicators", "Indicateurs"),
     "statcan/lode": (
         "Open databases (LODE): facilities, buildings, addresses",
@@ -3513,7 +3517,11 @@ STATCAN_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         ("census_profile", "census_profile_archive"),
     ),
     ("Microdata", "Microdonnées", ("pumf",)),
-    ("Geography and open databases", "Géographie et bases de données ouvertes", ("geo", "lode")),
+    (
+        "Geography and open databases",
+        "Géographie et bases de données ouvertes",
+        ("geo", "geosuite", "lode"),
+    ),
     ("Classifications", "Classifications", ("rdaas",)),
     ("Indicators", "Indicateurs", ("indicators", "sdg")),
     (
