@@ -13,6 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from maplestats_mcp.modules.reproduce.schemas import Script
 from maplestats_mcp.shared.models import Provenance
 from maplestats_mcp.shared.transform import TransformedSeries
 
@@ -462,6 +463,22 @@ class LeafMembers(BaseModel):
     provenance: Provenance
 
 
+class TableRebuild(BaseModel):
+    """What rebuilding a table through WDS takes."""
+
+    series_in_table: int = Field(description="Series in the whole table (nbSeriesCube).")
+    combinations: int = Field(
+        description="Member combinations the script asks for; WDS answers only the published "
+        "ones, so this is at least the number of series kept."
+    )
+    periods_per_series: int = Field(description="Periods asked for per series (latestN).")
+    wds_calls: int = Field(description="WDS calls the script makes (about one a second).")
+    within_limit: bool = Field(
+        description="False when wds_calls is over the limit: keep fewer members or a later "
+        "start_period."
+    )
+
+
 class FullTableDownloadLink(BaseModel):
     product_id: int
     format: str  # "csv" or "sdmx"
@@ -477,8 +494,19 @@ class FullTableDownloadLink(BaseModel):
     )
     notes: list[str] = Field(
         default_factory=list,
-        description="Why no script is given, and which WDS tools a script can still use. "
-        "Pass these on to the user.",
+        description="StatCan's block on full-table files, and how the table is rebuilt through "
+        "WDS instead. Pass these on to the user.",
+    )
+    rebuild: TableRebuild | None = Field(
+        default=None,
+        description="CSV only: the size of rebuilding the table (or the members and periods "
+        "asked for) through WDS, which StatCan still serves to scripts.",
+    )
+    scripts: list[Script] = Field(
+        default_factory=list,
+        description="CSV only, and only when the rebuild is within its limit: a Python script "
+        "that rebuilds the table through WDS and writes the CSV StatCan publishes (same columns, "
+        "order and values) to data/raw/. Offer it; run it only if the user agrees.",
     )
     provenance: Provenance
 

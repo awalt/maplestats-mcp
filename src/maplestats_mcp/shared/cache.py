@@ -35,19 +35,33 @@ finished each hit the upstream, which for a slow, rate-limited source
 turns one call into N and can trip its limit. Callers get the stored
 object itself, not a copy (results can be large), so a caller must not
 mutate what cached_fetch returns.
+
+A second, smaller store keeps each result's last good copy past its TTL
+(MAPLE_LAST_GOOD_MB, default 32, least recently stored first out). When a
+refresh is answered with a Cloudflare bot check (shared/errors.CloudflareChallenge),
+cached_fetch returns that copy instead of the error, and records when it was
+fetched; ResponseBudgetMiddleware then says so in the result's provenance
+caveats. The idea comes from vrraiv/sixfigures (PR #105), which keeps the last
+good table on a 403 and marks it carried_over. Since November 2026 Statistics
+Canada answers some automated requests with that check.
 """
 
 from __future__ import annotations
 
 import asyncio
 import sys
-from collections.abc import Awaitable, Callable
+from collections import OrderedDict
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from datetime import UTC, datetime
 from typing import Any
 
 from cachetools import TTLCache
 from pydantic import BaseModel
 
 from maplestats_mcp import config
+from maplestats_mcp.shared.errors import CloudflareChallenge
 from maplestats_mcp.shared.http import is_recording
 
 
@@ -94,6 +108,12 @@ class _SizedTTLCache(TTLCache):
 
 _caches: dict[int, _SizedTTLCache] = {}
 _inflight: dict[tuple[int, str], asyncio.Future[Any]] = {}
+
+# (ttl, key) -> (result, when it was fetched, estimated bytes), oldest first.
+_last_good: OrderedDict[tuple[int, str], tuple[Any, datetime, int]] = OrderedDict()
+_last_good_bytes = 0
+# When each last good copy served in this tool call was fetched; None outside a call.
+_served: ContextVar[list[datetime] | None] = ContextVar("maplestats_last_good", default=None)
 
 # Objects visited per size estimate; past it the rest is extrapolated, so a
 # huge result costs a bounded walk rather than one proportional to its size.
@@ -142,9 +162,60 @@ def _counted_bytes() -> int:
     return total
 
 
+def _remember(flight_key: tuple[int, str], data: Any, size: int) -> None:
+    """Keep `data` as the last good copy for its key, within MAPLE_LAST_GOOD_MB."""
+    global _last_good_bytes
+    budget = config.get_last_good_max_bytes()
+    old = _last_good.pop(flight_key, None)
+    if old is not None:
+        _last_good_bytes -= old[2]
+    if size > budget:
+        return
+    _last_good[flight_key] = (data, datetime.now(UTC), size)
+    _last_good_bytes += size
+    while _last_good_bytes > budget and _last_good:
+        _, (_, _, dropped) = _last_good.popitem(last=False)
+        _last_good_bytes -= dropped
+
+
+def clear_last_good() -> None:
+    global _last_good_bytes
+    _last_good.clear()
+    _last_good_bytes = 0
+
+
+@contextmanager
+def watching_last_good() -> Iterator[list[datetime]]:
+    """Collect, for one tool call, when each last good copy it was served was fetched."""
+    served: list[datetime] = []
+    token = _served.set(served)
+    try:
+        yield served
+    finally:
+        _served.reset(token)
+
+
+def last_good_note(fetched: list[datetime], lang: str) -> str:
+    """The provenance caveat for a result built from last good copies."""
+    when = min(fetched).strftime("%Y-%m-%d %H:%M UTC")
+    if lang == "fr":
+        return (
+            "La source a répondu par une vérification anti-robot (Cloudflare) que les "
+            "scripts ne peuvent pas passer ; ce résultat vient donc de la dernière copie "
+            f"valide gardée par MapleStats, récupérée le {when}. Il peut ne pas inclure "
+            "les diffusions plus récentes."
+        )
+    return (
+        "The source answered with a Cloudflare bot check that scripts cannot pass, so this "
+        f"result comes from MapleStats' last good copy, fetched {when}. It may miss newer "
+        "releases."
+    )
+
+
 def _store(ttl: int, cache: _SizedTTLCache, key: str, data: Any) -> None:
     budget = config.get_cache_max_bytes()
     size = approx_size(data)
+    _remember((ttl, key), data, size)
     if size > budget:
         cache.pop(key, None)
         return
@@ -222,6 +293,18 @@ async def cached_fetch(
     except asyncio.CancelledError:
         future.cancel()
         raise
+    except CloudflareChallenge as exc:
+        kept = _last_good.get(flight_key)
+        if kept is None:
+            future.set_exception(exc)
+            future.exception()
+            raise
+        data, fetched, _ = kept
+        served = _served.get()
+        if served is not None:
+            served.append(fetched)
+        future.set_result(data)
+        return data, True
     except BaseException as exc:
         future.set_exception(exc)
         # Mark it retrieved so asyncio doesn't log "exception never

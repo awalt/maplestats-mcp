@@ -47,7 +47,7 @@ async def test_series_info_routes(monkeypatch):
 async def test_full_table_download_routes(monkeypatch):
     calls = []
 
-    async def csv(p, lang):
+    async def csv(p, lang, members, start_period, end_period):
         calls.append(("csv", p, lang))
 
     async def sdmx(p):

@@ -1006,6 +1006,10 @@ FAMILIES: dict[str, tuple[str, str]] = {
     "ised/corporations": ("Federal corporations", "Sociétés fédérales"),
     "ised/ip_horizons": ("Patents and IP bulk data", "Brevets et données de PI"),
     "ised/spectrum": ("Spectrum licences", "Licences de spectre"),
+    "statcan/access": (
+        "Which StatCan services answer scripts",
+        "Services de StatCan qui répondent aux scripts",
+    ),
     "statcan/cimt": ("Merchandise trade by commodity", "Commerce de marchandises par produit"),
     "statcan/census_profile": ("2021 Census Profile", "Profil du recensement de 2021"),
     "statcan/census_profile_archive": (
@@ -3527,7 +3531,7 @@ STATCAN_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "Releases, catalogues and methods",
         "Diffusions, catalogues et méthodes",
-        ("daily", "reference", "surveys"),
+        ("daily", "reference", "surveys", "access"),
     ),
 )
 

@@ -61,12 +61,21 @@ from the {cansim} maintainer's.
   pages, www12) and for full-table zips, it writes no script and says why
   (`shared/challenge_notes.script_refusal`). Scripts never rely on a file
   saved by hand.
-- **`wds_get_full_table_download` gives the link for a browser, with no
-  script.** StatCan announced it blocks automated full-table downloads, so a
-  script built on the file could stop working at any time, even where it
-  downloads today. `file_check` says what the link served just now, and
-  `notes` name the WDS tools a script can use. Its `members`, `start_period`
-  and `end_period` arguments, which only filtered the scripts, are gone.
+- **`wds_get_full_table_download` rebuilds whole tables through WDS.** It gives
+  the file link for a person in a browser, and a Python script that asks WDS
+  for every series of the table (`getCubeMetadata`, `getCodeSets`, then
+  `getDataFromCubePidCoordAndLatestNPeriods` in batches) and writes StatCan's
+  own CSV layout. Checked live on 2026-11-18 against StatCan's file, byte for
+  byte: 36-10-0104 whole (69,266 rows, 3 calls), 18-10-0004 from 2024-01
+  (68,125 rows, 36 calls, 44 s) and 14-10-0287 from 2025-06 (152,847 rows,
+  107 calls, 2 min 40 s). `members`, `start_period` and `end_period` keep part
+  of a table; `rebuild` gives the size in WDS calls, and past 2,000 calls there
+  is no script. The idea comes from vrraiv/sixfigures PR #105, which has no
+  licence file, so the code is MapleStats' own.
+- **The last good copy is served when a refresh meets the check.** A cached
+  result whose refresh is answered with the captcha comes back from memory,
+  with a caveat giving the date it was fetched (`MAPLE_LAST_GOOD_MB`, default
+  32). Also from sixfigures, which keeps its last table on a 403.
 - **No `get_cansim()`.** The R scripts used it only for full tables. The
   {cansim} vector functions (`get_cansim_vector_for_latest_periods`) read WDS
   and still work, so the R vector scripts keep them.
@@ -75,6 +84,22 @@ from the {cansim} maintainer's.
   captcha, instead of failing later on a "bad zip".
 - **Scripts name themselves.** They send "MapleStats MCP reproduction script"
   as their User-Agent, never a browser-like one.
+
+- **`statcan_check_access` says what answers now.** It sends one small request
+  to each StatCan service MapleStats reads and reports it as answers, blocked,
+  error or no answer, with the time checked. A daily workflow
+  (`.github/workflows/statcan-access.yml`) runs the same check through
+  `scripts/smoke_test_statcan_access.py --compare` and fails, so the repo owner
+  gets an email, when a service changes from the state recorded in
+  `docs/findings/statcan-access.json`. Record a change with `--write`. The
+  check runs from GitHub's network, which StatCan may treat differently from
+  the server's (sixfigures reported full-table files refused from GitHub
+  runners), so the first scheduled run may need its own record.
+- **Microdata through ODESI.** StatCan's PUMF search and file-list pages are
+  blocked, but its PUMF zips still download, and ODESI on Borealis
+  (`borealis_odesi_search_datasets`) lists StatCan's PUMFs as deposited by
+  university libraries (the Labour Force Survey of September 2026 was there on
+  2026-11-18). Errors from the blocked pages say so.
 
 ## What has no workaround
 

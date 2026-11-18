@@ -212,3 +212,70 @@ async def test_recording_reads_through_the_cache():
         data, was_cached = await cached_fetch("single-flight-recording", ttl=60, fetcher=fetcher)
     assert (data, was_cached) == (2, False)
     assert calls == 2
+
+
+# Last good copy: a refresh answered with a bot check serves the previous result.
+# Idea from vrraiv/sixfigures PR #105 (keeps the last table on a 403, carried_over).
+
+
+def _challenge():
+    from maplestats_mcp.shared.errors import CloudflareChallenge
+
+    return CloudflareChallenge("www150.statcan.gc.ca is behind a Cloudflare bot challenge")
+
+
+async def _expired_then(raise_exc):
+    async def first():
+        return {"rows": [1, 2]}
+
+    await cached_fetch("k", 60, first)
+    cache_module._caches.clear()  # the TTL ran out
+
+    async def refresh():
+        raise raise_exc
+
+    return refresh
+
+
+async def test_a_bot_check_on_refresh_serves_the_last_good_copy():
+    refresh = await _expired_then(_challenge())
+    with cache_module.watching_last_good() as served:
+        data, was_cached = await cached_fetch("k", 60, refresh)
+    assert data == {"rows": [1, 2]} and was_cached
+    assert len(served) == 1
+    note = cache_module.last_good_note(served, "en")
+    assert "last good copy, fetched" in note and "UTC" in note
+    assert "dernière copie valide" in cache_module.last_good_note(served, "fr")
+
+
+async def test_without_a_last_good_copy_the_bot_check_is_raised():
+    from maplestats_mcp.shared.errors import CloudflareChallenge
+
+    async def refresh():
+        raise _challenge()
+
+    with pytest.raises(CloudflareChallenge):
+        await cached_fetch("never-fetched", 60, refresh)
+
+
+async def test_other_failures_never_serve_the_last_good_copy():
+    refresh = await _expired_then(RuntimeError("timeout"))
+    with pytest.raises(RuntimeError):
+        await cached_fetch("k", 60, refresh)
+
+
+async def test_the_last_good_store_keeps_to_its_budget(monkeypatch):
+    monkeypatch.setenv("MAPLE_LAST_GOOD_MB", "0.001")  # about 1 KB
+
+    async def big():
+        return "x" * 5000
+
+    await cached_fetch("big", 60, big)
+    assert "big" not in {key for _, key in cache_module._last_good}
+    monkeypatch.setenv("MAPLE_LAST_GOOD_MB", "0")
+
+    async def small():
+        return "x"
+
+    await cached_fetch("small", 60, small)
+    assert not cache_module._last_good

@@ -52,6 +52,18 @@ def _clear_cache():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _no_rebuild(request, monkeypatch):
+    """The link tests mock the link alone; the WDS rebuild has its own tests
+    (test_table_rebuild.py)."""
+    if "download_link" in request.node.name:
+
+        async def none(*args):
+            return None, []
+
+        monkeypatch.setattr(client, "_rebuild", none)
+
+
 def _cube(pid: int, cansim: str, en: str, fr: str = "") -> dict:
     return {
         "productId": pid,
@@ -284,12 +296,11 @@ async def test_download_link_for_a_known_table(httpx_mock):
     # Live 2026-11-18 from a cloud host: the zip still downloads, but StatCan has
     # announced the block, so the note says what to do if a script meets it.
     assert link.file_check == "downloadable"
-    assert "No script" in link.notes[0] and "still served the file" in link.notes[1]
+    assert "no script relies on download_url" in link.notes[0]
+    assert "still served the file" in link.notes[1]
 
 
-async def test_download_link_behind_statcans_captcha_says_why_there_is_no_script(
-    httpx_mock, cloudflare_challenge
-):
+async def test_download_link_behind_statcans_captcha_says_so(httpx_mock, cloudflare_challenge):
     # Reported 2026-11-18 by the {cansim} maintainer: full-table zips answer with
     # Cloudflare's challenge, while the getFullTableDownloadCSV link still answers.
     _mock_cubes(httpx_mock)
@@ -305,7 +316,7 @@ async def test_download_link_behind_statcans_captcha_says_why_there_is_no_script
     )
     link = await client.get_full_table_download_csv("18-10-0004-01")
     assert link.file_check == "blocked"
-    assert "No script" in link.notes[0] and "wds_get_data_from_cube_coord" in link.notes[0]
+    assert "no script relies on download_url" in link.notes[0]
     assert "captcha, not the file" in link.notes[1]
 
 
@@ -324,7 +335,8 @@ async def test_download_link_check_that_fails_leaves_the_link_unchecked(httpx_mo
         is_reusable=True,
     )
     link = await client.get_full_table_download_csv("18-10-0004-01")
-    assert link.file_check == "not_checked" and len(link.notes) == 1
+    # The StatCan note, then (rebuild mocked away) why there is no WDS script.
+    assert link.file_check == "not_checked" and len(link.notes) == 2
 
 
 async def test_download_link_for_a_bulk_only_real_time_table(httpx_mock):

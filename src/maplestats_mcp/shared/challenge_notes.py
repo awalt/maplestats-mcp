@@ -99,11 +99,12 @@ NOTES: tuple[ChallengeNote, ...] = (
         "www150.statcan.gc.ca",
         ("/n1/tbl/", "/n1/delta/"),
         "This is a file download: open the link in a web browser, pass the check, and save "
-        "the file. For a part of the table, the wds_ series tools (by vector, or by table and "
-        "coordinate) still work automatically.",
+        "the file. For a full table, wds_get_full_table_download also returns a Python script "
+        "that rebuilds the same CSV through WDS, which StatCan still serves to scripts.",
         "Il s'agit d'un téléchargement de fichier : ouvrez le lien dans un navigateur, "
-        "passez la vérification et enregistrez le fichier. Pour une partie du tableau, les outils de séries wds_ (par vecteur, ou par tableau et "
-        "coordonnée) fonctionnent toujours automatiquement.",
+        "passez la vérification et enregistrez le fichier. Pour un tableau complet, "
+        "wds_get_full_table_download fournit aussi un script Python qui reconstruit le même "
+        "CSV par le WDS, que StatCan sert toujours aux scripts.",
     ),
     ChallengeNote(
         "www150.statcan.gc.ca",
@@ -122,11 +123,20 @@ NOTES: tuple[ChallengeNote, ...] = (
         "This is one of StatCan's web pages (catalogue, search, publication or feed): open "
         "it in a web browser. To find tables, wds_search_cubes searches StatCan's table "
         "list through WDS; The Daily's articles and release schedule (statcan_daily_ tools) "
-        "still answer.",
+        "still answer. For public use microdata (PUMFs), borealis_odesi_search_datasets finds "
+        "StatCan's files as deposited by Canadian university libraries (ODESI on Borealis; "
+        "the Labour Force Survey of September 2026 was there on 2026-11-18), and "
+        "statcan_pumf_list_zip and statcan_pumf_tabulate still read a PUMF zip from its "
+        "link.",
         "Il s'agit d'une page web de StatCan (catalogue, recherche, publication ou fil) : "
         "ouvrez-la dans un navigateur. Pour trouver des tableaux, wds_search_cubes cherche "
         "dans la liste des tableaux de StatCan par le WDS ; les articles et le calendrier "
-        "des diffusions du Quotidien (outils statcan_daily_) répondent toujours.",
+        "des diffusions du Quotidien (outils statcan_daily_) répondent toujours. Pour les "
+        "microdonnées à grande diffusion (FMGD), borealis_odesi_search_datasets trouve les "
+        "fichiers de StatCan déposés par les bibliothèques universitaires canadiennes (ODESI "
+        "sur Borealis ; l'Enquête sur la population active de septembre 2026 y était le "
+        "2026-11-18), et statcan_pumf_list_zip et statcan_pumf_tabulate lisent toujours un zip "
+        "de FMGD à partir de son lien.",
     ),
     ChallengeNote(
         "www12.statcan.gc.ca",
@@ -214,4 +224,14 @@ def script_refusal(url: str) -> tuple[str, str] | None:
         blocked = not path.lower().endswith(".zip")
     if not blocked:
         return None
-    return _NO_SCRIPT_EN.format(url=url), _NO_SCRIPT_FR.format(url=url)
+    english, french = _NO_SCRIPT_EN.format(url=url), _NO_SCRIPT_FR.format(url=url)
+    if path.startswith("/n1/tbl/"):
+        english += (
+            " For a whole table, wds_get_full_table_download returns a Python script that "
+            "rebuilds the same CSV through WDS."
+        )
+        french += (
+            " Pour un tableau complet, wds_get_full_table_download fournit un script Python "
+            "qui reconstruit le même CSV par le WDS."
+        )
+    return english, french

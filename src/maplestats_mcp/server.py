@@ -723,8 +723,9 @@ For a handful of series use the vector tools (every observation inline);
 for averages, sums or rankings over a few series, wds_query_series (where the
 server offers it; off over HTTP by default) runs SQL server-side. For hundreds of
 series, batch the vector or coordinate tools (up to 300 per call). For a whole
-StatCan table, wds_get_full_table_download gives a CSV link for the user to
-open in a browser, with no script: StatCan blocks automated full-table downloads.
+StatCan table, wds_get_full_table_download gives the file link for a browser
+(StatCan blocks scripted full-table downloads) and a Python script that rebuilds
+the same CSV through WDS; offer the script and run it only if the user agrees.
 Cite every figure you report: a StatCan series carries context.citation
 (table, vector, release date) to quote with each value's reference period;
 other results name their source in provenance. Keep StatCan quality flags
@@ -754,7 +755,8 @@ Sources, by tool-name prefix:
   concordances, e.g. NAICS), statcan_census_profile_ (2021),
   statcan_census_profile_archive_ (2001-2016 bulk links),
   statcan_geosuite_ (census geography tables 1996-2021, re-hosted),
-  statcan_daily_ (The Daily, release calendar), statcan_indicators_
+  statcan_daily_ (The Daily, release calendar), statcan_check_access (which
+  StatCan services answer scripts now), statcan_indicators_
   (latest headline figures with growth rates),
   statcan_delta_ (daily bulk-update files, vintage tables),
   statcan_reference_ (definitions, methods, analysis), statcan_surveys_

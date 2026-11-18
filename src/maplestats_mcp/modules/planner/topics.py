@@ -2838,6 +2838,46 @@ STATCAN_DAILY = Topic(
 )
 TOPICS = (*TOPICS, STATCAN_DAILY)
 
+# Since November 2026 StatCan answers some automated requests with a Cloudflare
+# check scripts cannot pass; which services it blocks has changed day to day.
+STATCAN_ACCESS = Topic(
+    "statcan_access",
+    "Which StatCan services answer scripts now (StatCan's bot check)",
+    (
+        "statcan block*",
+        "statistics canada block*",
+        "captcha",
+        "cloudflare",
+        "bot check",
+        "statcan down",
+        "statcan outage",
+        "statcan not working",
+        "statcan 403",
+        "statcan bloqu*",
+        "statistique canada bloqu*",
+        "verification anti-robot",
+        "statcan en panne",
+    ),
+    (
+        PlanStep(
+            "statcan_check_access",
+            "which StatCan services answer scripts right now, and which are blocked",
+        ),
+        PlanStep(
+            "wds_get_full_table_download",
+            "a whole table from its product_id: the file link for a browser and a script that "
+            "rebuilds it through WDS",
+        ),
+    ),
+    caveats=(
+        (
+            "A blocked service is StatCan's change, not an outage; WDS still answers scripts, "
+            "and each error names the closest route that still works."
+        ),
+    ),
+)
+TOPICS = (*TOPICS, STATCAN_ACCESS)
+
 STATCAN_TABLES = Topic(
     "statcan_tables",
     "StatCan whole tables, bulk series and vector IDs",
@@ -2867,8 +2907,8 @@ STATCAN_TABLES = Topic(
         PlanStep("wds_get_cube_metadata", "the table's dimensions and members, to size a request"),
         PlanStep(
             "wds_get_full_table_download",
-            "the whole table as one CSV from its product_id (the table number): a download link "
-            "only, no rows; the file has a VECTOR column to join on",
+            "the whole table as one CSV from its product_id (the table number): the file link and "
+            "a script that rebuilds it through WDS, no rows; the CSV has a VECTOR column to join on",
             # Ordering only: the topic already matched, so a bare "reconcil*" here cannot
             # route an unrelated question, only put this step first for a reconcile request.
             terms=(
@@ -2911,11 +2951,10 @@ STATCAN_TABLES = Topic(
     ),
     (
         (
-            "wds_get_full_table_download gives a link for the user to open in a browser, not "
-            "rows and no script: since November 2026 StatCan blocks automated full-table "
-            "downloads with a captcha. For data a script can fetch, use the vector or "
-            "coordinate tools (up to 300 series per call); reproduce_code writes scripts for "
-            "those."
+            "wds_get_full_table_download gives the file link for a browser (StatCan blocks "
+            "scripted full-table downloads since November 2026) and a Python script that "
+            "rebuilds the same CSV through WDS, keeping the members and periods asked for: "
+            "offer it, and read its output rather than the rows."
         ),
         (
             "The vector tools return every observation inline, several fields each: fine for a "
