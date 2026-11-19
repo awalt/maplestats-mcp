@@ -3564,9 +3564,10 @@ STATCAN_SEARCH: dict[Lang, str] = {
 }
 STATCAN_SEARCH_PICK = "wds_search_cubes"
 
-# Names in <code> that look like StatCan tools. The first mention of each
-# real tool becomes a link to it; one the server does not have fails the build.
-_STATCAN_PREFIXES = ("wds_", "sdmx_", "rdaas_", "statcan_", "cimt_")
+# Names in <code> that look like StatCan, CKAN or Toronto tools (statcan.html
+# and toronto.html). The first mention of each real tool becomes a link to it;
+# one the server does not have fails the build.
+_STATCAN_PREFIXES = ("wds_", "sdmx_", "rdaas_", "statcan_", "cimt_", "ckan_", "toronto_")
 _CODE_NAME = re.compile(r"<code>([a-z][a-z0-9_]*[a-z0-9])</code>")
 
 
@@ -3577,7 +3578,7 @@ def link_tools(text: str, tools: set[str], root: str) -> str:
         name = match.group(1)
         if name not in tools:
             if name.startswith(_STATCAN_PREFIXES):
-                raise SystemExit(f"statcan.html names a tool the server does not have: {name}")
+                raise SystemExit(f"a page names a tool the server does not have: {name}")
             return match.group(0)
         if name in seen:
             return match.group(0)
@@ -4005,6 +4006,208 @@ def statcan_context(
     }
 
 
+# --------------------------------------------------------------------------
+# The City of Toronto page (site/toronto.html): a post that walks through the
+# recorded calls in site/_data/cases/toronto.json. Toronto's data are in
+# English only, so the French page shows the same recording with French text.
+# Every code box and number on it is cut from that recording here, and the
+# build fails when the recording no longer says what the text says.
+# --------------------------------------------------------------------------
+
+TORONTO_DATASET = "apartment-building-evaluation"
+TORONTO_NEIGHBOURHOOD_ROWS = (
+    "Rate of core housing need",
+    "Number of households in core housing need",
+    "Rate of unaffordable housing",
+    "Rate of inadequate housing",
+    "Rate of unsuitable housing",
+)
+
+
+def _toronto_calls() -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    case = load_case("toronto")
+    return case, case["calls"]
+
+
+def toronto_context(modules: list[ModuleDoc], lang: Lang) -> dict[str, str]:
+    en = lang == "en"
+    case, calls = _toronto_calls()
+    by = {(c["name"], bool(c["arguments"].get("query"))): c for c in calls}
+    count = by[("ckan_search_datasets", False)]
+    search = by[("ckan_search_datasets", True)]
+    docs = by[("ckan_get_dataset_documents", True)]
+    scores = by[("toronto_summarize_apartment_scores", False)]
+    profile = by[("toronto_get_neighbourhood_profile", False)]
+    rentals = by[("toronto_summarize_short_term_rentals", False)]
+
+    toronto = next(m for m in modules if m.key == "toronto")
+    ckan = next(m for m in modules if m.key == "ckan")
+
+    # Finding the dataset: the first match, trimmed to what the text uses.
+    package = search["response"]["packages"][0]
+    if package["name"] != TORONTO_DATASET:
+        raise SystemExit(f"the recorded search no longer finds {TORONTO_DATASET} first")
+    keep = ("name", "title", "notes_excerpt", "update_frequency", "owner_unit",
+            "datastore_resources", "landing_page_url")  # fmt: skip
+    package_shown = {k: package[k] for k in keep}
+    package_shown[_MORE] = _more_fields(len(package) - len(keep), lang)
+    others = search["response"]["returned_count"] - 1
+    search_shown = {
+        "packages": [package_shown]
+        + ([f"{_MORE}{others} more" if en else f"{_MORE}{others} autre"] if others else []),
+        "total_count": search["response"]["total_count"],
+        "provenance": search["response"]["provenance"],
+    }
+
+    # What the score means: the City's own notes on the score columns.
+    doc = docs["response"]
+    if "common areas" not in doc["description"]:
+        raise SystemExit(
+            "the text says RentSafeTO inspects common areas; the description no longer does"
+        )
+    current = doc["data_dictionary"][0]
+    named = {f["name"]: f for f in current["fields"]}
+    score_fields = [
+        "CURRENT BUILDING EVAL SCORE",
+        "PROACTIVE BUILDING SCORE",
+        "CURRENT REACTIVE SCORE",
+    ]
+    missing = [n for n in score_fields if not (named.get(n) or {}).get("description")]
+    if missing:
+        raise SystemExit(f"the recorded field notes no longer describe {missing}")
+    docs_shown = {
+        "title": doc["title"],
+        "about": {
+            k: doc["about"][k] for k in ("refresh_rate", "owner_division") if k in doc["about"]
+        },
+        "data_dictionary": [
+            {
+                "resource_names": current["resource_names"],
+                "fields": [
+                    {
+                        "name": n,
+                        "description": named[n]["description"],
+                        _MORE: _more_fields(2, lang),
+                    }
+                    for n in score_fields
+                ],
+                "fields_total": current["fields_total"],
+            },
+            f"{_MORE}{len(doc['data_dictionary']) - 1} more"
+            if en
+            else f"{_MORE}{len(doc['data_dictionary']) - 1} autre",
+        ],
+        "documents": [{k: d[k] for k in ("title", "url", "kind")} for d in doc["documents"][:2]]
+        + (
+            [
+                f"{_MORE}{len(doc['documents']) - 2} more"
+                if en
+                else f"{_MORE}{len(doc['documents']) - 2} autre"
+            ]
+            if len(doc["documents"]) > 2
+            else []
+        ),
+        "notes": doc["notes"],
+        "provenance": doc["provenance"],
+    }
+    docs_shown[_MORE] = _more_fields(len(set(doc) - set(docs_shown)), lang)
+
+    # Scores by ward: every ward, as recorded.
+    result = scores["response"]
+    wards = result["groups"]
+    means = sorted(wards, key=lambda g: g["mean_score"])
+    if (
+        means[0]["mean_score"] == means[1]["mean_score"]
+        or means[-1]["mean_score"] == means[-2]["mean_score"]
+    ):
+        raise SystemExit("two wards tie for the lowest or highest mean score; reword the text")
+    low, high = means[0], means[-1]
+    if "not weighted by units" not in (result["provenance"]["limits"] or ""):
+        raise SystemExit(
+            "the text says ward means are not weighted by units; the tool no longer says so"
+        )
+    heads_en = ("Ward", "Buildings", "Units", "Mean", "Median", "Lowest")
+    heads_fr = ("Quartier", "Immeubles", "Logements", "Moyenne", "Médiane", "Minimum")
+    body = "".join(
+        "<tr>"
+        f"<td>{esc(g['key'])} {esc(g['label'])}</td>"
+        f'<td data-label="{heads_en[1] if en else heads_fr[1]}">{number(g["buildings"], lang)}</td>'
+        f'<td data-label="{heads_en[2] if en else heads_fr[2]}">{number(g["units"], lang)}</td>'
+        f'<td data-label="{heads_en[3] if en else heads_fr[3]}">{number(g["mean_score"], lang, 1)}</td>'
+        f'<td data-label="{heads_en[4] if en else heads_fr[4]}">{number(g["median_score"], lang, 1)}</td>'
+        f'<td data-label="{heads_en[5] if en else heads_fr[5]}">{number(g["min_score"], lang)}</td>'
+        "</tr>"
+        for g in wards
+    )
+    caption = (
+        f"RentSafeTO scores by ward, from {number(result['buildings'], lang)} buildings, "
+        f"recorded {long_date(case['captured'], lang)}. Mean and median rounded to one decimal."
+        if en
+        else f"Notes RentSafeTO par quartier, pour {number(result['buildings'], lang)} immeubles, "
+        f"enregistrées le {long_date(case['captured'], lang)}. Moyenne et médiane arrondies à une décimale."
+    )
+    scores_table = (
+        '<div class="table-wrap post-wide"><table class="params post-table">'
+        f"<caption>{esc(caption)}</caption><thead><tr>"
+        + "".join(f"<th>{h}</th>" for h in (heads_en if en else heads_fr))
+        + f"</tr></thead><tbody>{body}</tbody></table></div>"
+    )
+
+    # One neighbourhood beside the city.
+    rows = {r["characteristic"]: r for r in profile["response"]["rows"]}
+    missing = [n for n in TORONTO_NEIGHBOURHOOD_ROWS if n not in rows]
+    if missing:
+        raise SystemExit(f"the recorded neighbourhood profile no longer has {missing}")
+    blank = rows["Rate of core housing need"]
+    if blank["value"] is not None or blank["city_value"] is None:
+        raise SystemExit("the text says the City left Regent Park's core housing need rate blank")
+    profile_shown = {
+        "census_year": profile["response"]["census_year"],
+        "neighbourhood": profile["response"]["neighbourhood"],
+        "rows": [
+            {k: rows[n][k] for k in ("characteristic", "value", "city_value")}
+            for n in TORONTO_NEIGHBOURHOOD_ROWS
+        ]
+        + [
+            f"{_MORE}{profile['response']['total_matched'] - len(TORONTO_NEIGHBOURHOOD_ROWS)} more rows"
+            if en
+            else f"{_MORE}{profile['response']['total_matched'] - len(TORONTO_NEIGHBOURHOOD_ROWS)} autres lignes"
+        ],
+        "provenance": profile["response"]["provenance"],
+    }
+    unaffordable = rows["Rate of unaffordable housing"]
+
+    # Short-term rentals: the ward with the most registrations.
+    str_result = rentals["response"]
+    top = max(str_result["groups"], key=lambda g: g["registrations"])
+
+    return {
+        "to_captured": long_date(case["captured"], lang),
+        "to_tool_count": str(len(toronto.tools)),
+        "to_ckan_tool_count": str(len(ckan.tools)),
+        "to_datasets": number(count["response"]["total_count"], lang),
+        "to_search_box": _call_box(search, search_shown, lang, response_flat=3),
+        "to_docs_box": _call_box(docs, docs_shown, lang, response_flat=5),
+        "to_docs_listed": str(len(doc["documents"])),
+        "to_score_fields": str(current["fields_total"]),
+        "to_scores_table": scores_table,
+        "to_buildings": number(result["buildings"], lang),
+        "to_wards": str(len(wards)),
+        "to_low_ward": esc(low["label"]),
+        "to_low_mean": number(low["mean_score"], lang, 1),
+        "to_high_ward": esc(high["label"]),
+        "to_high_mean": number(high["mean_score"], lang, 1),
+        "to_profile_box": _call_box(profile, profile_shown, lang, response_flat=3),
+        "to_city_core": number(blank["city_value_number"], lang, 1),
+        "to_unaff": number(unaffordable["value_number"], lang, 1),
+        "to_unaff_city": number(unaffordable["city_value_number"], lang, 1),
+        "to_str_total": number(str_result["registrations"], lang),
+        "to_str_ward": esc(top["label"]),
+        "to_str_count": number(top["registrations"], lang),
+        "to_str_share": percent(top["share"] * 100, lang),
+    }
+
+
 def _code_list(names: list[str], lang: Lang) -> str:
     """<code>a</code>, <code>b</code> and <code>c</code>."""
     codes = [f"<code>{esc(name)}</code>" for name in names]
@@ -4428,6 +4631,7 @@ def _write_site(
         target_dir = out if lang == "en" else out / "fr"
         target_dir.mkdir(parents=True, exist_ok=True)
         statcan = statcan_context(modules, lang, root, statcan_searched[lang])
+        toronto = toronto_context(modules, lang)
         for page in pages:
             context = {
                 **shared,
@@ -4435,6 +4639,7 @@ def _write_site(
                 **install_context(lang),
                 **cases[lang],
                 **statcan,
+                **toronto,
                 "lang": lang,
                 "root": root,
                 "page": page.name,
@@ -4460,6 +4665,7 @@ def _write_site(
                 "cur_about": ' aria-current="page"' if page.name == "about.html" else "",
                 "cur_cases": ' aria-current="page"' if page.name == "cases.html" else "",
                 "cur_statcan": ' aria-current="page"' if page.name == "statcan.html" else "",
+                "cur_toronto": ' aria-current="page"' if page.name == "toronto.html" else "",
                 "cur_contributing": (
                     ' aria-current="page"' if page.name == "contributing.html" else ""
                 ),
@@ -4473,7 +4679,7 @@ def _write_site(
                 "level_filters": level_filters(modules, lang),
             }
             rendered = render(page.read_text(encoding="utf-8"), lang, context)
-            if page.name == "statcan.html":
+            if page.name in ("statcan.html", "toronto.html"):
                 rendered = link_tools(rendered, set(by_name), root)
             if lang == "fr":
                 rendered = french_links(rendered)
@@ -4589,6 +4795,7 @@ def llms_txt(modules: list[ModuleDoc], counts: dict[str, int]) -> str:
         f"- [Tools]({page_url('tools.html', 'en')}): every tool with its parameters",
         f"- [Sources]({page_url('sources.html', 'en')}): which agencies and portals cover where",
         f"- [Statistics Canada]({page_url('statcan.html', 'en')}): tables, census and microdata",
+        f"- [City of Toronto]({page_url('toronto.html', 'en')}): open.toronto.ca datasets, what their columns mean, and the portal's rules",
         f"- [Demos]({page_url('cases.html', 'en')}): recorded calls behind real questions",
         f"- [FAQ and licences]({page_url('faq.html', 'en')}): whether queries are saved, and what applies to the data",
         f"- [About]({page_url('about.html', 'en')}): what MapleStats is, who builds it, alternatives",

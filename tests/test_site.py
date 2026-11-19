@@ -224,6 +224,41 @@ def test_statcan_page_counts_come_from_the_registry(modules: list[Any], built_si
             )
 
 
+def test_toronto_page_is_cut_from_its_recording(built_site: Path):
+    """toronto.html builds in both languages from site/_data/cases/toronto.json:
+    the dataset count and every ward are there, every tool link names a real
+    tool, and every trimmed JSON box is still JSON without its // lines."""
+    case = site.load_case("toronto")
+    total = next(
+        c["response"]["total_count"]
+        for c in case["calls"]
+        if c["name"] == "ckan_search_datasets" and not c["arguments"].get("query")
+    )
+    wards = next(
+        c["response"]["groups"]
+        for c in case["calls"]
+        if c["name"] == "toronto_summarize_apartment_scores"
+    )
+    for lang, page in (
+        ("en", built_site / "toronto.html"),
+        ("fr", built_site / "fr" / "toronto.html"),
+    ):
+        text = page.read_text(encoding="utf-8")
+        assert f'<p class="fig">{site.number(total, lang)}</p>' in text
+        for ward in wards:
+            assert html.escape(ward["label"]) in text or ward["label"] in text
+        assert 'aria-current="page">Toronto</a>' in text
+        assert "{{" not in text
+        assert "tools.html#t-ckan_get_dataset_documents" in text
+        boxes = re.findall(r"<pre tabindex=\"0\"><code>(.*?)</code></pre>", text, re.DOTALL)
+        assert len(boxes) == 6  # three calls, a request and a response each
+        for box in boxes:
+            plain = html.unescape(re.sub(r"<[^>]+>", "", box))
+            json.loads(
+                "\n".join(ln for ln in plain.split("\n") if not ln.lstrip().startswith("//"))
+            )
+
+
 def test_case_captures_are_complete():
     """Each case study is recorded calls with their source and, for the first, scripts."""
     import json
@@ -231,7 +266,7 @@ def test_case_captures_are_complete():
     french = [path.stem for path in site.CASES_DIR.glob("*_fr.json")]
     # A French capture stands in for a case on the French pages, so it needs its case.
     assert {key.removesuffix("_fr") for key in french} <= set(site.CASE_KEYS)
-    for key in (*site.CASE_KEYS, *french, "counts", "statcan", site.POLICY_RATE):
+    for key in (*site.CASE_KEYS, *french, "counts", "statcan", "toronto", site.POLICY_RATE):
         case = json.loads((site.CASES_DIR / f"{key}.json").read_text(encoding="utf-8"))
         assert case["captured"] and case["calls"], key
         for call in case["calls"]:
@@ -239,7 +274,7 @@ def test_case_captures_are_complete():
             response = call["response"]
             provenance = (response[0] if isinstance(response, list) else response)["provenance"]
             assert provenance["url"].startswith("https://"), key
-        if key == "counts":
+        if key in ("counts", "toronto"):
             continue
         first = case["calls"][0]
         # A web page the tool parses has no script, only reproduce_code's note why.
