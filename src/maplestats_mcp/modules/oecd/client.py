@@ -28,6 +28,20 @@ Checked live on 2026-11-07 with the project's User-Agent, no key:
   query" (BIS widens it instead). lastNObservations answers 413 on a dozen
   very large datasets (OECD page "restrictions on specific API parameters").
 
+Status on 2026-11-17: at about 21:27 UTC sdmx.oecd.org answered two requests, the
+dataflow list and one data query that the same address had served as SDMX-CSV
+about twenty minutes earlier, with Cloudflare's managed challenge (HTTP 403,
+`Cf-Mitigated: challenge`, a "Just a moment..." page). This client does not try
+to pass it, so every call here fails with the typed Cloudflare error until the
+OECD lifts it; it is recorded as blocked in docs/ROADMAP.md. The quarterly GDP
+example in `oecd_get_data` (dataflow DSD_NAMAIN1@DF_QNA_EXPENDITURE_GROWTH_OECD,
+13 dimensions: FREQ.ADJUSTMENT.REF_AREA.SECTOR.COUNTERPART_SECTOR.TRANSACTION.
+INSTR_ASSET.ACTIVITY.EXPENDITURE.UNIT_MEASURE.PRICE_BASE.TRANSFORMATION.
+TABLE_IDENTIFIER) was therefore read from DBnomics' copy of that dataflow, not
+from the OECD: its Canada series Q.Y.CAN.S1.S1.B1GQ._Z._Z._Z.PC.L.G1.T0102 (real
+GDP, quarter on quarter, calendar and seasonally adjusted) ended at 2026-Q1 in the
+copy indexed on 2026-06-16. The key was not run against sdmx.oecd.org.
+
 Limits: the API best-practices page (2026-03-18) allows 60 data downloads an
 hour, after which requests are blocked for a while; this client spends at
 most constants.DATA_BUDGET_PER_HOUR of them, caches every answer and fails a

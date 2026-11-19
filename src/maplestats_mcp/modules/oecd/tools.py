@@ -141,8 +141,10 @@ async def oecd_get_data(
 
     Use for: any OECD series beyond the preset comparisons: Economic
     Outlook measures (DSD_EO@DF_EO, e.g. `CAN+USA.GDPV_ANNPCT.A`),
-    productivity by industry, PPPs and price levels, tax revenue by tax
-    type, labour, health, education. `key` has one part per
+    quarterly real GDP growth (DSD_NAMAIN1@DF_QNA_EXPENDITURE_GROWTH_OECD,
+    `Q.Y.CAN.S1.S1.B1GQ._Z._Z._Z.PC.L.G1.T0102`), productivity by
+    industry, PPPs and price levels, tax revenue by tax type, labour,
+    health, education. `key` has one part per
     dimension in the order oecd_describe_dataset gives, codes joined by
     `+`, an empty part for all. Periods are SDMX (`2020`, `2020-Q1`,
     `2020-01`); `last_n` keeps the last N per series. Each row has the

@@ -52,6 +52,21 @@ LIMITS_FR = (
     "liste des jeux 24 h)."
 )
 
+# The ILO's rplumber data API (see rplumber.py): the route the preset comparisons and the
+# datasets behind them use while sdmx.ilo.org refuses requests. It publishes no rate limit
+# either, so it gets its own pacing of one request a second, and every answer is cached.
+RPLUMBER_URL = "https://rplumber.ilo.org/data/indicator/"
+RPLUMBER_RATE_LIMIT_SOURCE = "ilo_rplumber"
+# One rplumber answer is read up to this size (a cap like the SDMX route's MAX_ROWS: 10,000
+# rows of about 600 bytes with labels); a larger answer is refused, not cut.
+RPLUMBER_MAX_BYTES = 6 * 1024 * 1024
+# After sdmx.ilo.org fails (the IIS 403, a timeout, a 5xx), the preset requests go straight
+# to rplumber for this long instead of spending two refused requests each time.
+SDMX_COOLDOWN_SECONDS = 5 * 60
+# Countries one rplumber query names at most when no period window is given (the SDMX
+# route's own bound on unbounded keys is 50 series).
+RPLUMBER_MAX_AREAS = 50
+
 CATALOGUE_TIMEOUT_SECONDS = 120.0
 STRUCTURE_TIMEOUT_SECONDS = 60.0
 DATA_TIMEOUT_SECONDS = 90.0

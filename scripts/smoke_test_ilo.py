@@ -171,22 +171,74 @@ async def through_server() -> bool:
     return ok
 
 
-async def run() -> int:
+async def run() -> bool:
     ok = await main()
     ok &= await errors()
     ok &= await through_server()
-    print("ALL OK" if ok else "SOME CHECKS FAILED")
-    return 0 if ok else 1
+    return ok
+
+
+async def rplumber_route() -> bool:
+    """The comparisons and the datasets behind them read through ILOSTAT's rplumber API
+    when sdmx.ilo.org refuses requests (it answered the IIS 403 page on 2026-11-17), and
+    through it alone here: one preset of each key layout, with the values the ILO's own
+    data API gave on 2026-11-08 (Canada's 2025 unemployment rate 6.819, US weekly hours
+    37.54). The route is chosen by the client, so this passes on either API; the note
+    in the result says which one served it."""
+    ok = True
+    layouts = (
+        ("unemployment_rate", "sex and age"),
+        ("weekly_hours_worked", "sex only"),
+        ("average_monthly_earnings_ppp", "sex and currency"),
+        ("minimum_wage_ppp", "currency only"),
+        ("labour_income_share", "no breakdown"),
+    )
+    for indicator, layout in layouts:
+        result = await client.compare_countries(indicator, compare_with=["USA"], last_n=3)
+        canada, usa = result.countries[0], result.countries[1]
+        via = "rplumber" if any("rplumber" in n for n in result.notes) else "SDMX"
+        print(
+            f"OK: {indicator} ({layout}) via {via} -> CA {canada.latest_period} "
+            f"{canada.latest_value}, US {usa.latest_period} {usa.latest_value}, rank "
+            f"{result.canada_rank}/{result.ranked_countries}"
+        )
+        ok &= canada.area_code == "CAN" and usa.area_code == "USA" and len(canada.observations) <= 3
+    hours = await client.compare_countries("weekly_hours_worked", compare_with=["USA"], last_n=3)
+    us_2025 = next((o.value for o in hours.countries[1].observations if o.period == "2025"), None)
+    ok &= us_2025 is not None and abs(us_2025 - 37.54) < 0.05
+    monthly = await client.compare_countries("unemployment_rate", frequency="monthly", last_n=3)
+    print(
+        f"OK: monthly unemployment -> {[(o.period, o.value) for o in monthly.countries[0].observations]}"
+    )
+    ok &= all(
+        o.period.startswith("20") and "-M" in o.period for o in monthly.countries[0].observations
+    )
+    data = await client.get_data(
+        "DF_UNE_DEAP_SEX_AGE_RT", "CAN+USA.A.UNE_DEAP_RT.SEX_T.AGE_YTHADULT_YGE15", last_n=2
+    )
+    canada_2025 = next(
+        (r.value for r in data.rows if r.ref_area == "CAN" and r.period == "2025"), None
+    )
+    print(f"OK: get_data unemployment -> Canada 2025 = {canada_2025}, {len(data.rows)} rows")
+    ok &= canada_2025 is not None and abs(canada_2025 - 6.819) < 0.05
+    return ok
 
 
 async def guarded() -> int:
-    # ILOSTAT answers an IIS 403 "Access is denied" page now and then (2026-11-08,
-    # from three networks): an outage skips the run, any other error still fails it.
+    # ILOSTAT's SDMX API answers an IIS 403 "Access is denied" page now and then (2026-11-08
+    # for a moment, 2026-11-17 for every request): an outage skips the SDMX checks, which
+    # need that API, but the rplumber route is still checked; any other error still fails.
+    ok = True
     try:
-        return await run()
+        ok = await run()
+        print("ALL OK" if ok else "SOME CHECKS FAILED")
     except Exception as exc:  # noqa: BLE001
-        skip_outage("sdmx.ilo.org", exc)
-        return verdict("ILO", True)
+        skip_outage("sdmx.ilo.org", exc, rest_runs=True)
+    try:
+        ok &= await rplumber_route()
+    except Exception as exc:  # noqa: BLE001
+        skip_outage("rplumber.ilo.org", exc)
+    return verdict("ILO", ok)
 
 
 if __name__ == "__main__":

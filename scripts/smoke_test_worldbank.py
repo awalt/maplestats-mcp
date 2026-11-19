@@ -15,6 +15,7 @@ import asyncio
 import json
 import sys
 
+from _smoke_common import skip_outage, verdict
 from fastmcp import Client
 from mcp.types import TextContent
 
@@ -78,6 +79,23 @@ async def main() -> bool:
     )
     ok &= canada.observations[0].year == 1960 and len(canada.observations) >= 65
     ok &= gdp.canada_rank is None and gdp.provenance.licence is not None
+    # Series come from Data360 first and v2 second (2026-11-17: v2's data endpoint hung);
+    # the answer says which one served it.
+    print(f"OK: GDP served by {gdp.provenance.url[:48]}")
+    ok &= gdp.provenance.url.startswith(
+        ("https://data360api.worldbank.org/", "https://api.worldbank.org/v2/")
+    )
+
+    # Data360 returns 1,000 rows a call however many match; a reader that stopped at the
+    # first page ended Canada's population at 2021 beside 37 countries.
+    population = await client.get_canada_series("SP.POP.TOTL", compare_with=["OECD_MEMBERS"])
+    can_pop = population.countries[0]
+    print(
+        f"OK: population vs OECD members -> {len(population.countries)} countries, Canada "
+        f"{len(can_pop.observations)} years to {can_pop.latest_year} = {can_pop.latest_value:,.0f}"
+    )
+    ok &= len(population.countries) >= 35 and len(can_pop.observations) >= 65
+    ok &= (can_pop.latest_year or 0) >= 2024 and 40e6 < (can_pop.latest_value or 0) < 45e6
 
     g7 = await client.get_canada_series("NY.GDP.MKTP.KD.ZG", compare_with=["G7"], most_recent=5)
     print(
@@ -162,13 +180,23 @@ async def through_server() -> bool:
     return ok
 
 
-async def run() -> int:
+async def run() -> bool:
     ok = await main()
     ok &= await errors()
     ok &= await through_server()
     print("ALL OK" if ok else "SOME CHECKS FAILED")
-    return 0 if ok else 1
+    return ok
+
+
+async def guarded() -> int:
+    # The API is slow and its data endpoint stopped answering on 2026-11-17: an outage
+    # skips the run (exit 75), any other error still fails it.
+    try:
+        return verdict("World Bank", await run())
+    except Exception as exc:  # noqa: BLE001
+        skip_outage("api.worldbank.org", exc)
+        return verdict("World Bank", True)
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(run()))
+    sys.exit(asyncio.run(guarded()))

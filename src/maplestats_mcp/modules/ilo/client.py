@@ -30,19 +30,31 @@ and participation rate 65.282 (2025), and US weekly hours 37.54 (2025).
 
 The ILO publishes no rate limit; requests are spaced and cached, and sent
 without retries (an unknown code's 500 would only be repeated).
+
+Status on 2026-11-17: sdmx.ilo.org answered structure, dataflow-list and data
+requests (three tried, one from another client) with the IIS "403 - Forbidden:
+Access is denied" page behind Cloudflare (no Cf-Mitigated header, so not a bot
+challenge), for several minutes, where the 2026-11-08 note saw it pass within a
+moment. rplumber.ilo.org, the ILO's data API for ILOSTAT's own tools, answered
+the same indicator tables in 1.4 to 2.7 s (see rplumber.py), so `ilo_get_data`
+and `ilo_compare_countries` fall back to it for the datasets behind the preset
+comparisons; `ilo_search_datasets` and `ilo_describe_dataset` need the SDMX API
+and say so while it is down.
 """
 
 from __future__ import annotations
 
 import html
 import re
+import time
 import unicodedata
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, NoReturn
 
 import httpx
 
-from maplestats_mcp.modules.ilo import constants
+from maplestats_mcp.modules.ilo import constants, rplumber
 from maplestats_mcp.modules.ilo.schemas import (
     Code,
     ComparisonResult,
@@ -66,6 +78,7 @@ from maplestats_mcp.shared.http import (
     new_client,
     raise_if_cloudflare_challenge,
     request_headers,
+    stream_capped,
 )
 from maplestats_mcp.shared.i18n import fr_number, normalize_lang, pick
 from maplestats_mcp.shared.json_utils import list_or_empty
@@ -107,8 +120,12 @@ _PRESET_FLOWS = frozenset(spec.dataflow for spec in constants.INDICATORS.values(
 def _raise_unavailable(url: str, detail: str, lang: str) -> NoReturn:
     raise_localized(
         UpstreamUnavailable,
-        f"ILOSTAT's SDMX API did not answer ({url}): {detail}. Try again in a minute.",
-        f"l'API SDMX d'ILOSTAT n'a pas répondu ({url}) : {detail}. Réessayez dans une minute.",
+        f"ILOSTAT's SDMX API did not answer ({url}): {detail}. Try again in a minute. "
+        "ilo_compare_countries and ilo_get_data on the datasets behind the preset comparisons "
+        "use the ILO's rplumber API meanwhile.",
+        f"l'API SDMX d'ILOSTAT n'a pas répondu ({url}) : {detail}. Réessayez dans une minute. "
+        "ilo_compare_countries et ilo_get_data, pour les jeux de données des comparaisons "
+        "prédéfinies, utilisent entre-temps l'API rplumber de l'OIT.",
         lang,
     )
 
@@ -151,6 +168,152 @@ async def _get(
         f"ILOSTAT's SDMX API answered HTTP {status} for {url}: {body}",
         f"l'API SDMX d'ILOSTAT a répondu HTTP {status} pour {url} : {body}",
         lang,
+    )
+
+
+# ------------------------------------------------------------ rplumber route
+
+
+_sdmx_down_until = 0.0  # time.monotonic() until which preset requests skip sdmx.ilo.org
+
+
+@dataclass
+class _Fetched:
+    """One answer, whichever API it came from: the series and what the result needs
+    to say about them."""
+
+    series: list[sdmx.Series]
+    cached: bool
+    fid: str
+    name: str
+    key: str
+    updated: datetime | None
+    modelled: bool
+    csv_url: str
+    url: str
+    coverage: str
+    notes: list[str] = field(default_factory=list)
+    not_covered: list[str] = field(default_factory=list)
+
+
+def _fallback_note(lang: str) -> str:
+    return pick(
+        lang,
+        "ILOSTAT's SDMX API (sdmx.ilo.org) is refusing requests, so these figures were read "
+        "from the ILO's rplumber data API (rplumber.ilo.org), which serves the same ILOSTAT "
+        "indicator tables. Dataset metadata and the SDMX code lists are not on this route.",
+        "L'API SDMX d'ILOSTAT (sdmx.ilo.org) refuse les requêtes : ces chiffres ont donc été "
+        "lus dans l'API de données rplumber de l'OIT (rplumber.ilo.org), qui sert les mêmes "
+        "tableaux d'indicateurs d'ILOSTAT. Les métadonnées des jeux de données et les listes de "
+        "codes SDMX ne sont pas sur cette voie.",
+    )
+
+
+def _sdmx_is_down() -> bool:
+    return time.monotonic() < _sdmx_down_until
+
+
+def _mark_sdmx_down() -> None:
+    global _sdmx_down_until
+    _sdmx_down_until = time.monotonic() + constants.SDMX_COOLDOWN_SECONDS
+
+
+async def _rplumber_text(url: str, lang: str) -> tuple[str, bool]:
+    """One rplumber CSV, paced, capped at constants.RPLUMBER_MAX_BYTES and cached."""
+
+    async def fetch() -> str:
+        await get_limiter(
+            constants.RPLUMBER_RATE_LIMIT_SOURCE,
+            rate=constants.RATE_LIMIT_PER_SECOND,
+            capacity=constants.RATE_LIMIT_CAPACITY,
+        ).acquire()
+        headers = request_headers(url, {"Accept-Language": lang})
+        try:
+            response = await stream_capped(
+                _client,
+                url,
+                headers=headers,
+                timeout=constants.DATA_TIMEOUT_SECONDS,
+                max_bytes=constants.RPLUMBER_MAX_BYTES,
+            )
+        except httpx.HTTPError as exc:
+            raise_localized(
+                UpstreamUnavailable,
+                f"The ILO's rplumber API did not answer ({url}): {type(exc).__name__}: {exc}.",
+                f"l'API rplumber de l'OIT n'a pas répondu ({url}) : {type(exc).__name__} : {exc}.",
+                lang,
+            )
+        raise_if_cloudflare_challenge(response)
+        status = response.status_code
+        if status < 400:
+            return response.text
+        if status == 429 or status >= 500:
+            raise_localized(
+                UpstreamUnavailable,
+                f"The ILO's rplumber API answered HTTP {status} for {url}.",
+                f"l'API rplumber de l'OIT a répondu HTTP {status} pour {url}.",
+                lang,
+            )
+        raise_localized(
+            UpstreamError,
+            f"The ILO's rplumber API answered HTTP {status} for {url}: "
+            f"{response.text[:200].strip()}",
+            f"l'API rplumber de l'OIT a répondu HTTP {status} pour {url} : "
+            f"{response.text[:200].strip()}",
+            lang,
+        )
+
+    return await cached_fetch(f"ilo:rplumber:{url}", constants.CACHE_TTL_DATA_SECONDS, fetch)
+
+
+async def _rplumber_fetched(
+    fid: str,
+    key: str,
+    freq: str,
+    areas: list[str],
+    sex: list[str],
+    classif1: list[str],
+    start_period: str | None,
+    end_period: str | None,
+    last_n: int | None,
+    lang: str,
+) -> _Fetched:
+    """The series of dataflow `fid` for these codes, read from rplumber."""
+    found = rplumber.shape_for(fid)
+    assert found is not None  # callers check first
+    shape, modelled = found
+    url = rplumber.query_url(
+        rplumber.indicator_id(fid, freq),
+        areas,
+        sex,
+        classif1,
+        rplumber.from_year(start_period, last_n, freq, datetime.now(UTC).year),
+        rplumber.to_year(end_period),
+        lang,
+    )
+    text, cached = await _rplumber_text(url, lang)
+    series = rplumber.parse(text, shape, freq, start_period, end_period, last_n)
+    name = (series[0].dim("MEASURE") or ("", fid))[1] if series else fid
+    return _Fetched(
+        series=series,
+        cached=cached,
+        fid=fid,
+        name=name,
+        key=key,
+        updated=None,
+        modelled=modelled,
+        csv_url=url,
+        url=url,
+        coverage=pick(
+            lang,
+            f"ILOSTAT indicator table {rplumber.indicator_id(fid, freq)} read from the ILO's "
+            f"rplumber API (the equivalent of dataset {fid}), key {key}. Periods without a "
+            "value are left out.",
+            f"Tableau d'indicateurs {rplumber.indicator_id(fid, freq)} d'ILOSTAT lu dans l'API "
+            f"rplumber de l'OIT (l'équivalent du jeu {fid}), clé {key}. Les périodes sans "
+            "valeur sont omises.",
+        ),
+        notes=[_fallback_note(lang)],
     )
 
 
@@ -392,7 +555,7 @@ async def search_datasets(query: str, limit: int = 10, lang: str = "en") -> Data
     )
 
 
-async def _dataflow(dataset: str, lang: str) -> tuple[str, dict[str, Any]]:
+def _dataflow_id(dataset: str, lang: str) -> str:
     match = _DATASET.match(dataset.strip())
     if not match:
         raise_localized(
@@ -403,7 +566,11 @@ async def _dataflow(dataset: str, lang: str) -> tuple[str, dict[str, Any]]:
             "DF_UNE_DEAP_SEX_AGE_RT). ilo_search_datasets les trouve.",
             lang,
         )
-    fid = match.group(1).upper()
+    return match.group(1).upper()
+
+
+async def _dataflow(dataset: str, lang: str) -> tuple[str, dict[str, Any]]:
+    fid = _dataflow_id(dataset, lang)
     info = await _flow_info(fid, lang)
     if info is None:
         raise_localized(
@@ -604,16 +771,14 @@ def _definitions_note(lang: str) -> str:
     )
 
 
-async def get_data(
+async def _get_data_sdmx(
     dataset: str,
     key: str,
-    start_period: str | None = None,
-    end_period: str | None = None,
-    last_n: int | None = None,
-    lang: str = "en",
-) -> DataResult:
-    lang = normalize_lang(lang)
-    sdmx.check_periods(start_period, end_period, last_n, constants.MAX_LAST_N, lang)
+    start_period: str | None,
+    end_period: str | None,
+    last_n: int | None,
+    lang: str,
+) -> _Fetched:
     fid, info = await _dataflow(dataset, lang)
     structure, _ = await _structure(fid, lang)
     key = sdmx.check_key(
@@ -633,6 +798,159 @@ async def get_data(
         )
     params = sdmx.data_params(start_period, end_period, last_n)
     fetched, cached = await _fetch(fid, key, params, structure, lang)
+    return _Fetched(
+        series=fetched,
+        cached=cached,
+        fid=fid,
+        name=structure.name,
+        key=key,
+        updated=_updated(structure.annotations.get("LAST_UPDATE") or info["updated"]),
+        modelled=info["modelled"],
+        csv_url=_csv_url(fid, key, params),
+        url=str(httpx.URL(_data_url(fid, key), params=params)),
+        coverage=pick(
+            lang,
+            f"ILOSTAT dataset {fid} ({structure.name}), key {key}. Periods without a value "
+            "are left out.",
+            f"Jeu de données {fid} d'ILOSTAT ({structure.name}), clé {key}. Les périodes "
+            "sans valeur sont omises.",
+        ),
+    )
+
+
+def _codes(part: str, what: str, lang: str) -> list[str]:
+    """The codes of one key part: empty or * is all (an empty list); anything but
+    codes joined by + is refused."""
+    part = part.strip()
+    if part in ("", "*"):
+        return []
+    codes = part.upper().split("+")
+    if not all(re.fullmatch(r"[A-Z0-9_\-]+", code) for code in codes):
+        raise_localized(
+            InvalidInput,
+            f"{part!r} is not a list of {what} codes joined by +.",
+            f"{part!r} n'est pas une liste de codes {what} joints par +.",
+            lang,
+        )
+    return codes
+
+
+async def _get_data_rplumber(
+    dataset: str,
+    key: str,
+    start_period: str | None,
+    end_period: str | None,
+    last_n: int | None,
+    lang: str,
+    cause: UpstreamUnavailable | None,
+) -> _Fetched:
+    fid = _dataflow_id(dataset, lang)
+    found = rplumber.shape_for(fid)
+    if found is None:
+        # No preset uses this dataset, so its key layout is only known from the SDMX
+        # structure, which is the API that is down.
+        raise cause or UpstreamUnavailable(
+            f"ILOSTAT's SDMX API is not answering and dataset {fid} is not one of those the "
+            "ILO's rplumber API can serve here (the ones behind ilo_compare_countries). Try "
+            "again in a few minutes."
+        )
+    shape, _ = found
+    parts = key.strip().split(".")
+    if len(parts) != len(shape.kinds):
+        template = ".".join(rplumber.dimension_names(shape))
+        raise_localized(
+            InvalidInput,
+            f"{key!r} is not a key for {fid}: it needs {len(shape.kinds)} parts in the order "
+            f"{template}, each a code, codes joined by +, or empty for all.",
+            f"{key!r} n'est pas une clé de {fid} : il faut {len(shape.kinds)} parties dans "
+            f"l'ordre {template}, chacune un code, des codes joints par +, ou vide pour tous.",
+            lang,
+        )
+    areas: list[str] = []
+    freq = ""
+    sex: list[str] = []
+    classif1: list[str] = []
+    for kind, part in zip(shape.kinds, parts, strict=True):
+        if kind == "area":
+            areas = _codes(part, "area", lang)
+        elif kind == "freq":
+            freq = part.strip().upper()
+        elif kind == "sex":
+            sex = _codes(part, "sex", lang)
+        elif kind == "classif1":
+            classif1 = _codes(part, "classification", lang)
+        elif part.strip() not in ("", "*") and part.strip().upper() != shape.measure:
+            raise_localized(
+                InvalidInput,
+                f"{fid} holds the measure {shape.measure}, not {part.strip()!r}.",
+                f"{fid} contient la mesure {shape.measure}, pas {part.strip()!r}.",
+                lang,
+            )
+    if freq not in ("A", "Q", "M"):
+        raise_localized(
+            InvalidInput,
+            "Name one frequency in the key (A, Q or M) for this dataset.",
+            "indiquez une fréquence dans la clé (A, Q ou M) pour ce jeu de données.",
+            lang,
+        )
+    if (not areas or len(areas) > constants.RPLUMBER_MAX_AREAS) and (
+        last_n is None and start_period is None
+    ):
+        raise_localized(
+            InvalidInput,
+            f"{fid} key {key!r} can match many series. Name the countries (up to "
+            f"{constants.RPLUMBER_MAX_AREAS}), or add last_n or start_period to keep the answer "
+            "small.",
+            f"la clé {key!r} de {fid} peut correspondre à beaucoup de séries. Nommez les pays "
+            f"({constants.RPLUMBER_MAX_AREAS} au plus), ou ajoutez last_n ou start_period pour "
+            "garder la réponse courte.",
+            lang,
+        )
+    by_kind = {
+        "area": "+".join(areas),
+        "freq": freq,
+        "measure": shape.measure,
+        "sex": "+".join(sex),
+        "classif1": "+".join(classif1),
+    }
+    return await _rplumber_fetched(
+        fid,
+        ".".join(by_kind[kind] for kind in shape.kinds),
+        freq,
+        areas,
+        sex,
+        classif1,
+        start_period,
+        end_period,
+        last_n,
+        lang,
+    )
+
+
+async def get_data(
+    dataset: str,
+    key: str,
+    start_period: str | None = None,
+    end_period: str | None = None,
+    last_n: int | None = None,
+    lang: str = "en",
+) -> DataResult:
+    lang = normalize_lang(lang)
+    sdmx.check_periods(start_period, end_period, last_n, constants.MAX_LAST_N, lang)
+    has_layout = rplumber.shape_for(_dataflow_id(dataset, lang)) is not None
+    got: _Fetched | None = None
+    cause: UpstreamUnavailable | None = None
+    if not (has_layout and _sdmx_is_down()):
+        try:
+            got = await _get_data_sdmx(dataset, key, start_period, end_period, last_n, lang)
+        except UpstreamUnavailable as exc:
+            if not has_layout:
+                raise
+            _mark_sdmx_down()
+            cause = exc
+    if got is None:
+        got = await _get_data_rplumber(dataset, key, start_period, end_period, last_n, lang, cause)
+    fid, key, fetched = got.fid, got.key, got.series
     if not fetched:
         raise_localized(
             NotFound,
@@ -682,30 +1000,27 @@ async def get_data(
         for info_row, s in zip(series, fetched, strict=True)
         for period, value, status in s.observations
     ]
-    notes = [*limits, _modelled_note(lang) if info["modelled"] else _definitions_note(lang)]
-    updated = _updated(structure.annotations.get("LAST_UPDATE") or info["updated"])
+    notes = [
+        *limits,
+        _modelled_note(lang) if got.modelled else _definitions_note(lang),
+        *got.notes,
+    ]
     return DataResult(
         dataset=fid,
-        dataset_name=structure.name,
+        dataset_name=got.name,
         key=key,
         series=series,
         rows=rows,
-        csv_url=_csv_url(fid, key, params),
-        citation=_citation(structure.name, updated, lang),
+        csv_url=got.csv_url,
+        citation=_citation(got.name, got.updated, lang),
         notes=notes,
         provenance=_provenance(
-            str(httpx.URL(_data_url(fid, key), params=params)),
-            cached,
+            got.url,
+            got.cached,
             "ilo.DataResult",
             lang,
-            pick(
-                lang,
-                f"ILOSTAT dataset {fid} ({structure.name}), key {key}. Periods without a value "
-                "are left out.",
-                f"Jeu de données {fid} d'ILOSTAT ({structure.name}), clé {key}. Les périodes "
-                "sans valeur sont omises.",
-            ),
-            as_of=updated,
+            got.coverage,
+            as_of=got.updated,
             limits=" ".join(limits) or None,
         ),
     )
@@ -760,6 +1075,84 @@ def _rank(countries: list[CountrySeries]) -> tuple[int | None, str | None, int |
     return 1 + sum(1 for _, v in values if v > canada_value), period, len(values)
 
 
+async def _compare_sdmx(
+    spec: constants.Indicator,
+    areas: list[str],
+    freq: str,
+    sex_code: str,
+    start_period: str | None,
+    end_period: str | None,
+    last_n: int | None,
+    lang: str,
+) -> _Fetched:
+    fid, info = await _dataflow(spec.dataflow, lang)
+    structure, _ = await _structure(fid, lang)
+    covered = set(structure.dimensions[0].code_ids())
+    asked = [a for a in areas if a in covered]
+    if constants.CANADA not in asked:
+        raise_localized(
+            NotFound,
+            f"ILOSTAT dataset {fid} has no data for Canada.",
+            f"le jeu {fid} d'ILOSTAT n'a pas de données pour le Canada.",
+            lang,
+        )
+    key = sdmx.check_key(
+        spec.key.format(area="+".join(asked), freq=freq, sex=sex_code),
+        structure.dimensions,
+        fid,
+        "ilo_describe_dataset",
+        constants.CANADA,
+        lang,
+    )
+    params = sdmx.data_params(start_period, end_period, last_n)
+    fetched, cached = await _fetch(fid, key, params, structure, lang)
+    return _Fetched(
+        series=fetched,
+        cached=cached,
+        fid=fid,
+        name=structure.name,
+        key=key,
+        updated=_updated(structure.annotations.get("LAST_UPDATE") or info["updated"]),
+        modelled=spec.modelled,
+        csv_url=_csv_url(fid, key, params),
+        url=str(httpx.URL(_data_url(fid, key), params=params)),
+        coverage=pick(
+            lang,
+            f"ILOSTAT dataset {fid} ({structure.name}), key {key}.",
+            f"Jeu de données {fid} d'ILOSTAT ({structure.name}), clé {key}.",
+        ),
+        not_covered=[a for a in areas if a not in covered],
+    )
+
+
+async def _compare_rplumber(
+    spec: constants.Indicator,
+    areas: list[str],
+    freq: str,
+    sex_code: str,
+    start_period: str | None,
+    end_period: str | None,
+    last_n: int | None,
+    lang: str,
+) -> _Fetched:
+    found = rplumber.shape_for(spec.dataflow)
+    assert found is not None  # every preset's dataflow has a layout
+    shape, _ = found
+    key = spec.key.format(area="+".join(areas), freq=freq, sex=sex_code)
+    return await _rplumber_fetched(
+        spec.dataflow,
+        key,
+        freq,
+        areas,
+        [sex_code] if spec.has_sex else [],
+        [shape.classif1] if shape.classif1 else [],
+        start_period,
+        end_period,
+        last_n,
+        lang,
+    )
+
+
 async def compare_countries(
     indicator: str,
     compare_with: list[str] | None = None,
@@ -811,28 +1204,20 @@ async def compare_countries(
     if last_n is None and start_period is None:
         last_n = {"A": 10, "Q": 12, "M": 24}[freq]
     areas = _areas(compare_with, lang)
-    fid, info = await _dataflow(spec.dataflow, lang)
-    structure, _ = await _structure(fid, lang)
-    covered = set(structure.dimensions[0].code_ids())
-    asked = [a for a in areas if a in covered]
-    not_covered = [a for a in areas if a not in covered]
-    if constants.CANADA not in asked:
-        raise_localized(
-            NotFound,
-            f"ILOSTAT dataset {fid} has no data for Canada.",
-            f"le jeu {fid} d'ILOSTAT n'a pas de données pour le Canada.",
-            lang,
+    got: _Fetched | None = None
+    if not _sdmx_is_down():
+        try:
+            got = await _compare_sdmx(
+                spec, areas, freq, sex_code, start_period, end_period, last_n, lang
+            )
+        except UpstreamUnavailable:
+            _mark_sdmx_down()
+    if got is None:
+        got = await _compare_rplumber(
+            spec, areas, freq, sex_code, start_period, end_period, last_n, lang
         )
-    key = sdmx.check_key(
-        spec.key.format(area="+".join(asked), freq=freq, sex=sex_code),
-        structure.dimensions,
-        fid,
-        "ilo_describe_dataset",
-        constants.CANADA,
-        lang,
-    )
-    params = sdmx.data_params(start_period, end_period, last_n)
-    fetched, cached = await _fetch(fid, key, params, structure, lang)
+    fid, fetched, not_covered = got.fid, got.series, got.not_covered
+    asked = [a for a in areas if a not in not_covered]
 
     by_area: dict[str, CountrySeries] = {}
     for series in fetched:
@@ -895,33 +1280,29 @@ async def compare_countries(
             )
         )
     notes.append(_modelled_note(lang) if spec.modelled else _definitions_note(lang))
+    notes.extend(got.notes)
     rank, rank_period, ranked = _rank(countries)
-    updated = _updated(structure.annotations.get("LAST_UPDATE") or info["updated"])
     frequency_name = next(k for k, v in constants.FREQUENCIES.items() if v == freq)
     return ComparisonResult(
         indicator=name,
         indicator_label=pick(lang, spec.label_en, spec.label_fr),
         dataset=fid,
-        dataset_name=structure.name,
+        dataset_name=got.name,
         frequency=frequency_name,
         sex=next(k for k, v in constants.SEXES.items() if v == sex_code),
         countries=countries,
         canada_rank=rank,
         rank_period=rank_period,
         ranked_countries=ranked,
-        csv_url=_csv_url(fid, key, params),
-        citation=_citation(structure.name, updated, lang),
+        csv_url=got.csv_url,
+        citation=_citation(got.name, got.updated, lang),
         notes=notes,
         provenance=_provenance(
-            str(httpx.URL(_data_url(fid, key), params=params)),
-            cached,
+            got.url,
+            got.cached,
             "ilo.ComparisonResult",
             lang,
-            pick(
-                lang,
-                f"ILOSTAT dataset {fid} ({structure.name}), key {key}.",
-                f"Jeu de données {fid} d'ILOSTAT ({structure.name}), clé {key}.",
-            ),
-            as_of=updated,
+            got.coverage,
+            as_of=got.updated,
         ),
     )
