@@ -30,7 +30,7 @@ _NON_COMMERCIAL = re.compile(
     r"(-nc(-|$)|non-?commercial|other-nc|pas d.utilisation commerciale)", re.IGNORECASE
 )
 _OPEN = re.compile(
-    r"(ogl|open government|open data licen|open licen|open data commons|odc-|pddl|"
+    r"(ogl|open[ -]government|open[ -]data[ -]licen|open[ -]licen|open data commons|odc-|pddl|"
     r"\bcc-?by\b|cc-by|cc0|creative commons|public domain|other-open|other-pd|other-at|"
     r"gnwt|gofc|statistics[ -]canada[ -]open|statcan-open|apache|unrestricted use|"
     r"openmb|ca-odla|domaine public|attribution)",

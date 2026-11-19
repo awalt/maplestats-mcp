@@ -182,6 +182,16 @@ def test_delta_index_dir_can_be_turned_off(monkeypatch, tmp_path):
     assert config.get_delta_index_dir() == tmp_path
 
 
+def test_statcan_fallback_is_on_unless_turned_off(monkeypatch):
+    monkeypatch.delenv("MAPLE_STATCAN_FALLBACK", raising=False)
+    assert config.get_statcan_fallback_enabled() is True
+    for value in ("0", "off", "false", "no", " OFF "):
+        monkeypatch.setenv("MAPLE_STATCAN_FALLBACK", value)
+        assert config.get_statcan_fallback_enabled() is False
+    monkeypatch.setenv("MAPLE_STATCAN_FALLBACK", "1")
+    assert config.get_statcan_fallback_enabled() is True
+
+
 def test_breaker_settings_default_clamp_and_turn_off(monkeypatch):
     for name in (
         "MAPLE_BREAKER",

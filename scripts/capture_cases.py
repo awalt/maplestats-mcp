@@ -245,6 +245,32 @@ CASES: dict[str, list[dict[str, Any]]] = {
         {"name": "ircc_get_latest_express_entry_round", "arguments": {}},
         {"name": "pbo_get_publication", "arguments": {"publication_id": "RP-2627-002-S"}},
     ],
+    # The City of Toronto page (site/toronto.html): how many datasets the
+    # portal lists, finding RentSafeTO, what its score columns mean (the
+    # City's own notes), scores by ward, one neighbourhood beside the city,
+    # and short-term rental registrations by ward. Toronto's data are in
+    # English only, so there is no French twin.
+    "toronto": [
+        {"name": "ckan_search_datasets", "arguments": {"portal": "toronto", "rows": 1}},
+        {
+            "name": "ckan_search_datasets",
+            "arguments": {"portal": "toronto", "query": "apartment building evaluation", "rows": 2},
+        },
+        {
+            "name": "ckan_get_dataset_documents",
+            "arguments": {
+                "portal": "toronto",
+                "dataset_id": "apartment-building-evaluation",
+                "query": "score",
+            },
+        },
+        {"name": "toronto_summarize_apartment_scores", "arguments": {"group_by": "ward"}},
+        {
+            "name": "toronto_get_neighbourhood_profile",
+            "arguments": {"neighbourhood": "Regent Park", "topic": "core housing need"},
+        },
+        {"name": "toronto_summarize_short_term_rentals", "arguments": {"group_by": "ward"}},
+    ],
     # The counts in the verse: how much each audience can reach.
     "counts": [
         # StatCan's public use microdata files listed on ODESI (Borealis). StatCan's own
@@ -280,6 +306,8 @@ def _trim(name: str, arguments: dict[str, Any], response: Any) -> Any:
             "total_tables": response["total_tables"],
             "provenance": response["provenance"],
         }
+    if name == "ckan_search_datasets" and not arguments.get("query"):
+        return {"total_count": response["total_count"], "provenance": response["provenance"]}
     if name == "borealis_odesi_search_datasets":
         return {"total_matched": response["total_matched"], "provenance": response["provenance"]}
     if name == "cmhc_list_categories":
@@ -348,7 +376,7 @@ async def _record(client: Client, call: dict[str, Any], with_scripts: bool) -> d
 
 def _wants_scripts(key: str, n: int, call: dict[str, Any]) -> bool:
     """A case's first call has scripts."""
-    return n == 0 and key not in ("counts", "prompts")
+    return n == 0 and key not in ("counts", "prompts", "toronto")
 
 
 async def capture(key: str) -> Path:

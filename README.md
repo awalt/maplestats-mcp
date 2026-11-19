@@ -370,10 +370,24 @@ a personal computer. If the server is exposed beyond your machine, set
 is public, needs no token and reports calls per tool name and day, each tool's
 p50 and p95 duration, and each upstream host's error counts and circuit-breaker
 state (see `MAPLE_USAGE_STATS` and `MAPLE_BREAKER` below). After repeated
-failures (timeouts, connection errors, 5xx answers, Cloudflare challenges) a
-host is paused for a cooldown: its tools fail at once with an "unavailable"
-error that says when to retry, instead of waiting for another timeout. The
-`docs://status` resource lists the paused hosts.
+failures (timeouts, connection errors, 5xx answers) a host is paused for a
+cooldown: its tools fail at once with an "unavailable" error that says when to
+retry, instead of waiting for another timeout. The `docs://status` resource
+lists the paused hosts.
+
+A Cloudflare challenge is counted in `/stats` but never pauses a host, and it is
+reported as a block, not an outage: a retry in a minute does not clear it.
+Statistics Canada's `www150.statcan.gc.ca` host answers some paths (SDMX, CIMT)
+with one while its Web Data Service answers scripts, so pausing the host would
+cut off what works (`statcan_check_access` shows what answers now). The error
+says the host is challenging automated clients, not to retry, and what still
+works (the 2021 census profile and the CCEI and shared SDMX spaces on
+`api.statcan.gc.ca`, `geo.statcan.gc.ca`, the Bank of Canada, CMHC, the
+provincial modules and the OECD). MapleStats does not try to get past a
+challenge (no disguised User-Agent, headless browser, proxy or cookies); it
+recognises the challenge, by its `Cf-Mitigated: challenge` header or, without
+it, by the page title ("Just a moment", "Security Check", "Vérification de
+sécurité"), and reports it.
 
 | Env var | Default | Purpose |
 |---|---|---|
@@ -395,6 +409,7 @@ error that says when to retry, instead of waiting for another timeout. The
 | `MAPLE_OCR`, `MAPLE_OCR_MEMORY_MB` | `0`, `1024` | `1` lets `statcan_reference_get_section_text` read the pages of a scanned PDF (no text layer) by OCR: the `[ocr]` extra (`pip install "maplestats-mcp[ocr]"`, pypdfium2) and the system's `tesseract` program with its English and French data (the Docker image has both) must be installed; otherwise those pages come back empty with a note. One page is read at a time, 10 pages at most per call (5 by default), within the 40 s PDF budget, at up to 12 megapixels a page. The memory value caps the tesseract child's address space (enforced on Linux only; `0` turns it off) |
 | `MAPLE_BREAKER` | `1` | Pause requests to an upstream host after repeated failures; `0` sends every request |
 | `MAPLE_BREAKER_FAILURES` / `MAPLE_BREAKER_WINDOW_SECONDS` / `MAPLE_BREAKER_COOLDOWN_SECONDS` | `5` / `300` / `60` | Failures in a row, within the window, that pause a host, and how long before one probe request is sent |
+| `MAPLE_STATCAN_FALLBACK` | `1` | When Statistics Canada's Web Data Service answers a `wds_get_data_from_vectors`, `wds_get_data_from_cube_coord` or `wds_get_series_info` call with the Cloudflare challenge (and no last good copy is held), answer from another official source instead, labelled in `provenance` (source, url, `substituted_for`, caveats): StatCan's CCEI and shared SDMX spaces on api.statcan.gc.ca, the Bank of Canada's Valet API for the CPI vectors it carries, or the Alberta Economic Dashboard's copy of a table. StatCan is always asked first; `0` turns the substitutes off |
 | `MAPLE_PUMF_TABULATE` | `1` | `0` hides `statcan_pumf_tabulate` (it downloads whole PUMF ZIPs); search, listings and codebooks stay |
 | `MAPLE_QUERY_SERIES` | `1` locally, `0` over HTTP | `0` hides `wds_query_series` (server-side SQL): off by default when serving HTTP, since one query could use more memory than a small instance has |
 | `MAPLE_GIS` | `1` | `0` runs a statistics-only profile from the same install: the 14 pure geospatial tools (`bcgw_*`, `eccc_coverages_*`, `nrcan_geo_*`, `nrcan_nbac_query_fires`, the three census boundary tools of `statcan_geo_*` and the two fire-perimeter tools) leave `search_tools`, `plan_query`, the server instructions and `docs://catalogue`, and a call by name reads as an unknown tool. Tools that serve rows or figures from a map service (ArcGIS Hub, ECCC observations, fire points) stay. Nothing is hidden by default |
