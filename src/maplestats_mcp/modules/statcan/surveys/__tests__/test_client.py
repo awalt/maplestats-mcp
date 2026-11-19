@@ -9,7 +9,13 @@ from maplestats_mcp.modules.statcan.surveys import client, constants
 from maplestats_mcp.modules.statcan.surveys.schemas import SurveyListing
 from maplestats_mcp.shared import cache as cache_module
 from maplestats_mcp.shared import retrying
-from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
+from maplestats_mcp.shared.errors import (
+    CloudflareChallenge,
+    InvalidInput,
+    NotFound,
+    UpstreamError,
+    UpstreamUnavailable,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -282,3 +288,31 @@ async def test_search_surveys_empty_directory_after_rewarm_raises(httpx_mock):
     with pytest.raises(UpstreamError):
         await client.search_surveys()
     assert "en" not in client._warmed_list_langs
+
+
+_CHALLENGE = {"status_code": 403, "headers": {"cf-mitigated": "challenge", "server": "cloudflare"}}
+
+
+async def test_search_surveys_falls_back_to_the_imdb_index_behind_a_cloudflare_challenge(
+    httpx_mock,
+):
+    # Live 2026-11-17: www150 (the directory) answers every request with Cloudflare's
+    # challenge while www23 (IMDB) answers. As a bare 403 it raised UpstreamError and
+    # the fallback never ran; as CloudflareChallenge (an UpstreamUnavailable) it does.
+    httpx_mock.add_response(url=constants.SURVEY_LIST_URL_EN, html="Just a moment...", **_CHALLENGE)
+    httpx_mock.add_response(url=constants.IMDB_INDEX_URL_EN.format(letter="l"), text=_IMDB_INDEX_L)
+    httpx_mock.add_response(
+        url=re.compile(r".*/imdb-bmdi/pub/index[a-km-z]-eng\.htm"),
+        status_code=404,
+        is_reusable=True,
+    )
+    result = await client.search_surveys("labour")
+    assert [s.survey_id for s in result.surveys] == [3701, 4400]
+    assert "imdb-bmdi" in result.provenance.url
+
+
+async def test_get_survey_metadata_behind_a_cloudflare_challenge_is_unavailable(httpx_mock):
+    url = f"{constants.IMDB_BASE_URL_EN}?Function=getSurvey&SDDS=5108"
+    httpx_mock.add_response(url=url, html="Just a moment...", **_CHALLENGE)
+    with pytest.raises(CloudflareChallenge):
+        await client.get_survey_metadata(5108)

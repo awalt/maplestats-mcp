@@ -285,7 +285,7 @@ by a person
 
 ## What it covers
 
-475 tools in 91 modules. Read `docs://catalogue` (or `docs_read_resource` through `call_tool`) for the full, bilingual list.
+480 tools in 91 modules. Read `docs://catalogue` (or `docs_read_resource` through `call_tool`) for the full, bilingual list.
 
 | Area | Tool prefixes | Covers |
 |---|---|---|
@@ -307,6 +307,17 @@ Other federal series (CRA, OSFI, ISED insolvency) are ordinary
 open.canada.ca datasets, reachable with
 `ckan_search_datasets(portal="federal", fq="organization:<org>")`.
 
+Statistics Canada's bot check (November 2026): StatCan now answers some
+automated requests with a check only a person in a web browser can pass. It
+blocks the SDMX service, trade by HS commodity (CIMT), The Daily's RSS feeds,
+the catalogue and publication pages, the census site (www12) and, on some
+networks, the full-table files. MapleStats does not try to get past it. The Web
+Data Service still answers scripts, so the SDMX tools read the same series from
+it, `wds_get_full_table_download` returns a Python script that rebuilds a table
+through it, and a result whose refresh is blocked comes back from the last good
+copy, labelled with its date. `statcan_check_access` says which services answer
+now; details in [docs/findings/statcan-captcha-2026-11.md](docs/findings/statcan-captcha-2026-11.md).
+
 Not covered: CAPP's Statistics Handbook, Petrinex and Payments Canada were
 not built, because their terms or download hosts do not permit automated
 access. CanadaBuys, OpenParliament.ca and the Toronto Transit Commission's
@@ -318,7 +329,7 @@ files (as opposed to its DataStore tables) are not read: its portal's robots.txt
 disallows automated file downloads. The
 City of Hamilton's portal is left out because it answers automated requests
 with a Cloudflare challenge (Niagara Open Data did too until 2026-11-08, and is
-now covered). The 2006-2016 census data tables and the 2016 Census Profile service were removed because Statistics Canada's www12 host answers automated clients with a bot challenge, 503 errors or timeouts (the 2021 profile and the WDS tables remain, and `statcan_census_profile_archive_*` still lists the links to the 2001-2016 Census Profile bulk files without opening them). Justice Laws (federal statutes and
+now covered). The 2006-2016 census data tables and the 2016 Census Profile service were removed because Statistics Canada's www12 host answers automated clients with a bot challenge, 503 errors or timeouts (the 2021 profile and the WDS tables remain, and `statcan_census_profile_archive_*` still lists the links to the 2001-2016 Census Profile bulk files without opening them; the 1996-2021 Census GeoSuite geography tables are read from MountainMath's checked re-host, `statcan_geosuite_*`). Justice Laws (federal statutes and
 regulations) is out of scope, because legislation text is not data this
 server carries, and the Saskatchewan Bureau of Statistics' Provincial
 Economic Accounts were not built: they are under Crown copyright, for
@@ -359,32 +370,24 @@ a personal computer. If the server is exposed beyond your machine, set
 is public, needs no token and reports calls per tool name and day, each tool's
 p50 and p95 duration, and each upstream host's error counts and circuit-breaker
 state (see `MAPLE_USAGE_STATS` and `MAPLE_BREAKER` below). After repeated
-failures (timeouts, connection errors, 5xx answers, Cloudflare challenges) a
-host is paused for a cooldown: its tools fail at once with an "unavailable"
-error that says when to retry, instead of waiting for another timeout.
+failures (timeouts, connection errors, 5xx answers) a host is paused for a
+cooldown: its tools fail at once with an "unavailable" error that says when to
+retry, instead of waiting for another timeout. The `docs://status` resource
+lists the paused hosts.
 
-A Cloudflare challenge is treated as a block, not an outage, because it lasts
-hours: Statistics Canada's `www150.statcan.gc.ca` host (WDS, SDMX, CIMT, The
-Daily, the indicator feeds) began answering every automated client with one at
-about 18:25 UTC on 2026-11-17. The error says the host is challenging automated
-clients, since when, not to retry, and what still works (the 2021 census
-profile and the CCEI and shared SDMX spaces on `api.statcan.gc.ca`,
-`geo.statcan.gc.ca`, the Bank of Canada, CMHC, the provincial modules and the
-OECD), instead of "retry in a minute". The cooldown grows with each failed probe
-while the cause is a challenge: 60 s, 5 min, 15 min, then 30 min, and never
-more than 30 minutes (or the configured cooldown, if that is longer), so a block
-that is lifted is noticed within half an hour. A timeout or a 5xx keeps the
-base cooldown. MapleStats does not try to get past a challenge (no disguised
-User-Agent, headless browser, proxy or cookies); it recognises the challenge,
-by its `Cf-Mitigated: challenge` header or, without it, by the page title
-("Just a moment", "Security Check", "Vérification de sécurité"), and reports it.
-Each host in `/stats` `upstreams.hosts` shows `state` (`closed`, `open`,
-`half_open`), `cause` (`challenge`, `timeout`, `network` or `server_error`;
-null while closed), `blocked_since` (UTC, when that cause first failed),
-`probe_after` (UTC, when the next probe is allowed), `cooldown_seconds`, and
-its error counts. The `docs://status` resource lists the paused hosts with the
-same, in English and French. The state is per process and starts empty after a
-restart.
+A Cloudflare challenge is counted in `/stats` but never pauses a host, and it is
+reported as a block, not an outage: a retry in a minute does not clear it.
+Statistics Canada's `www150.statcan.gc.ca` host answers some paths (SDMX, CIMT)
+with one while its Web Data Service answers scripts, so pausing the host would
+cut off what works (`statcan_check_access` shows what answers now). The error
+says the host is challenging automated clients, not to retry, and what still
+works (the 2021 census profile and the CCEI and shared SDMX spaces on
+`api.statcan.gc.ca`, `geo.statcan.gc.ca`, the Bank of Canada, CMHC, the
+provincial modules and the OECD). MapleStats does not try to get past a
+challenge (no disguised User-Agent, headless browser, proxy or cookies); it
+recognises the challenge, by its `Cf-Mitigated: challenge` header or, without
+it, by the page title ("Just a moment", "Security Check", "Vérification de
+sécurité"), and reports it.
 
 | Env var | Default | Purpose |
 |---|---|---|
@@ -400,11 +403,12 @@ restart.
 | `MAPLE_ALLOWED_ORIGINS` | project website, localhost | Browser origins allowed on `/mcp` (comma-separated, `*.` and `:*` wildcards); others get 403, clients without an Origin are allowed |
 | `MAPLE_CACHE_MAX_ENTRIES` | `2000` | Response cache size per TTL bucket |
 | `MAPLE_CACHE_MAX_MB` | `128` | Estimated memory cap for the response cache, all buckets together |
+| `MAPLE_LAST_GOOD_MB` | `32` | Memory for the last good copy of each result, served (with its date) when a refresh meets a bot check; 0 turns it off |
 | `MAPLE_PARSE_WORKERS` / `MAPLE_PARSE_TIMEOUT_SECONDS` | `4` / `60` | Threads for parsing Excel and CSV files, and the time one parse may take |
 | `MAPLE_TOOL_TIMEOUT_SECONDS` | `120` | Longest a tool call may run |
 | `MAPLE_OCR`, `MAPLE_OCR_MEMORY_MB` | `0`, `1024` | `1` lets `statcan_reference_get_section_text` read the pages of a scanned PDF (no text layer) by OCR: the `[ocr]` extra (`pip install "maplestats-mcp[ocr]"`, pypdfium2) and the system's `tesseract` program with its English and French data (the Docker image has both) must be installed; otherwise those pages come back empty with a note. One page is read at a time, 10 pages at most per call (5 by default), within the 40 s PDF budget, at up to 12 megapixels a page. The memory value caps the tesseract child's address space (enforced on Linux only; `0` turns it off) |
 | `MAPLE_BREAKER` | `1` | Pause requests to an upstream host after repeated failures; `0` sends every request |
-| `MAPLE_BREAKER_FAILURES` / `MAPLE_BREAKER_WINDOW_SECONDS` / `MAPLE_BREAKER_COOLDOWN_SECONDS` | `5` / `300` / `60` | Failures in a row, within the window, that pause a host, and how long before one probe request is sent. While a host answers with a Cloudflare challenge the wait after each failed probe is 1, 5, 15 and then 30 times the cooldown, never more than 30 minutes or the cooldown itself if that is longer |
+| `MAPLE_BREAKER_FAILURES` / `MAPLE_BREAKER_WINDOW_SECONDS` / `MAPLE_BREAKER_COOLDOWN_SECONDS` | `5` / `300` / `60` | Failures in a row, within the window, that pause a host, and how long before one probe request is sent |
 | `MAPLE_PUMF_TABULATE` | `1` | `0` hides `statcan_pumf_tabulate` (it downloads whole PUMF ZIPs); search, listings and codebooks stay |
 | `MAPLE_QUERY_SERIES` | `1` locally, `0` over HTTP | `0` hides `wds_query_series` (server-side SQL): off by default when serving HTTP, since one query could use more memory than a small instance has |
 | `MAPLE_GIS` | `1` | `0` runs a statistics-only profile from the same install: the 14 pure geospatial tools (`bcgw_*`, `eccc_coverages_*`, `nrcan_geo_*`, `nrcan_nbac_query_fires`, the three census boundary tools of `statcan_geo_*` and the two fire-perimeter tools) leave `search_tools`, `plan_query`, the server instructions and `docs://catalogue`, and a call by name reads as an unknown tool. Tools that serve rows or figures from a map service (ArcGIS Hub, ECCC observations, fire points) stay. Nothing is hidden by default |

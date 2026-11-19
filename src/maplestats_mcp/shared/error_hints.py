@@ -55,20 +55,20 @@ _HINTS: tuple[tuple[type[BaseException], str, str], ...] = (
         ),
     ),
     (
-        # A challenge is a policy block that lasts hours, not a blip: "retry in a minute" would
+        # A challenge is a policy block, not a blip: "retry in a minute" would
         # send the caller into a loop (StatCan's www150, 2026-11-17). shared/http.py's own
         # message already carries a fuller fix naming the sources that still work; this covers
         # a challenge raised with a message that has none.
         CloudflareChallenge,
         (
             "Fix: do not retry; the publisher's host is challenging automated clients, which "
-            "usually lasts hours, not minutes. Say the source is blocking automated access and "
+            "a retry in a minute does not clear. Say the source is blocking automated access and "
             "why, name another source for the same data if search_tools or plan_query lists "
             "one, and do not answer from memory."
         ),
         (
             "Solution : ne réessayez pas ; l'hôte de l'éditeur bloque les clients automatisés, "
-            "ce qui dure en général des heures et non des minutes. Dites que la source bloque "
+            "qu'un nouvel essai dans une minute ne règle pas. Dites que la source bloque "
             "l'accès automatisé et pourquoi, nommez une autre source pour les mêmes données si "
             "search_tools ou plan_query en liste une, et ne répondez pas de mémoire."
         ),

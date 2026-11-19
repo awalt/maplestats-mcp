@@ -631,15 +631,37 @@ async def test_french_dataset_provenance(httpx_mock):
     assert detail.title == "Liste des organismes de bienfaisance"
     licence = detail.provenance.licence or ""
     assert licence.startswith("Licence du jeu de données : Open Government Licence - Canada")
-    assert licence.endswith("Le portail la marque comme ouverte.")
+    assert licence.endswith("Une licence ouverte.")
 
 
 async def test_english_dataset_provenance_is_unchanged(httpx_mock):
     httpx_mock.add_response(json=_ok({**_FEDERAL_PACKAGE, "isopen": True}))
     detail = await client.get_dataset("federal", "fe1b2c3d")
     assert detail.provenance.licence == (
-        "Dataset licence: Open Government Licence - Canada. The portal marks it open."
+        "Dataset licence: Open Government Licence - Canada. An open licence."
     )
+
+
+async def test_a_city_licence_ckan_does_not_list_is_still_open(httpx_mock):
+    # Toronto's package_show on 2026-11-18: its own open licence, isopen false.
+    package = {
+        **_FEDERAL_PACKAGE,
+        "isopen": False,
+        "license_id": "open-government-licence-toronto",
+        "license_title": "open-government-licence-toronto",
+    }
+    httpx_mock.add_response(json=_ok(package))
+    detail = await client.get_dataset("federal", "fe1b2c3d")
+    assert detail.is_open is True
+    assert (detail.provenance.licence or "").endswith("An open licence.")
+
+
+async def test_a_restricted_licence_keeps_the_portal_flag(httpx_mock):
+    package = {**_FEDERAL_PACKAGE, "isopen": False, "license_id": "other-closed",
+               "license_title": "Other (Not Open)"}  # fmt: skip
+    httpx_mock.add_response(json=_ok(package))
+    detail = await client.get_dataset("federal", "fe1b2c3d")
+    assert detail.is_open is False
 
 
 async def test_french_search_coverage_and_limits(httpx_mock):

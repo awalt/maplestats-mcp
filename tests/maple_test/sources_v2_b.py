@@ -23,7 +23,13 @@ from typing import Any, NoReturn
 import httpx
 
 TODAY = "2026-11-03"
-UA = {"User-Agent": "Mozilla/5.0 (maple-test answer key)"}
+UA = {
+    "User-Agent": "MapleStats Maple Test answer key (https://github.com/dsanchezp18/maplestats-mcp)"
+}
+# NOT USED. Until 2026-11-18 this script sent a browser-like User-Agent; the project
+# owner asked that no code look like an attempt to get past a publisher's bot check,
+# so it names itself above. Kept as a record only:
+# _RETIRED_UA = {"User-Agent": "Mozilla/5.0 (maple-test answer key)"}
 
 DPD = "https://health-products.canada.ca/api/drug"
 EE_PAGE = (

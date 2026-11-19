@@ -222,6 +222,16 @@ def get_cache_max_bytes() -> int:
     return int(max(1.0, value) * 1024**2)
 
 
+def get_last_good_max_bytes() -> int:
+    """Cap on the "last good copy" store of shared/cache.py (MAPLE_LAST_GOOD_MB, default 32).
+
+    It keeps each cached result past its TTL, so a refresh a publisher answers
+    with its bot check can serve the last copy, labelled with its date. 0 turns it off.
+    """
+    value = _env_float("MAPLE_LAST_GOOD_MB", 32.0)
+    return int(max(0.0, value) * 1024**2)
+
+
 def get_tool_timeout_seconds() -> float:
     """Longest a single tool call may run before it fails with a clear error.
 

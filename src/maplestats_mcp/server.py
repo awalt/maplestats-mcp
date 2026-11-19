@@ -735,9 +735,11 @@ for every field and the full provenance.
 For a French question, pass lang='fr' to plan_query and every tool.
 For a handful of series use the vector tools (every observation inline);
 for averages, sums or rankings over a few series, wds_query_series (where the
-server offers it; off over HTTP by default) runs SQL server-side. For a whole StatCan table, or hundreds of series, use
-wds_get_full_table_download (a CSV link, not the rows) and offer the Python
-script it returns; run it only if the user agrees.
+server offers it; off over HTTP by default) runs SQL server-side. For hundreds of
+series, batch the vector or coordinate tools (up to 300 per call). For a whole
+StatCan table, wds_get_full_table_download gives the file link for a browser
+(StatCan blocks scripted full-table downloads) and a Python script that rebuilds
+the same CSV through WDS; offer the script and run it only if the user agrees.
 Cite every figure you report: a StatCan series carries context.citation
 (table, vector, release date) to quote with each value's reference period;
 other results name their source in provenance. Keep StatCan quality flags
@@ -760,19 +762,29 @@ MapleStats returns official data for information only: when an answer touches
 investing, tax, legal or financial decisions, say it is not advice.
 
 Sources, by tool-name prefix:
-- Statistics Canada: wds_ (tables/cubes, vectors), sdmx_ (filtered
-  series), sdmx_space_ (extra SDMX spaces: CCEI energy with ECCC emissions
-  and NRCan indicators, and the shared space), rdaas_ (classifications,
-  e.g. NAICS), statcan_census_profile_ (2021),
+- Statistics Canada: wds_ (tables/cubes, vectors, revision history), sdmx_
+  (filtered series), sdmx_space_ (extra SDMX spaces: CCEI energy with ECCC
+  emissions and NRCan indicators; the shared space: interprovincial trade,
+  rural, education (PCEIP), Quality of Life), rdaas_ (classifications and
+  concordances, e.g. NAICS), statcan_census_profile_ (2021),
   statcan_census_profile_archive_ (2001-2016 bulk links),
-  statcan_daily_ (The Daily, release calendar), statcan_indicators_,
+  statcan_geosuite_ (census geography tables 1996-2021, re-hosted),
+  statcan_daily_ (The Daily, release calendar), statcan_check_access (which
+  StatCan services answer scripts now), statcan_indicators_
+  (latest headline figures with growth rates),
   statcan_delta_ (daily bulk-update files, vintage tables),
   statcan_reference_ (definitions, methods, analysis), statcan_surveys_
   (survey directory, IMDB metadata, RDC/RTRA holdings), statcan_geo_
-  (census geography), statcan_sdg_ (SDG hub), statcan_pumf_ (public use
-  microdata: find, downloads, codebooks), statcan_lode_ (open databases:
+  (census boundaries; spatial layers: deprivation, housing need, roads),
+  statcan_sdg_ (SDG hub), statcan_pumf_ (public use microdata: find,
+  codebooks, weighted tables), statcan_lode_ (open databases:
   healthcare, schools, buildings, addresses, proximity), cimt_ (trade by
   HS commodity, partner, province, monthly from 1988).
+  Since November 2026 StatCan answers some automated requests (SDMX, CIMT
+  trade, catalogue and search pages, possibly full-table files) with a
+  captcha only a person in a browser can pass. An error or note naming it
+  is StatCan's block, not a MapleStats outage: tell the user so, and use
+  the route it names; wds_ still answers.
 - Provincial and territorial statistics agencies: bc_stats_ (BC Stats
   Excel tables), isq_ (Institut de la statistique du Quebec), nl_stats_
   (NL Statistics Agency workbooks), yukon_stats_ (Yukon Bureau of
@@ -1086,8 +1098,7 @@ def build_server() -> FastMCP:
     @mcp.resource("docs://status")
     def upstream_status_doc() -> str:
         """Upstream hosts MapleStats has paused after repeated failures (EN/FR),
-        with the cause (a Cloudflare challenge, timeouts, ...), since when, and
-        when each is tried again. Read it when tools for one source keep
+        with when each is tried again. Read it when tools for one source keep
         failing with UpstreamUnavailable."""
         return render_status()
 

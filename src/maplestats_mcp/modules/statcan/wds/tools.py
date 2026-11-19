@@ -749,30 +749,30 @@ async def wds_get_full_table_download(
     end_period: str | None = None,
     lang: Lang = "en",
 ) -> FullTableDownloadLink:
-    """Get the download URL for a full StatCan table as CSV (default) or
-    SDMX/XML (`format="sdmx"`), with a script that summarizes it.
+    """Get a whole StatCan table: its file link for a browser, and (CSV) a
+    Python script that rebuilds the same CSV through WDS.
 
-    Use for: bulk/offline analysis of an entire table rather than
-    individual series, in CSV or SDMX format — hands back a URL, does
-    not fetch the file. Also the way to get hundreds of series, or to
-    reconcile a workbook of vector IDs against a published table: the
-    CSV has a VECTOR column to join on, where the vector tools return
-    every observation inline. For CSV it also returns Python and R
-    scripts that download the file to data/raw/, keep the `members`
-    asked for ({"Geography": ["Canada", "Ontario"]}, dimension names as
-    in wds_get_cube_metadata) and the periods from `start_period` to
-    `end_period` (REF_DATE's form: 2020, 2020-01), then print only a
-    short summary. For a large table, run the Python script and reason
-    over its printout instead of pulling the rows into the conversation.
-    `lang` picks the CSV language edition. An unknown table number,
-    dimension or member is an error, not a dead link.
-    Keywords: statcan, csv, sdmx, xml, download, full table, bulk,
-    export, wds, Statistics Canada, vector column, join, reconcile,
-    hundreds of series, offline, large table, summary script.
-    Mots-clés : Statistique Canada, CSV, SDMX, XML, téléchargement, tableau
-    complet, téléchargement en bloc, exportation, données complètes, fichier
-    du tableau, colonne VECTOR, jointure, rapprochement, centaines de séries,
-    grand tableau, script de résumé.
+    Use for: an entire table, or hundreds of its series, for offline
+    analysis; or reconciling a workbook of vector IDs against a published
+    table (the CSV has a VECTOR column to join on). Statistics Canada blocks
+    automated full-table downloads since November 2026, so download_url is
+    for a person in a browser, and `file_check` says whether it served the
+    file or the captcha just now. For CSV the tool also returns a Python
+    script that rebuilds the table through WDS, which StatCan still serves:
+    the same columns, order and values as StatCan's file, written to
+    data/raw/. `members` ({"Geography": ["Canada", "Ontario"]}, dimension
+    and member names as in wds_get_cube_metadata) and `start_period` /
+    `end_period` (REF_DATE's form: 2020, 2020-01) keep part of the table.
+    `rebuild` gives its size in WDS calls; past the limit there is no
+    script and the notes say to narrow it. Offer the script; run it only if
+    the user agrees. An unknown table, dimension or member is an error.
+    Keywords: statcan, csv, sdmx, download, full table, bulk, export, wds,
+    Statistics Canada, rebuild table, vector column, join, reconcile,
+    hundreds of series, offline, large table.
+    Mots-clés : Statistique Canada, CSV, SDMX, téléchargement, tableau
+    complet, téléchargement en bloc, exportation, reconstruire le tableau,
+    colonne VECTOR, jointure, rapprochement, centaines de séries, grand
+    tableau.
     """
     client.use_lang(lang)
     if format == "sdmx":
@@ -782,8 +782,8 @@ async def wds_get_full_table_download(
                 "error.invalid_input",
                 lang,
                 detail=(
-                    "wds_get_full_table_download: members, start_period and end_period filter "
-                    'the CSV scripts; format="sdmx" returns the link only.'
+                    "wds_get_full_table_download: members, start_period and end_period shape "
+                    'the WDS rebuild script of the CSV; format="sdmx" returns the link only.'
                 ),
             )
         return await client.get_full_table_download_sdmx(product_id)

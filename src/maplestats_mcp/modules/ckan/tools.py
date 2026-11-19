@@ -14,7 +14,7 @@ from typing import Literal
 
 from fastmcp.tools import tool
 
-from maplestats_mcp.modules.ckan import client, files
+from maplestats_mcp.modules.ckan import client, documents, files
 from maplestats_mcp.modules.ckan.constants import (
     DATASTORE_ROWS_DEFAULT,
     FILE_ROWS_DEFAULT,
@@ -22,6 +22,7 @@ from maplestats_mcp.modules.ckan.constants import (
 )
 from maplestats_mcp.modules.ckan.schemas import (
     CollectionDetail,
+    DatasetDocuments,
     DatastoreSearchResult,
     FileRows,
     FileStructure,
@@ -124,6 +125,37 @@ async def ckan_get_dataset(portal: PortalKey, dataset_id: str, lang: Lang = "en"
     à jour, période couverte, données ouvertes.
     """
     return await client.get_dataset(portal, dataset_id, lang)
+
+
+@tool
+async def ckan_get_dataset_documents(
+    portal: PortalKey, dataset_id: str, query: str = "", lang: Lang = "en"
+) -> DatasetDocuments:
+    """Explain a CKAN dataset: what it measures, its limits, and what each column means.
+
+    Use for: "how is this measured?", "what does this column mean?", "what
+    are the caveats?" about a city, provincial or federal open dataset, before
+    quoting a figure from it (the City of Toronto's Dashboard Key Indicators,
+    Neighbourhood Profiles, RentSafeTO). Returns the dataset's description and
+    documentation fields (limitations, collection method, refresh rate, owner,
+    information page) and, for each DataStore resource, every field with the
+    publisher's own note on it (Toronto's Dashboard explains data_source_notes,
+    desired_direction and target there). `query` keeps the fields whose name
+    or note holds every word. Also lists the pages and files that document the
+    dataset (its information page, links in the description, readme and
+    methodology files) with their URLs, without opening them: some
+    publishers' terms or robots.txt rule out automated copies, the City of
+    Toronto's among them. `dataset_id` is the id or name from
+    ckan_search_datasets.
+    Keywords: CKAN, dataset documentation, data dictionary, field definitions,
+    column meaning, methodology, limitations, caveats, readme, how is it
+    measured, Toronto open data, metadata.
+    Mots-clés : CKAN, documentation du jeu de données, dictionnaire de
+    données, définition des champs, signification des colonnes,
+    méthodologie, limites, mises en garde, fichier lisezmoi, données
+    ouvertes de Toronto, métadonnées.
+    """
+    return await documents.get_dataset_documents(portal, dataset_id, query, lang)
 
 
 @tool
