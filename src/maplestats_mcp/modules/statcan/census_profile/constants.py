@@ -33,6 +33,23 @@ CACHE_TTL_CODELIST_SECONDS = 24 * 60 * 60
 # 120 s tool timeout (MAPLE_TOOL_TIMEOUT_SECONDS), so the caller gets this module's
 # "did not respond in time" error rather than the server's generic one.
 CODELIST_TIMEOUT_SECONDS = 45.0
+# One `data` request takes 33 to 47 s (client.py, note 3), so each attempt waits 60 s.
+# shared/http.py retries a timeout up to 3 times, 180 s and more in all, past the 120 s
+# default tool timeout (MAPLE_TOOL_TIMEOUT_SECONDS; the hosted server sets 230 s). The
+# attempts together are cut at data_budget_seconds(), leaving 30 s of the tool's time,
+# as bcer and wds/query.py do, so the caller gets this module's error naming the
+# census API's slowness rather than the server's generic timeout.
+DATA_TIMEOUT_SECONDS = 60.0
+
+
+def data_budget_seconds() -> float:
+    """Seconds every attempt at one `data` request may take together: never less than
+    one full attempt, else what the tool timeout leaves after 30 s."""
+    from maplestats_mcp import config
+
+    return max(DATA_TIMEOUT_SECONDS, config.get_tool_timeout_seconds() - 30.0)
+
+
 # The raw response of one request, kept in shared/cache.py's memory cache (its own
 # entry and megabyte caps apply). It mainly lets requests for the same missing values
 # share one 35 s upstream call; the long-lived copy is the per-value store below.

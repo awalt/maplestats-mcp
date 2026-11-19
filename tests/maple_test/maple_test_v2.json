@@ -1,7 +1,7 @@
 {
   "benchmark": "maple_test_v2",
-  "built_at": "2026-11-16T16:00:00+00:00",
-  "sources": "Publishers' own APIs, read directly: StatCan WDS, Bank of Canada Valet, ECCC, World Bank, BIS, Health Canada, IRCC",
+  "built_at": "2026-11-19T15:48:57+00:00",
+  "sources": "Publishers' own APIs, read directly: StatCan WDS, Bank of Canada Valet, ECCC, World Bank, BIS, Health Canada, IRCC; StatCan's release schedule",
   "questions": [
     {
       "id": "C-01",
@@ -52,7 +52,7 @@
       "eval_type": "numeric",
       "question": "What was the youth unemployment rate (ages 15 to 24) in Canada in September 2026, and what was it a year earlier?",
       "expected": {
-        "rate_sep_2026_pct": 13,
+        "rate_sep_2026_pct": 13.0,
         "rate_sep_2025_pct": 14.6
       },
       "headline": [
@@ -66,7 +66,7 @@
           "series_title": "Canada;Unemployment rate;Total - Gender;15 to 24 years;Estimate;Seasonally adjusted",
           "reference_period": "2026-09",
           "coordinate": "1.7.1.2.1.1",
-          "value": 13,
+          "value": 13.0,
           "release_or_revision_date": "2026-11-06T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1410028701"
         },
@@ -180,7 +180,7 @@
       "question": "What was Canada's job vacancy rate in August 2026, and how many vacant positions were there?",
       "expected": {
         "vacancy_rate_pct": 2.8,
-        "vacancies": 507220
+        "vacancies": 507220.0
       },
       "headline": [
         "vacancy_rate_pct"
@@ -203,7 +203,7 @@
           "series_title": "Canada;Job vacancies",
           "reference_period": "2026-08",
           "coordinate": "1.1",
-          "value": 507220,
+          "value": 507220.0,
           "release_or_revision_date": "2026-10-29T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1410043201"
         }
@@ -233,7 +233,7 @@
           "series_title": "Canada;All-items",
           "reference_period": "2026-09",
           "coordinate": "2.2",
-          "value": 170,
+          "value": 170.0,
           "release_or_revision_date": "2026-10-19T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1810000401"
         },
@@ -323,7 +323,7 @@
           "series_title": "Canada;Food purchased from stores",
           "reference_period": "2025-09",
           "coordinate": "2.4",
-          "value": 195,
+          "value": 195.0,
           "release_or_revision_date": "2025-10-21T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1810000401"
         }
@@ -395,7 +395,7 @@
           "reference_period": "2026-09",
           "coordinate": "1.1",
           "value": 2.4,
-          "release_or_revision_date": "2026-10-19T08:30",
+          "release_or_revision_date": "2026-11-16T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1810025601"
         }
       ],
@@ -427,7 +427,7 @@
           "series_title": "Canada;Chained (2017) dollars;Seasonally adjusted at annual rates;Gross domestic product at market prices",
           "reference_period": "2026-04",
           "coordinate": "1.1.1.30",
-          "value": 2524127,
+          "value": 2524127.0,
           "release_or_revision_date": "2026-08-28T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3610010401"
         },
@@ -437,7 +437,7 @@
           "series_title": "Canada;Chained (2017) dollars;Seasonally adjusted at annual rates;Gross domestic product at market prices",
           "reference_period": "2026",
           "coordinate": "1.1.1.30",
-          "value": 2503604,
+          "value": 2503604.0,
           "release_or_revision_date": "2026-08-28T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3610010401"
         }
@@ -470,7 +470,7 @@
           "series_title": "Canada;Retail trade;Total retail sales;Seasonally adjusted",
           "reference_period": "2026-08",
           "coordinate": "1.1.1.2",
-          "value": 74567349,
+          "value": 74567349.0,
           "release_or_revision_date": "2026-10-23T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=2010005601"
         },
@@ -480,7 +480,7 @@
           "series_title": "Canada;Retail trade;Total retail sales;Seasonally adjusted",
           "reference_period": "2026-07",
           "coordinate": "1.1.1.2",
-          "value": 73684586,
+          "value": 73684586.0,
           "release_or_revision_date": "2026-10-23T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=2010005601"
         }
@@ -497,8 +497,8 @@
       "eval_type": "numeric",
       "question": "What were Canadian manufacturers' sales in August 2026, and how did they change from July?",
       "expected": {
-        "sales_aug_2026_dollars": 79876565000,
-        "change_pct": 1.5
+        "sales_aug_2026_dollars": 80259630000,
+        "change_pct": 1.8
       },
       "headline": [
         "sales_aug_2026_dollars"
@@ -511,8 +511,8 @@
           "series_title": "Canada;Sales of goods manufactured (shipments);Seasonally adjusted;Manufacturing",
           "reference_period": "2026-08",
           "coordinate": "1.1.2.1",
-          "value": 79876565,
-          "release_or_revision_date": "2026-10-15T08:30",
+          "value": 80259630.0,
+          "release_or_revision_date": "2026-11-13T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1610004701"
         },
         {
@@ -521,8 +521,8 @@
           "series_title": "Canada;Sales of goods manufactured (shipments);Seasonally adjusted;Manufacturing",
           "reference_period": "2026-07",
           "coordinate": "1.1.2.1",
-          "value": 78718193,
-          "release_or_revision_date": "2026-10-15T08:30",
+          "value": 78818309.0,
+          "release_or_revision_date": "2026-11-13T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1610004701"
         }
       ],
@@ -568,7 +568,7 @@
       "eval_type": "numeric",
       "question": "What was Canada's seasonally adjusted annual rate of housing starts in September 2026?",
       "expected": {
-        "starts_saar_sep_2026": 248896
+        "starts_saar_sep_2026": 250072.0
       },
       "headline": [
         "starts_saar_sep_2026"
@@ -581,8 +581,8 @@
           "series_title": "Canada",
           "reference_period": "2026-09",
           "coordinate": "1",
-          "value": 248.896,
-          "release_or_revision_date": "2026-10-19T08:30",
+          "value": 250.072,
+          "release_or_revision_date": "2026-11-18T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3410015801"
         }
       ],
@@ -598,7 +598,7 @@
       "eval_type": "numeric",
       "question": "What was the total value of building permits issued in Canada in August 2026?",
       "expected": {
-        "permits_aug_2026_dollars": 13571697000
+        "permits_aug_2026_dollars": 13429718000
       },
       "headline": [
         "permits_aug_2026_dollars"
@@ -611,8 +611,8 @@
           "series_title": "Canada;Total residential and non-residential;Types of work, total;Value of permits;Seasonally adjusted, current",
           "reference_period": "2026-08",
           "coordinate": "1.1.1.1.2",
-          "value": 13571697,
-          "release_or_revision_date": "2026-10-14T08:30",
+          "value": 13429718.0,
+          "release_or_revision_date": "2026-11-12T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3410029201"
         }
       ],
@@ -628,7 +628,7 @@
       "eval_type": "numeric",
       "question": "What was British Columbia's population on July 1, 2026?",
       "expected": {
-        "population": 5710598
+        "population": 5710598.0
       },
       "headline": [
         "population"
@@ -641,7 +641,7 @@
           "series_title": "British Columbia",
           "reference_period": "2026-07",
           "coordinate": "11",
-          "value": 5710598,
+          "value": 5710598.0,
           "release_or_revision_date": "2026-09-23T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000901"
         }
@@ -658,8 +658,8 @@
       "eval_type": "numeric",
       "question": "How many people in Canada held only a study permit on July 1, 2026, compared with a year earlier?",
       "expected": {
-        "study_2026": 399133,
-        "study_2025": 539960
+        "study_2026": 399133.0,
+        "study_2025": 539960.0
       },
       "headline": [
         "study_2026"
@@ -672,7 +672,7 @@
           "series_title": "Canada;Study permit holders only",
           "reference_period": "2026-07",
           "coordinate": "1.9",
-          "value": 399133,
+          "value": 399133.0,
           "release_or_revision_date": "2026-09-23T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710012101"
         },
@@ -682,7 +682,7 @@
           "series_title": "Canada;Study permit holders only",
           "reference_period": "2025-07",
           "coordinate": "1.9",
-          "value": 539960,
+          "value": 539960.0,
           "release_or_revision_date": "2026-09-23T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710012101"
         }
@@ -759,7 +759,7 @@
       "eval_type": "numeric",
       "question": "What was the Bank of Canada commodity price index (BCPI, total) for September 2026?",
       "expected": {
-        "bcpi": 747.71
+        "bcpi": 746.57
       },
       "headline": [
         "bcpi"
@@ -773,7 +773,7 @@
           "table_id": "Valet",
           "vector_id": "M.BCPI",
           "reference_period": "2026-09-01",
-          "value": 747.71,
+          "value": 746.57,
           "release_or_revision_date": null,
           "url": "https://www.bankofcanada.ca/valet/observations/M.BCPI"
         }
@@ -856,7 +856,7 @@
       "question": "Canada's housing starts figure for September 2026 is the latest monthly number. Multiply it by 12 to estimate how many homes will be started in a year.",
       "expected": {
         "behaviour": "Flag that the published figure is already a seasonally adjusted annual rate, so multiplying by 12 overstates starts twelvefold; give the rate itself.",
-        "starts_saar_sep_2026": 248896
+        "starts_saar_sep_2026": 250072.0
       },
       "headline": [],
       "tolerance": "Correct: states the annual-rate problem and gives the rate itself; the flag without the rate is partial",
@@ -869,8 +869,8 @@
           "series_title": "Canada",
           "reference_period": "2026-09",
           "coordinate": "1",
-          "value": 248.896,
-          "release_or_revision_date": "2026-10-19T08:30",
+          "value": 250.072,
+          "release_or_revision_date": "2026-11-18T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3410015801"
         }
       ],
@@ -926,8 +926,8 @@
       "eval_type": "numeric",
       "question": "What were the maximum and minimum temperatures recorded at the Ottawa CDA weather station on June 23, 2025?",
       "expected": {
-        "max_temp_c": 36,
-        "min_temp_c": 21
+        "max_temp_c": 36.0,
+        "min_temp_c": 21.0
       },
       "headline": [
         "max_temp_c",
@@ -964,13 +964,13 @@
       "eval_type": "numeric",
       "question": "What was the daily mean discharge of the Fraser River at Hope (station 08MF005) on June 16, 2024?",
       "expected": {
-        "discharge_m3s": 4570
+        "discharge_m3s": 4570.0
       },
       "headline": [
         "discharge_m3s"
       ],
       "tolerances": {
-        "discharge_m3s": 10
+        "discharge_m3s": 10.0
       },
       "tolerance": "±10 m³/s (published to three significant figures)",
       "citations": [
@@ -978,7 +978,7 @@
           "table_id": "Other",
           "vector_id": "ECCC hydrometric-daily-mean 08MF005 (FRASER RIVER AT HOPE)",
           "reference_period": "2024-06-16",
-          "value": 4570,
+          "value": 4570.0,
           "release_or_revision_date": null,
           "url": "https://api.weather.gc.ca/collections/hydrometric-daily-mean/items?f=json&limit=100&STATION_NUMBER=08MF005&datetime=2024-06-16",
           "retrieved_on": "2026-11-03"
@@ -1068,7 +1068,7 @@
           "vector_id": "WDI NY.GDP.PCAP.CD (CAN)",
           "reference_period": "2023",
           "value": 54847.5370112652,
-          "release_or_revision_date": "2026-10-08",
+          "release_or_revision_date": "2026-11-11",
           "url": "https://api.worldbank.org/v2/country/CAN/indicator/NY.GDP.PCAP.CD?format=json&date=2018%3A2026&per_page=100",
           "retrieved_on": "2026-11-03"
         }
@@ -1100,8 +1100,8 @@
           "table_id": "Other",
           "vector_id": "WDI SP.POP.TOTL (CAN)",
           "reference_period": "2023",
-          "value": 40049088,
-          "release_or_revision_date": "2026-10-08",
+          "value": 40049088.0,
+          "release_or_revision_date": "2026-11-11",
           "url": "https://api.worldbank.org/v2/country/CAN/indicator/SP.POP.TOTL?format=json&date=2018%3A2026&per_page=100",
           "retrieved_on": "2026-11-03"
         }
@@ -1125,7 +1125,7 @@
         "co2_2022_mt"
       ],
       "tolerances": {
-        "co2_2022_mt": 1
+        "co2_2022_mt": 1.0
       },
       "tolerance": "±1 Mt CO2e",
       "citations": [
@@ -1134,7 +1134,7 @@
           "vector_id": "WDI EN.GHG.CO2.MT.CE.AR5 (CAN)",
           "reference_period": "2022",
           "value": 575.8352,
-          "release_or_revision_date": "2026-10-08",
+          "release_or_revision_date": "2026-11-11",
           "url": "https://api.worldbank.org/v2/country/CAN/indicator/EN.GHG.CO2.MT.CE.AR5?format=json&date=2018%3A2026&per_page=100",
           "retrieved_on": "2026-11-03"
         }
@@ -1152,7 +1152,7 @@
       "eval_type": "refusal",
       "question": "What was life expectancy at birth in Canada in 2025, according to the World Bank?",
       "expected": {
-        "behaviour": "Decline: the WDI has no 2025 value for Canada's life expectancy at birth (SP.DYN.LE00.IN) as of 2026-10-08. The latest year is 2024; offering that figure, clearly labelled, is fine.",
+        "behaviour": "Decline: the WDI has no 2025 value for Canada's life expectancy at birth (SP.DYN.LE00.IN) as of 2026-11-11. The latest year is 2024; offering that figure, clearly labelled, is fine.",
         "latest_year": "2024",
         "latest_value_years": 82.1
       },
@@ -1167,7 +1167,7 @@
           "vector_id": "WDI SP.DYN.LE00.IN (CAN)",
           "reference_period": "2025",
           "value": null,
-          "release_or_revision_date": "2026-10-08",
+          "release_or_revision_date": "2026-11-11",
           "url": "https://api.worldbank.org/v2/country/CAN/indicator/SP.DYN.LE00.IN?format=json&date=2018%3A2026&per_page=100",
           "retrieved_on": "2026-11-03"
         },
@@ -1176,7 +1176,7 @@
           "vector_id": "WDI SP.DYN.LE00.IN (CAN)",
           "reference_period": "2024",
           "value": 82.1080487804878,
-          "release_or_revision_date": "2026-10-08",
+          "release_or_revision_date": "2026-11-11",
           "url": "https://api.worldbank.org/v2/country/CAN/indicator/SP.DYN.LE00.IN?format=json&date=2018%3A2026&per_page=100",
           "retrieved_on": "2026-11-03"
         }
@@ -1318,8 +1318,8 @@
       "question": "Which had the higher household debt service ratio in the fourth quarter of 2025, Canada or the United States, and what were the two ratios?",
       "expected": {
         "answer": "Canada",
-        "canada_dsr_2025q4_pct": 14,
-        "us_dsr_2025q4_pct": 8
+        "canada_dsr_2025q4_pct": 14.0,
+        "us_dsr_2025q4_pct": 8.0
       },
       "headline": [
         "canada_dsr_2025q4_pct",
@@ -1349,7 +1349,7 @@
           "table_id": "Other",
           "vector_id": "BIS WS_DSR Q.CA.H (households and NPISHs)",
           "reference_period": "2025-Q4",
-          "value": 14,
+          "value": 14.0,
           "release_or_revision_date": null,
           "url": "https://stats.bis.org/api/v1/data/WS_DSR/Q.CA+US.H?startPeriod=2025-Q4&endPeriod=2025-Q4&format=csv",
           "retrieved_on": "2026-11-03"
@@ -1358,7 +1358,7 @@
           "table_id": "Other",
           "vector_id": "BIS WS_DSR Q.US.H (households and NPISHs)",
           "reference_period": "2025-Q4",
-          "value": 8,
+          "value": 8.0,
           "release_or_revision_date": null,
           "url": "https://stats.bis.org/api/v1/data/WS_DSR/Q.CA+US.H?startPeriod=2025-Q4&endPeriod=2025-Q4&format=csv",
           "retrieved_on": "2026-11-03"
@@ -1379,8 +1379,8 @@
       "expected": {
         "answer": "PAXLOVID",
         "company": "PFIZER CANADA ULC",
-        "nirmatrelvir_mg": 150,
-        "ritonavir_mg": 100
+        "nirmatrelvir_mg": 150.0,
+        "ritonavir_mg": 100.0
       },
       "headline": [
         "nirmatrelvir_mg",
@@ -1426,7 +1426,7 @@
       "expected": {
         "answer": "EXEMESTANE",
         "brand_name": "AROMASIN",
-        "strength_mg": 25
+        "strength_mg": 25.0
       },
       "headline": [
         "strength_mg"
@@ -1783,10 +1783,10 @@
       "eval_type": "numeric",
       "question": "According to the 2021 Census, what was the median total income of households in the Calgary metropolitan area?",
       "expected": {
-        "median_total_household_income_2020_dollars": 100000
+        "median_total_household_income_2020_dollars": 100000.0
       },
       "reference": {
-        "median_after_tax_household_income_2020_dollars": 87000
+        "median_after_tax_household_income_2020_dollars": 87000.0
       },
       "headline": [
         "median_total_household_income_2020_dollars"
@@ -1802,7 +1802,7 @@
           "series_title": "Calgary (CMA), Alta.;Total household type;Total dwelling type;Median total income of households ($) (2020)",
           "coordinate": "123.1.1.2.0.0.0.0.0.0",
           "reference_period": "2021",
-          "value": 100000,
+          "value": 100000.0,
           "release_or_revision_date": "2023-03-29T08:30",
           "url": "https://www150.statcan.gc.ca/t1/wds/rest/getDataFromCubePidCoordAndLatestNPeriods"
         },
@@ -1812,7 +1812,7 @@
           "series_title": "Calgary (CMA), Alta.;Total household type;Total dwelling type;Median after-tax income of households ($) (2020)",
           "coordinate": "123.1.1.3.0.0.0.0.0.0",
           "reference_period": "2021",
-          "value": 87000,
+          "value": 87000.0,
           "release_or_revision_date": "2023-03-29T08:30",
           "url": "https://www150.statcan.gc.ca/t1/wds/rest/getDataFromCubePidCoordAndLatestNPeriods"
         }
@@ -1832,8 +1832,8 @@
       "question": "What share of households in the City of Toronto rented their home in 2021, according to the census?",
       "expected": {
         "renter_share_pct": 48.1,
-        "renter_households": 557970,
-        "total_households": 1160890
+        "renter_households": 557970.0,
+        "total_households": 1160890.0
       },
       "headline": [
         "renter_share_pct"
@@ -1851,7 +1851,7 @@
           "series_title": "Toronto (C) CSD;Renter;Number of private households",
           "coordinate": "2386.1.1.1.1.3.0.0.0.0",
           "reference_period": "2021",
-          "value": 557970,
+          "value": 557970.0,
           "release_or_revision_date": "2022-09-21T08:30",
           "url": "https://www150.statcan.gc.ca/t1/wds/rest/getDataFromCubePidCoordAndLatestNPeriods"
         },
@@ -1861,7 +1861,7 @@
           "series_title": "Toronto (C) CSD;Total - Tenure;Number of private households",
           "coordinate": "2386.1.1.1.1.1.0.0.0.0",
           "reference_period": "2021",
-          "value": 1160890,
+          "value": 1160890.0,
           "release_or_revision_date": "2022-09-21T08:30",
           "url": "https://www150.statcan.gc.ca/t1/wds/rest/getDataFromCubePidCoordAndLatestNPeriods"
         }
@@ -1880,10 +1880,10 @@
       "question": "What is the population of the Edmonton metropolitan area in 2026, according to the census?",
       "expected": {
         "behaviour": "Flag that 2026 Census population counts have not been published (as of 2026-11-03 every 98-10 census table ends at 2021); give the 2021 Census count for the Edmonton CMA and label it as 2021, not 2026.",
-        "population_2021": 1418118
+        "population_2021": 1418118.0
       },
       "reference": {
-        "population_2016": 1321441
+        "population_2016": 1321441.0
       },
       "headline": [],
       "flag_years": [
@@ -1902,7 +1902,7 @@
           "series_title": "Edmonton (CMA);Population, 2021",
           "coordinate": "126.1.0.0.0.0.0.0.0.0",
           "reference_period": "2021",
-          "value": 1418118,
+          "value": 1418118.0,
           "release_or_revision_date": "2022-02-09T08:30",
           "url": "https://www150.statcan.gc.ca/t1/wds/rest/getDataFromCubePidCoordAndLatestNPeriods"
         },
@@ -1910,7 +1910,7 @@
           "table_id": "Other",
           "vector_id": "getAllCubesListLite",
           "reference_period": "2026-11-03",
-          "value": "525 98-series cubes, none ending after 2021",
+          "value": "527 98-series cubes, none ending after 2021",
           "release_or_revision_date": null,
           "url": "https://www150.statcan.gc.ca/t1/wds/rest/getAllCubesListLite"
         }
@@ -2009,8 +2009,8 @@
       "eval_type": "numeric",
       "question": "What is the average income in Alberta?",
       "expected": {
-        "average_income_2024": 66100,
-        "median_income_2024": 48100
+        "average_income_2024": 66100.0,
+        "median_income_2024": 48100.0
       },
       "headline": [],
       "tolerances": {
@@ -2025,7 +2025,7 @@
           "series_title": "Alberta;15 years and over;Total - Gender;Total income;Average income (excluding zeros)",
           "reference_period": "2024",
           "coordinate": "12.1.1.1.4.0.0.0.0.0",
-          "value": 66100,
+          "value": 66100.0,
           "release_or_revision_date": "2026-04-29T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1110023901"
         },
@@ -2035,7 +2035,7 @@
           "series_title": "Alberta;15 years and over;Total - Gender;Total income;Median income (excluding zeros)",
           "reference_period": "2024",
           "coordinate": "12.1.1.1.5.0.0.0.0.0",
-          "value": 48100,
+          "value": 48100.0,
           "release_or_revision_date": "2026-04-29T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1110023901"
         }
@@ -2051,19 +2051,19 @@
       "eval_type": "numeric",
       "question": "What is the median household income in Alberta?",
       "expected": {
-        "census_household_median_2020": 96000
+        "census_household_median_2020": 96000.0
       },
       "alternatives": [
         {
           "label": "the Canadian Income Survey median (economic families and persons not in an economic family), not a household unit",
           "expected": {
-            "cis_family_median_2024": 96600
+            "cis_family_median_2024": 96600.0
           },
           "outcome": "partial"
         }
       ],
       "reference": {
-        "cis_family_median_2024": 96600
+        "cis_family_median_2024": 96600.0
       },
       "headline": [],
       "tolerances": {
@@ -2077,7 +2077,7 @@
           "vector_id": null,
           "series_title": "Census Profile 2021, Alberta, characteristic 229 'Median total income of household in 2020 ($)'",
           "reference_period": "2020",
-          "value": 96000,
+          "value": 96000.0,
           "release_or_revision_date": "2022-07-13",
           "url": "https://api.statcan.gc.ca/census-recensement/profile/sdmx/rest/data/STC_CP,DF_PR/A5.2021A000248.1.229.1"
         },
@@ -2087,7 +2087,7 @@
           "series_title": "Alberta;Median total income;Economic families and persons not in an economic family",
           "reference_period": "2024",
           "coordinate": "12.8.1.0.0.0.0.0.0.0",
-          "value": 96600,
+          "value": 96600.0,
           "release_or_revision_date": "2026-04-29T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1110019001"
         }
@@ -2156,7 +2156,7 @@
           "reference_period": "2025",
           "value": "2026-11-05",
           "release_or_revision_date": "2026-11-05",
-          "url": "https://www150.statcan.gc.ca/n1/dai-quo/cal2-eng.htm"
+          "url": "https://www150.statcan.gc.ca/n1/daily-quotidien/261105/dq261105a-eng.htm"
         },
         {
           "table_id": "Other",
@@ -2205,7 +2205,7 @@
           "reference_period": "2023",
           "value": "2026-11-05",
           "release_or_revision_date": "2026-11-05",
-          "url": "https://www150.statcan.gc.ca/n1/dai-quo/cal2-eng.htm"
+          "url": "https://www150.statcan.gc.ca/n1/daily-quotidien/261105/dq261105b-eng.htm"
         }
       ],
       "traps": [
@@ -2273,7 +2273,7 @@
           "reference_period": "October 2026",
           "value": "2026-11-06",
           "release_or_revision_date": "2026-11-06",
-          "url": "https://www150.statcan.gc.ca/n1/dai-quo/cal2-eng.htm"
+          "url": "https://www150.statcan.gc.ca/n1/daily-quotidien/261106/dq261106a-eng.htm"
         }
       ],
       "traps": [
@@ -2302,7 +2302,7 @@
           "reference_period": "September 2026",
           "value": "2026-11-13",
           "release_or_revision_date": "2026-11-13",
-          "url": "https://www150.statcan.gc.ca/n1/dai-quo/cal2-eng.htm"
+          "url": "https://www150.statcan.gc.ca/n1/daily-quotidien/261113/dq261113a-eng.htm"
         }
       ],
       "traps": [
@@ -2333,7 +2333,7 @@
           "reference_period": "2025",
           "value": "2026-11-05",
           "release_or_revision_date": "2026-11-05",
-          "url": "https://www150.statcan.gc.ca/n1/dai-quo/cal2-eng.htm"
+          "url": "https://www150.statcan.gc.ca/n1/daily-quotidien/261105/dq261105a-eng.htm"
         }
       ],
       "traps": [
@@ -2391,7 +2391,7 @@
           "reference_period": "September 2026",
           "value": "2026-11-12",
           "release_or_revision_date": "2026-11-12",
-          "url": "https://www150.statcan.gc.ca/n1/dai-quo/cal2-eng.htm"
+          "url": "https://www150.statcan.gc.ca/n1/daily-quotidien/261112/dq261112a-eng.htm"
         }
       ],
       "traps": [
@@ -2400,6 +2400,5 @@
       "group": "release",
       "tolerances": {}
     }
-  ],
-  "release_group_built_at": "2026-11-04T21:45:12+00:00"
+  ]
 }
