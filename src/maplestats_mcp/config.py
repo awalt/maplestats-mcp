@@ -345,6 +345,22 @@ def get_query_series_enabled() -> bool:
     return raw not in {"0", "false", "no", "off"}
 
 
+def get_fred_api_key() -> str | None:
+    """The FRED API key from FRED_API_KEY, or None when it is unset or blank.
+
+    The key is the operator's own, created for free at FRED (docs/api/api_key.html); the
+    server never ships, asks for, logs or returns one. Without it the `fred_` tools are
+    switched off (`catalogue.TOOL_SWITCHES`): they leave search, planning and listing.
+    """
+    raw = os.environ.get("FRED_API_KEY", "").strip()
+    return raw or None
+
+
+def get_fred_enabled() -> bool:
+    """Whether the `fred_` tools are offered: only while FRED_API_KEY holds a key."""
+    return get_fred_api_key() is not None
+
+
 def get_gis_enabled() -> bool:
     """Whether the 14 pure geospatial tools are offered (MAPLE_GIS, on by default).
 
