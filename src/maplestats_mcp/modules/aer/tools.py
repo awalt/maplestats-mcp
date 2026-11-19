@@ -9,6 +9,7 @@ from fastmcp.tools import tool
 from maplestats_mcp.modules.aer import client
 from maplestats_mcp.modules.aer.schemas import (
     ProductionVolumesLink,
+    St3Statistics,
     St98Table,
     St98TableList,
     WellLicenceArchiveLink,
@@ -95,6 +96,39 @@ async def aer_get_production_volumes_link(product: str, lang: Lang = "en") -> Pr
     mensuelles, industrie énergétique.
     """
     return await client.get_production_volumes_link(product, lang=lang)
+
+
+@tool
+async def aer_st3_get_monthly_statistics(
+    product: str,
+    start_year: int | None = None,
+    end_year: int | None = None,
+    item: str | None = None,
+    lang: Lang = "en",
+) -> St3Statistics:
+    """Read AER's ST3 monthly statistics as tidy rows: one product's
+    supply and disposition lines (production, receipts, imports, Alberta
+    use, removals from Alberta, inventories) or oil prices, by month, with
+    value, unit and section.
+
+    product: "oil", "gas", "ngl", "ethane", "propane", "butane",
+    "sulphur" or "oil_prices" ($/m3). Years run from 2017; with no years
+    you get the current year, start_year alone runs to it, end_year alone
+    gives that year. item keeps lines whose name or section contains the
+    text ("removals", "In Situ Production"). Units: m3, gas 10^3 m3,
+    sulphur tonnes. revision_note says how releases revise earlier months.
+    Use for: Alberta crude oil, bitumen or natural gas production by
+    month, gas removals by destination, NGL and sulphur supply.
+    Keywords: Alberta, AER, ST3, monthly statistics, supply and
+    disposition, oil production, bitumen, oil sands, natural gas, NGL,
+    propane, butane, ethane, sulphur, removals.
+    Mots-clés : Alberta, AER, ST3, statistiques mensuelles, offre et
+    utilisation, production de pétrole, bitume, sables bitumineux, gaz
+    naturel, LGN, propane, butane, éthane, soufre.
+    """
+    return await client.get_st3_statistics(
+        product, start_year=start_year, end_year=end_year, item=item, lang=lang
+    )
 
 
 @tool

@@ -123,3 +123,68 @@ class St98Table(BaseModel):
         default_factory=list, description="Sources and footnotes, as published."
     )
     provenance: Provenance
+
+
+class St3Line(BaseModel):
+    item: str = Field(description="Line as published, e.g. 'Crude Oil Light', 'Total Imports'.")
+    section: str | None = Field(
+        default=None,
+        description="Sections the line sits in, outermost first, e.g. 'SUPPLY > Production > "
+        "Crude Oil Production'. A 'Total ...' line sits in the section above the one it closes.",
+    )
+    unit: str | None = Field(
+        default=None,
+        description="'m3' (at 15 C), '10^3 m3' (gas, at 101.325 kPa and 15 C), 'tonnes' "
+        "(sulphur), '$/m3' (oil prices), '/d' for per-day lines, 'fraction' for the reporting "
+        "adjustment as a share of total supply (0.02 = 2%).",
+    )
+
+
+class St3Year(BaseModel):
+    year: int
+    workbook_url: str = Field(description="The workbook (or 2017-2019 ZIP archive) read.")
+    member: str | None = Field(
+        default=None, description="The workbook inside the ZIP archive, for 2017-2019."
+    )
+    title: str | None = Field(default=None, description="The sheet's own title.")
+    run_date: date | None = Field(
+        default=None,
+        description="When AER produced this release (not printed on the oil-price sheets).",
+    )
+    published_months: list[int] = Field(
+        default_factory=list, description="Months (1-12) with figures in this release."
+    )
+    note: str | None = None
+
+
+class St3Observation(BaseModel):
+    year: int
+    month: int
+    period: str = Field(description="YYYY-MM.")
+    item: str
+    section: str | None = None
+    value: float | None
+    unit: str | None = None
+    marker: str | None = Field(
+        default=None, description="'-' when AER printed a dash: nothing to report that month."
+    )
+
+
+class St3Statistics(BaseModel):
+    product: str
+    title: str | None = Field(default=None, description="The latest year's sheet title.")
+    years: list[St3Year] = Field(default_factory=list, description="The workbooks read.")
+    available_years: list[int] = Field(
+        default_factory=list, description="Years AER publishes a readable workbook for."
+    )
+    lines: list[St3Line] = Field(
+        default_factory=list,
+        description="Every line of the workbooks read that matched `item`, in sheet order.",
+    )
+    observations: list[St3Observation] = Field(default_factory=list)
+    total_observations: int = Field(description="Observations matching the filters.")
+    notes: list[str] = Field(
+        default_factory=list, description="The sheets' own notes, as published."
+    )
+    revision_note: str = Field(description="How ST3 figures are revised (from AER's ST3 page).")
+    provenance: Provenance

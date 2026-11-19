@@ -59,6 +59,80 @@ PRODUCTION_PRODUCTS = {
 }
 PRODUCTION_VOLUMES_URL = f"https://{WWW_DOMAIN}/documents/sts/st3/{{product_path}}_current.xlsx"
 
+# ST3 read as tidy rows (st3.py). The page links one workbook per product and
+# year, at paths that change from year to year; read live 2026-11-19, every
+# www.aer.ca link answered a 303 to the same path under static.aer.ca/prd/.
+# The page is read on each call (cached) so next year's paths are picked up;
+# these links, as the page listed them that day, fill in when it does not answer.
+ST3_PAGE_URL = f"https://{WWW_DOMAIN}/data-and-performance-reports/statistical-reports/st3"
+_ST3_NAMES = ("Butane", "Ethane", "Gas", "NGL", "Oil", "Propane", "Sulphur")
+_ST3_OLD_NAMES = (*_ST3_NAMES, "Oil_Prices")
+ST3_RECORDED_LINKS = (
+    *(f"/documents/sts/st3/{n}_current.xlsx" for n in (*_ST3_NAMES, "prices_oil")),
+    *(f"/prd/documents/sts/st3/{n}_2025.xlsx" for n in _ST3_NAMES if n != "Sulphur"),
+    "/prd/documents/sts/st3/ST3-Sulphur_2025.xlsx",
+    "/prd/documents/sts/st3/prices_oil_2025.xlsx",
+    *(f"/2025-02/ST3_{n}_2024.xlsx" for n in (*_ST3_NAMES, "prices_oil")),
+    # 2021 butane is linked as PDF only; 2023 oil prices as an old .xls only.
+    *(f"/documents/sts/st3/ST3_2021-12_{n}.xlsx" for n in _ST3_OLD_NAMES if n != "Butane"),
+    *(f"/documents/sts/st3/ST3_2022-12_{n}.xlsx" for n in _ST3_OLD_NAMES),
+    *(f"/documents/sts/st3/ST3_2023-12_{n}.xlsx" for n in _ST3_NAMES),
+    "/documents/sts/st3/ST3_2023-12_Oil_Prices.xls",
+    *(f"/documents/sts/st3/{n}_2020.xlsx" for n in (*_ST3_NAMES, "prices_oil")),
+    *(f"/prd/documents/sts/st3/{n}_2017-2019.zip" for n in (*_ST3_NAMES, "prices_oil")),
+)
+# The 2017-2025 gas figures restated with the method the gas report adopted in
+# April 2026, posted separately (January 2026); its layout differs and it is
+# not read here.
+ST3_GAS_RESTATEMENT_URL = (
+    f"https://{WWW_DOMAIN}/prd/documents/sts/st3/ST3-enhanced-method-gas-annual-2017-2025.xlsx"
+)
+# Workbooks are 22-81 KB and the 2017-2019 archives 0.14-0.8 MB (2026-11-19).
+ST3_MAX_WORKBOOK_BYTES = 4 * 1024 * 1024
+ST3_MAX_PAGE_BYTES = 2 * 1024 * 1024
+# The longest data sheet (gas) runs to about 120 rows and 32 columns.
+ST3_MAX_SHEET_ROWS = 400
+ST3_MAX_SHEET_COLUMNS = 60
+# A year of the gas report is about 1,100 rows; ten years of one product's
+# every line would be about 11,000, so a call returns the latest this many.
+ST3_MAX_OBSERVATIONS = 3000
+# Released monthly; a day keeps a corrected re-post visible.
+CACHE_TTL_ST3_SECONDS = 24 * 60 * 60
+# The ST3 page's own notes on revisions and the 2026 gas method (2026-11-19).
+ST3_REVISION_NOTE = (
+    (
+        "Each monthly release can revise earlier months of the year: AER folds amendments and "
+        "late data (oil sands and pipeline statements may arrive after publication) into later "
+        "releases, so the latest months are the most likely to change. A past year's workbook "
+        "is AER's last release for that year (see run_date) and is not re-issued."
+    ),
+    (
+        "Chaque diffusion mensuelle peut réviser les mois précédents de l'année : l'AER intègre "
+        "les modifications et les données tardives (les déclarations des sables bitumineux et "
+        "des pipelines peuvent arriver après la publication) dans les diffusions suivantes ; les "
+        "derniers mois sont donc les plus susceptibles de changer. Le classeur d'une année "
+        "passée est la dernière diffusion de l'AER pour cette année (voir run_date) et n'est pas "
+        "réédité."
+    ),
+)
+ST3_GAS_METHOD_NOTE = (
+    (
+        "From April 2026 the gas report uses a revised method (processed gas imports and "
+        "removals add CER Alliance pipeline data; CO2 volumes left out of receipts and "
+        "injection; oil sands facility receipts reclassified), so 2026 gas lines are not "
+        "comparable with 2017-2025, which keep the old method. AER's restatement of 2017-2025 "
+        f"on the new method: {ST3_GAS_RESTATEMENT_URL}"
+    ),
+    (
+        "Depuis avril 2026, le rapport sur le gaz suit une méthode révisée (les importations de "
+        "gaz traité et les sorties ajoutent les données du pipeline Alliance de la REC ; les "
+        "volumes de CO2 sont retirés des réceptions et de l'injection ; les réceptions des "
+        "installations de sables bitumineux sont reclassées) : les lignes de 2026 ne sont donc "
+        "pas comparables à celles de 2017-2025, qui gardent l'ancienne méthode. Retraitement de "
+        f"2017-2025 selon la nouvelle méthode par l'AER : {ST3_GAS_RESTATEMENT_URL}"
+    ),
+)
+
 # ST98 Alberta Energy Outlook. The report page links one "executive summary
 # data" workbook per edition, at paths that change from year to year (read
 # from the page live 2026-11-07, not guessed): every www.aer.ca link answers a
