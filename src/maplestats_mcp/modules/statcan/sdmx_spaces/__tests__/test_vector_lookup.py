@@ -38,7 +38,7 @@ async def test_the_production_copy_is_found_and_the_reference_flow_is_not(httpx_
     )
     found = await client.find_table_flow(17100009)
     assert found == client.FlowRef("ccei", "CA1.CCEI", "DF_17100009", "2.0")
-    assert found.ref == "CA1.CCEI,DF_17100009,2.0"
+    assert found is not None and found.ref == "CA1.CCEI,DF_17100009,2.0"
 
 
 async def test_the_shared_space_is_searched_when_ccei_has_no_copy(httpx_mock):
