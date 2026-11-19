@@ -216,11 +216,11 @@ def test_only_statcan_hosts_get_the_statcan_list():
 # 5. Through the server, as a client sees it ----
 
 
-async def test_a_wds_tool_answers_the_block_with_one_fix_and_no_retry_hint(
+async def test_a_wds_tool_answers_the_block_with_its_fixes_and_no_retry_hint(
     httpx_mock, statcan_security_check
 ):
     """wds_get_cube_metadata through call_tool, with www150 challenging: the error a model
-    reads names the block and what works, once, and does not say to retry in a minute."""
+    reads names the block and what works, and does not say to retry in a minute."""
     httpx_mock.add_response(is_reusable=True, **statcan_security_check)
     async with Client(mcp) as client:
         with pytest.raises(ToolError) as raised:
@@ -230,6 +230,8 @@ async def test_a_wds_tool_answers_the_block_with_one_fix_and_no_retry_hint(
             )
     text = str(raised.value)
     assert "[upstream_unavailable]" in text
-    assert text.count("Fix:") == 1 and "do not retry" in text
+    # The challenge's own fix, then the cube-metadata tool's: no other source carries WDS member ids.
+    assert text.count("Fix:") == 2 and "do not retry" in text
+    assert "carried by no other source" in text
     assert "Still working: api.statcan.gc.ca" in text
     assert RETRY_IN_A_MINUTE not in text and "down or slow" not in text

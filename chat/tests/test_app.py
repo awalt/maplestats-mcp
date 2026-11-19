@@ -1606,3 +1606,197 @@ def test_the_prompt_stops_the_model_doubting_its_earlier_cited_answers():
     assert "earlier replies" in prompt
     assert "unverified" in prompt
     assert chat_app.WRAP_UP_PROMPT not in prompt
+
+
+# The notice about StatCan refusing automated requests ----
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+@pytest.fixture(autouse=True)
+def fresh_status(monkeypatch):
+    """The cached notice state starts empty, and time stands still until a test moves it."""
+    monkeypatch.setitem(chat_app._status, "at", None)
+    monkeypatch.setitem(chat_app._status, "blocked", False)
+    clock = FakeClock()
+    monkeypatch.setattr(chat_app, "_clock", clock)
+    return clock
+
+
+def fake_upstreams(monkeypatch, answers):
+    """Replace the read of /stats; `answers` is a list of results or exceptions, used in turn."""
+    calls = {"n": 0}
+
+    async def fetch():
+        answer = answers[min(calls["n"], len(answers) - 1)]
+        calls["n"] += 1
+        await asyncio.sleep(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(chat_app, "fetch_upstreams", fetch)
+    return calls
+
+
+BLOCKED = {"hosts": {}, "challenged_paths": ["cimt", "pages"]}
+CLEAR = {"hosts": {}, "challenged_paths": []}
+
+
+@pytest.mark.parametrize(
+    ("upstreams", "blocked"),
+    [
+        (BLOCKED, True),
+        ({"challenged_paths": ["sdmx"]}, True),
+        (CLEAR, False),
+        ({"hosts": {}}, False),
+        ({"challenged_paths": "cimt"}, False),
+        ({"challenged_paths": None}, False),
+        ([], False),
+        (None, False),
+    ],
+)
+def test_a_listed_challenged_path_is_a_blocked_notice(upstreams, blocked):
+    assert chat_app.statcan_blocked(upstreams) is blocked
+
+
+def test_the_status_route_says_whether_the_data_server_saw_the_check(monkeypatch):
+    client = TestClient(chat_app.app)
+    fake_upstreams(monkeypatch, [BLOCKED])
+    response = client.get("/api/status")
+    assert response.status_code == 200
+    assert response.json() == {"upstream_blocked": True}
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["content-type"].startswith("application/json")
+
+
+def test_the_status_is_read_once_a_minute(monkeypatch, fresh_status):
+    client = TestClient(chat_app.app)
+    calls = fake_upstreams(monkeypatch, [BLOCKED, CLEAR])
+    assert [client.get("/api/status").json()["upstream_blocked"] for _ in range(5)] == [
+        True
+    ] * 5
+    assert calls["n"] == 1
+    fresh_status.now += chat_app.STATUS_TTL_SECONDS - 1
+    assert client.get("/api/status").json() == {"upstream_blocked": True}
+    assert calls["n"] == 1
+    fresh_status.now += 2
+    assert client.get("/api/status").json() == {"upstream_blocked": False}
+    assert calls["n"] == 2
+
+
+def test_a_failed_read_shows_no_notice_and_is_not_retried_at_once(
+    monkeypatch, fresh_status
+):
+    client = TestClient(chat_app.app)
+    calls = fake_upstreams(monkeypatch, [TimeoutError("slow"), BLOCKED])
+    for _ in range(3):
+        response = client.get("/api/status")
+        assert response.status_code == 200
+        assert response.json() == {"upstream_blocked": False}
+    assert calls["n"] == 1
+    fresh_status.now += chat_app.STATUS_TTL_SECONDS + 1
+    assert client.get("/api/status").json() == {"upstream_blocked": True}
+
+
+def test_a_stats_answer_with_no_upstreams_is_no_notice(monkeypatch):
+    fake_upstreams(monkeypatch, [None])
+    assert TestClient(chat_app.app).get("/api/status").json() == {
+        "upstream_blocked": False
+    }
+
+
+def test_requests_that_arrive_together_share_one_read(monkeypatch):
+    calls = fake_upstreams(monkeypatch, [BLOCKED])
+
+    async def together():
+        return await asyncio.gather(*(chat_app.upstream_blocked() for _ in range(6)))
+
+    assert asyncio.run(together()) == [True] * 6
+    assert calls["n"] == 1
+
+
+def test_a_question_never_waits_for_the_status(monkeypatch):
+    """The chat routes do not read it at all, so a dead data server cannot hold one up."""
+    calls = fake_upstreams(monkeypatch, [RuntimeError("the data server is down")])
+    response = post(TestClient(chat_app.app), [{"role": "user", "content": "GDP?"}])
+    assert response.status_code == 200 and response.json()["answer"] == "ok"
+    assert calls["n"] == 0
+
+
+def test_the_stats_address_is_the_mcp_servers_own():
+    assert (
+        chat_app.stats_url("https://mcp.maplestats.danielstats.io/mcp?client=x")
+        == "https://mcp.maplestats.danielstats.io/stats"
+    )
+    assert (
+        chat_app.stats_url("http://localhost:8000/mcp") == "http://localhost:8000/stats"
+    )
+
+
+class FakeResponse:
+    def __init__(self, body: bytes) -> None:
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self, limit: int = -1) -> bytes:
+        return self.body if limit < 0 else self.body[:limit]
+
+
+def test_the_stats_are_read_over_http_and_capped(monkeypatch):
+    monkeypatch.setattr(chat_app, "MCP_STATS_URL", "https://mcp.example.test/stats")
+    seen = {}
+
+    def urlopen(request, timeout):
+        seen.update(url=request.full_url, timeout=timeout)
+        return FakeResponse(json.dumps({"upstreams": CLEAR}).encode())
+
+    monkeypatch.setattr(chat_app.urllib.request, "urlopen", urlopen)
+    assert chat_app.read_stats() == {"upstreams": CLEAR}
+    assert seen == {
+        "url": "https://mcp.example.test/stats",
+        "timeout": chat_app.STATUS_TIMEOUT_SECONDS,
+    }
+    monkeypatch.setattr(
+        chat_app.urllib.request,
+        "urlopen",
+        lambda request, timeout: FakeResponse(b" " * (chat_app.STATUS_MAX_BYTES + 5)),
+    )
+    with pytest.raises(ValueError, match="too large"):
+        chat_app.read_stats()
+
+
+def test_only_an_http_address_is_read(monkeypatch):
+    monkeypatch.setattr(chat_app, "MCP_STATS_URL", "file:///etc/passwd")
+    with pytest.raises(ValueError, match="http"):
+        chat_app.read_stats()
+
+
+def test_the_page_has_the_notice_in_both_languages_hidden_until_the_status_says(
+    tmp_path,
+):
+    page = chat_app.PAGE.decode("utf-8")
+    assert re.search(
+        r'<div class="notice" id="upstream-notice" role="status" hidden>', page
+    )
+    assert "StatCan's data service is temporarily refusing automated requests" in page
+    assert "some answers may" in page and "come from other sources" in page
+    assert (
+        '<p lang="fr">Le service de données de Statistique Canada refuse temporairement'
+        in page
+    )
+    assert 'fetch("api/status"' in page
+    assert "notice.hidden = data.upstream_blocked !== true" in page
+    # The same page keeps its policy: the new script is inline, hashed with the rest.
+    assert "connect-src 'self'" in chat_app.PAGE_HEADERS["Content-Security-Policy"]
