@@ -166,15 +166,23 @@ async def _get(
     send_language: bool = False,
     narrow_hint: str = "",
     key_hint: Any = None,
+    max_bytes: int | None = None,
 ) -> httpx.Response:
-    """GET one SDMX URL, mapping every live failure to a typed error."""
+    """GET one SDMX URL, mapping every live failure to a typed error.
+
+    `max_bytes` stops reading a body past that size (TooLarge, an UpstreamError).
+    """
     headers = {"Accept": accept}
     if send_language and lang == "fr":
         headers["Accept-Language"] = "fr"
     await _limiter().acquire()
     try:
         response = await get_raw(
-            url, params=params, headers=headers, timeout=constants.READ_TIMEOUT_SECONDS
+            url,
+            params=params,
+            headers=headers,
+            timeout=constants.READ_TIMEOUT_SECONDS,
+            max_bytes=max_bytes,
         )
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
@@ -1137,6 +1145,127 @@ async def get_data(
             licence=licence_for(structure.agency),
             lang=lang,
         ),
+    )
+
+
+# --------------------------------------------------------------------------
+# A StatCan table's copy, and a series by its vector id (for wds/fallback_ccei.py)
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class FlowRef:
+    space: str
+    agency: str
+    id: str
+    version: str
+
+    @property
+    def ref(self) -> str:
+        return f"{self.agency},{self.id},{self.version}"
+
+
+async def find_table_flow(product_id: int) -> FlowRef | None:
+    """The production copy of a StatCan table (flow DF_<8-digit id>), or None.
+
+    The CCEI space is searched first, then the shared space. Checked live 2026-11-17:
+    about 110 tables are in CCEI (agency CA1.CCEI) and 80 in the shared space
+    (CA1.QOL, CA1.MEA); the "STC" flows of the same ids are references, not data.
+    """
+    flow_id = f"DF_{product_id:08d}"
+    for space_key in ("ccei", "stcshared"):
+        rows = await _flow_rows(space_key, "en")
+        found = [r for r in rows if r.id == flow_id and r.agency in constants.TABLE_AGENCIES]
+        if found:
+            best = max(found, key=lambda r: r.version)
+            return FlowRef(space_key, best.agency, best.id, best.version)
+    return None
+
+
+def _normalize_vector(raw: str) -> int | None:
+    """21 from "21" or "v21": the flows write the vector both ways (checked live)."""
+    text = raw.strip().lower().removeprefix("v")
+    return int(text) if text.isdigit() else None
+
+
+def _parse_vector_keys(text: str) -> dict[int, str]:
+    text = text.lstrip("﻿")
+    if not text.strip():
+        return {}
+    first_line = text.split("\n", 1)[0]
+    delimiter = ";" if first_line.count(";") > first_line.count(",") else ","
+    rows = list(csv.reader(io.StringIO(text), delimiter=delimiter))
+    header = rows[0]
+    if header[:3] != ["STRUCTURE", "STRUCTURE_ID", "ACTION"] or "VECTOR" not in header:
+        return {}
+    vector_idx = header.index("VECTOR")
+    dim_end = header.index("TIME_PERIOD") if "TIME_PERIOD" in header else header.index("OBS_VALUE")
+    keys: dict[int, str] = {}
+    data_rows = [row for row in rows[1:] if row]
+    if data_rows and not text.endswith("\n"):
+        data_rows = data_rows[:-1]  # a body cut off mid-transfer: its last row is partial
+    for row in data_rows:
+        vector = _normalize_vector(row[vector_idx]) if len(row) > vector_idx else None
+        if vector is not None:
+            keys.setdefault(vector, ".".join(row[3:dim_end]))
+    return keys
+
+
+async def vector_keys(flow: FlowRef) -> dict[int, str]:
+    """The data key of each series of a flow, by StatCan vector id (cached a day).
+
+    One read of the whole flow at one observation per series: its rows carry the
+    VECTOR attribute, and no request can filter on it. A flow whose read would pass
+    VECTOR_INDEX_MAX_BYTES raises TooLarge (an UpstreamError); a flow with no VECTOR
+    column gives an empty index.
+    """
+    space = _space(flow.space)
+    url = f"{space.base_url}/data/{flow.ref}/all"
+
+    async def fetch() -> dict[int, str]:
+        response = await _get(
+            url,
+            accept=constants.ACCEPT_DATA,
+            params={"lastNObservations": 1},
+            max_bytes=constants.VECTOR_INDEX_MAX_BYTES,
+        )
+        return _parse_vector_keys(response.text)
+
+    keys, _ = await cached_fetch(f"sdmxsp:vectors:{flow.space}:{flow.ref}", 24 * 60 * 60, fetch)
+    return keys
+
+
+_RELEASE_DATE = re.compile(r"Release date:\s*(\d{4}-\d{2}-\d{2})")
+
+
+@dataclass(frozen=True)
+class SeriesLabels:
+    """What a series of a flow is, in words: the flow's title, its release date and
+    each dimension's member name, in key order (the frequency dimension left out)."""
+
+    table_title: str
+    release_date: str | None
+    members: list[tuple[str, str]]
+    non_production: bool
+    url: str
+
+
+async def series_labels(flow: FlowRef, series_key: dict[str, str], lang: str) -> SeriesLabels:
+    structure = await _load_structure(flow.space, flow.agency, flow.id, flow.version, lang)
+    members: list[tuple[str, str]] = []
+    for dim in structure.dimensions:
+        if dim.id == "FREQ":
+            continue  # WDS series titles name the members, not the frequency
+        code = series_key.get(dim.id, "")
+        name = next((c.name for c in dim.codes if c.id == code), code)
+        members.append((dim.name, name))
+    released = _RELEASE_DATE.search(structure.description)
+    return SeriesLabels(
+        table_title=structure.name,
+        release_date=released.group(1) if released else None,
+        members=members,
+        non_production=structure.non_production,
+        url=f"{_space(flow.space).base_url}/dataflow/{flow.ref.replace(',', '/')}",
     )
 
 

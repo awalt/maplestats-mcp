@@ -133,6 +133,7 @@ _PROVENANCE_KEPT = (
     "licence",
     "commercial_use",
     "caveats",
+    "substituted_for",
 )
 
 # Codes StatCan sends beside their decoded text, and display hints: the decoded
