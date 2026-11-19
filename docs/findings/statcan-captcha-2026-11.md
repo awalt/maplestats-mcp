@@ -85,6 +85,20 @@ from the {cansim} maintainer's.
 - **Scripts name themselves.** They send "MapleStats MCP reproduction script"
   as their User-Agent, never a browser-like one.
 
+- **Series from another official source if WDS itself is challenged.** WDS
+  answered scripts on 2026-11-18, so this has not been needed. If a call to
+  `wds_get_data_from_vectors`, `wds_get_data_from_cube_coord` or
+  `wds_get_series_info` gets the check, and no last good copy is held, the call
+  is answered from StatCan's CCEI and shared SDMX spaces (api.statcan.gc.ca,
+  flow `DF_<product id>`), the Bank of Canada's Valet API (the CPI vectors it
+  carries under the same id) or the Alberta Economic Dashboard's copy of the
+  table, in that order, and only after StatCan has been asked. The result says
+  which source answered, why and the newest period, and
+  `provenance.substituted_for` is `"wds"`. Checked live on 2026-11-18 against
+  WDS while both answered: the unemployment rate (v2062815, 6.7 for October
+  2026), the CPI (v41690973, 170.4), population (17-10-0009, 41,798,407 on
+  2026-07-01) and monthly GDP (v65201210, 2,371,635 for August 2026) matched
+  for all of the latest 12 periods. `MAPLE_STATCAN_FALLBACK=0` turns it off.
 - **`statcan_check_access` says what answers now.** It sends one small request
   to each StatCan service MapleStats reads and reports it as answers, blocked,
   error or no answer, with the time checked. A daily workflow
