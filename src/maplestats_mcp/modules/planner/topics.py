@@ -321,6 +321,32 @@ CENSUS_GEOGRAPHY_IDS = (
     "Canada 1, NL 2, PE 7, NS 10, NB 16, QC 26, ON 56, MB 104, SK 111, AB 121, BC 141, "
     "YT 170, NT 172, NU 174"
 )
+# Census geography lookups (codes, UIDs, names, small areas) for the GeoSuite and SGC steps.
+_CENSUS_GEOGRAPHY_TERMS = (
+    "geosuite",
+    "census geograph*",
+    "geographic code*",
+    "geography code*",
+    "census subdivision code*",
+    "census tract*",
+    "dissemination area*",
+    "dissemination block*",
+    "csduid",
+    "dauid",
+    "dbuid",
+    "ctuid",
+    "dguid",
+    "geographie du recensement",
+    "code geographique*",
+    "codes geographiques",
+    "secteur de recensement",
+    "secteurs de recensement",
+    "aire de diffusion",
+    "aires de diffusion",
+    "ilot de diffusion",
+    "ilots de diffusion",
+)
+
 CENSUS_COUNTS_STEP = (
     "2021 Census population and dwellings for Canada, provinces, metro areas and "
     "agglomerations (under 1 s): product_id=98-10-0005, coordinate=<geography id>.<count id> "
@@ -1093,6 +1119,16 @@ TOPICS: tuple[Topic, ...] = (
             "revenu",
             "langue",
             "autochtone",
+            "geosuite",
+            "dissemination area*",
+            "dissemination block*",
+            "census tract*",
+            "aire de diffusion",
+            "aires de diffusion",
+            "ilot de diffusion",
+            "ilots de diffusion",
+            "secteur de recensement",
+            "secteurs de recensement",
         ),
         (
             PlanStep(
@@ -1133,6 +1169,20 @@ TOPICS: tuple[Topic, ...] = (
                 "statcan_census_profile_archive_list_geography_levels",
                 "2001-2016 census profile bulk files: year=2001, 2006, 2011 or 2016",
                 ("2001", "2006", "2011", "historical census"),
+            ),
+            PlanStep(
+                "statcan_geosuite_query",
+                "2016 (or 1996-2021) census geography from the GeoSuite (re-hosted): codes, unique "
+                "IDs, names, hierarchy and population or dwellings by CSD, CT, DA or DB: "
+                "year=2016, table='CSD', filters={'PRUID': ['35']} or name_contains=<place>",
+                _CENSUS_GEOGRAPHY_TERMS,
+            ),
+            PlanStep(
+                "rdaas_get_classification_categories_detailed",
+                "the official 2016 Standard Geographical Classification on StatCan's own service "
+                "(provinces, CDs, CSDs; 5,474 codes, retired): "
+                "classification_id='XsUsR9DJcyfpbpgz' (version 2016.1.0), query=<place or code>",
+                ("standard geographical classification", "sgc", "cgt", *_CENSUS_GEOGRAPHY_TERMS),
             ),
             PlanStep(
                 "statcan_geo_list_services",
@@ -2788,6 +2838,46 @@ STATCAN_DAILY = Topic(
 )
 TOPICS = (*TOPICS, STATCAN_DAILY)
 
+# Since November 2026 StatCan answers some automated requests with a Cloudflare
+# check scripts cannot pass; which services it blocks has changed day to day.
+STATCAN_ACCESS = Topic(
+    "statcan_access",
+    "Which StatCan services answer scripts now (StatCan's bot check)",
+    (
+        "statcan block*",
+        "statistics canada block*",
+        "captcha",
+        "cloudflare",
+        "bot check",
+        "statcan down",
+        "statcan outage",
+        "statcan not working",
+        "statcan 403",
+        "statcan bloqu*",
+        "statistique canada bloqu*",
+        "verification anti-robot",
+        "statcan en panne",
+    ),
+    (
+        PlanStep(
+            "statcan_check_access",
+            "which StatCan services answer scripts right now, and which are blocked",
+        ),
+        PlanStep(
+            "wds_get_full_table_download",
+            "a whole table from its product_id: the file link for a browser and a script that "
+            "rebuilds it through WDS",
+        ),
+    ),
+    caveats=(
+        (
+            "A blocked service is StatCan's change, not an outage; WDS still answers scripts, "
+            "and each error names the closest route that still works."
+        ),
+    ),
+)
+TOPICS = (*TOPICS, STATCAN_ACCESS)
+
 STATCAN_TABLES = Topic(
     "statcan_tables",
     "StatCan whole tables, bulk series and vector IDs",
@@ -2817,8 +2907,8 @@ STATCAN_TABLES = Topic(
         PlanStep("wds_get_cube_metadata", "the table's dimensions and members, to size a request"),
         PlanStep(
             "wds_get_full_table_download",
-            "the whole table as one CSV from its product_id (the table number): a download link "
-            "only, no rows; the file has a VECTOR column to join on",
+            "the whole table as one CSV from its product_id (the table number): the file link and "
+            "a script that rebuilds it through WDS, no rows; the CSV has a VECTOR column to join on",
             # Ordering only: the topic already matched, so a bare "reconcil*" here cannot
             # route an unrelated question, only put this step first for a reconcile request.
             terms=(
@@ -2861,10 +2951,10 @@ STATCAN_TABLES = Topic(
     ),
     (
         (
-            "wds_get_full_table_download gives a link, not rows, and a Python script that "
-            "downloads the file, keeps the members asked for and prints a summary: run it and "
-            "read that. A large table can hold hundreds of thousands of rows across every "
-            "geography and measure, so filter after downloading."
+            "wds_get_full_table_download gives the file link for a browser (StatCan blocks "
+            "scripted full-table downloads since November 2026) and a Python script that "
+            "rebuilds the same CSV through WDS, keeping the members and periods asked for: "
+            "offer it, and read its output rather than the rows."
         ),
         (
             "The vector tools return every observation inline, several fields each: fine for a "

@@ -16,6 +16,7 @@ tables, is read through WDS on www150. The separate real-time viewer
 from __future__ import annotations
 
 import asyncio
+import math
 import re
 import unicodedata
 from calendar import monthrange
@@ -26,6 +27,8 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from maplestats_mcp.modules.reproduce import wds_table
+from maplestats_mcp.modules.reproduce.schemas import Script
 from maplestats_mcp.modules.statcan.lang import say
 from maplestats_mcp.modules.statcan.wds import constants, fallback_book
 from maplestats_mcp.modules.statcan.wds.schemas import (
@@ -46,6 +49,7 @@ from maplestats_mcp.modules.statcan.wds.schemas import (
     FullTableDownloadLink,
     ObservationRow,
     SeriesInfo,
+    TableRebuild,
     VectorData,
     VectorDataSet,
     VectorSeries,
@@ -53,13 +57,15 @@ from maplestats_mcp.modules.statcan.wds.schemas import (
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import (
+    CloudflareChallenge,
     DataLocked,
     InvalidInput,
     NotFound,
+    TooLarge,
     UpstreamError,
     UpstreamUnavailable,
 )
-from maplestats_mcp.shared.http import api_get, api_post
+from maplestats_mcp.shared.http import api_get, api_post, get_raw
 from maplestats_mcp.shared.json_utils import list_or_empty
 from maplestats_mcp.shared.rate_limiter import get_limiter
 
@@ -1479,63 +1485,205 @@ def _download_url(body: Any, method: str) -> str:
     return str(_unwrap_one(body, method)) if isinstance(body, dict) else str(body)
 
 
-async def _check_members(
-    pid: int, members: dict[str, list[str]], lang: str
-) -> dict[str, list[str]]:
-    """The members keyed by dimension name and spelled as the CSV spells them.
+# StatCan announced on 2026-11-16 that it would stop serving full-table files to
+# automated clients; on 2026-11-18 the {cansim} maintainer reported them behind its
+# Cloudflare captcha, while from this project's cloud host the same day they still
+# downloaded. Which networks are blocked differs, so each link is checked when given,
+# and the script rebuilds the table through WDS instead of downloading the file.
+_BLOCKED_FILES = (
+    (
+        "Statistics Canada announced in November 2026 that it blocks automated full-table "
+        "downloads with a captcha (a Cloudflare check that only a person in a web browser can "
+        "pass), so no script relies on download_url: it is for a person to open in a browser."
+    ),
+    (
+        "Statistique Canada a annoncé en novembre 2026 qu'il bloque les téléchargements "
+        "automatisés de tableaux complets par une vérification anti-robot (un contrôle "
+        "Cloudflare que seule une personne dans un navigateur peut passer) ; aucun script ne "
+        "dépend donc de download_url, qui sert à une personne, dans un navigateur."
+    ),
+)
+_FILE_NOTES = {
+    "blocked": (
+        "Just now this link answered MapleStats with the captcha, not the file.",
+        "À l'instant, ce lien a répondu à MapleStats par la vérification, et non par le fichier.",
+    ),
+    "downloadable": (
+        (
+            "Just now this link still served the file to MapleStats, but that can differ by "
+            "network and change without notice."
+        ),
+        (
+            "À l'instant, ce lien servait encore le fichier à MapleStats, mais cela peut varier "
+            "selon le réseau et changer sans préavis."
+        ),
+    ),
+}
+# REF_DATE's forms: a year, a year and month, or a date.
+_PERIOD = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
 
-    A dimension the table lacks would leave the script filtering a column that
-    does not exist. A member is checked, and its spelling taken from the
-    metadata (the script matches case but not accents), only when the metadata
-    lists the whole dimension: it is capped at MEMBER_LIMIT_MAX members.
+
+async def check_file(url: str) -> Literal["downloadable", "blocked", "not_checked"]:
+    """Whether StatCan serves `url` to a script now: its first bytes, or its captcha.
+
+    A Range request reads four bytes; a server that ignores Range and declares the
+    whole file is stopped by max_bytes before the body is read (TooLarge), which
+    still means the file was served. Anything else leaves the link unchecked.
     """
-    metadata = await get_cube_metadata(pid, member_limit=constants.MEMBER_LIMIT_MAX)
-    checked: dict[str, list[str]] = {}
-    for name, given in members.items():
-        values: list[str] = [given] if isinstance(given, str) else list(given)
-        wanted = _fold(name.strip())
-        dimension = next(
-            (
-                d
-                for d in metadata.dimensions
-                if wanted in (_fold(d.dimension_name_en), _fold(d.dimension_name_fr))
-                or (d.dimension_position_id == 1 and wanted == "geo")
-            ),
-            None,
+    try:
+        response = await get_raw(
+            url, headers={"Range": "bytes=0-3"}, timeout=20.0, max_bytes=64 * 1024
         )
-        if dimension is None:
-            known = ", ".join(
-                d.dimension_name_en if lang == "en" else d.dimension_name_fr
-                for d in metadata.dimensions
+    except CloudflareChallenge:
+        return "blocked"
+    except TooLarge:
+        return "downloadable"
+    except (httpx.HTTPError, UpstreamError, UpstreamUnavailable):
+        return "not_checked"
+    return "downloadable" if response.content[:2] == b"PK" else "not_checked"
+
+
+def _file_notes(check: str) -> list[str]:
+    note = _FILE_NOTES.get(check)
+    return [_m(*_BLOCKED_FILES), *([_m(*note)] if note else [])]
+
+
+def _rebuild_notes(rebuild: TableRebuild | None, lang: str) -> list[str]:
+    """What the WDS rebuild script does, or why the table is too big for one."""
+    if rebuild is None:
+        return [
+            _m(
+                "WDS has no metadata for this table (it is published as a file only), so it "
+                "cannot be rebuilt through WDS.",
+                "Le WDS n'a pas de métadonnées pour ce tableau (publié seulement en fichier) ; il "
+                "ne peut donc pas être reconstruit par le WDS.",
             )
+        ]
+    if not rebuild.within_limit:
+        return [
+            _m(
+                f"Rebuilding this through WDS would take about {rebuild.wds_calls:,} calls, over "
+                f"the limit of {wds_table.MAX_CALLS:,}, so no script is given: pass members "
+                "(dimension -> member names, see wds_get_cube_metadata) or a later start_period "
+                "to keep part of the table.",
+                f"Reconstruire ceci par le WDS demanderait environ {rebuild.wds_calls:,} appels, "
+                f"au-delà de la limite de {wds_table.MAX_CALLS:,} ; aucun script n'est donc "
+                "fourni : passez members (dimension -> noms de membres, voir "
+                "wds_get_cube_metadata) ou une start_period plus récente pour garder une partie "
+                "du tableau.",
+            )
+        ]
+    notes = [
+        _m(
+            "The Python script in `scripts` rebuilds the same CSV through WDS, which StatCan "
+            "still serves to scripts: same columns, order and values as StatCan's file (checked "
+            "byte for byte on 36-10-0104, 18-10-0004 and 14-10-0287 on 2026-11-18). It asks "
+            f"for {rebuild.combinations:,} member combinations in about {rebuild.wds_calls:,} WDS "
+            "calls; WDS answers only the series StatCan publishes. The idea comes from "
+            "vrraiv/sixfigures. In R, cansim's get_cansim_data_for_table_coord_periods() reads "
+            "table coordinates through WDS too.",
+            "Le script Python de `scripts` reconstruit le même CSV par le WDS, que StatCan sert "
+            "toujours aux scripts : mêmes colonnes, ordre et valeurs que le fichier de StatCan "
+            "(vérifié octet par octet sur 36-10-0104, 18-10-0004 et 14-10-0287 le 2026-11-18). "
+            f"Il demande {rebuild.combinations:,} combinaisons de membres en environ "
+            f"{rebuild.wds_calls:,} appels au WDS ; le WDS ne répond que pour les séries que "
+            "StatCan publie. L'idée vient de vrraiv/sixfigures. En R, "
+            "get_cansim_data_for_table_coord_periods() de cansim lit aussi les coordonnées "
+            "d'un tableau par le WDS.",
+        )
+    ]
+    if lang == "fr":
+        notes.append("Le script écrit l'édition anglaise du CSV (en-têtes et libellés en anglais).")
+    return notes
+
+
+def _kept_members(
+    cube: dict[str, Any], members: dict[str, list[str]] | None
+) -> list[list[dict[str, Any]]]:
+    """Each dimension's members that `members` keeps (all, for a dimension it does not name)."""
+    dimensions = sorted(
+        list_or_empty(cube, "dimension"), key=lambda d: int(d["dimensionPositionId"])
+    )
+    names = [str(d.get("dimensionNameEn") or "") for d in dimensions]
+    wanted = {str(k).strip().lower(): v for k, v in (members or {}).items()}
+    unknown = set(wanted) - {n.strip().lower() for n in names}
+    if unknown:
+        raise InvalidInput(
+            _m(
+                f"members: the table has no dimension {sorted(unknown)}. Its dimensions: "
+                f"{', '.join(names)}.",
+                f"members : le tableau n'a pas de dimension {sorted(unknown)}. Ses dimensions : "
+                f"{', '.join(names)}.",
+            )
+        )
+    kept: list[list[dict[str, Any]]] = []
+    for dimension, name in zip(dimensions, names, strict=True):
+        every = list_or_empty(dimension, "member")
+        asked_for = wanted.get(name.strip().lower())
+        if not asked_for:
+            kept.append(every)
+            continue
+        asked = {str(a).strip().lower() for a in asked_for}
+        found = [
+            m
+            for m in every
+            if str(m.get("memberNameEn") or "").strip().lower() in asked
+            or str(m.get("memberId")) in asked
+        ]
+        matched = {str(m.get("memberNameEn") or "").strip().lower() for m in found} | {
+            str(m.get("memberId")) for m in found
+        }
+        missing = sorted(asked - matched)
+        if missing:
             raise InvalidInput(
                 _m(
-                    f"Table {pid} has no dimension {name!r}. Its dimensions: {known}.",
-                    f"Le tableau {pid} n'a pas de dimension {name!r}. Ses dimensions : {known}.",
+                    f"members: {missing} not in {name!r}; find the names with "
+                    "wds_get_cube_metadata(member_query=...).",
+                    f"members : {missing} absent de {name!r} ; trouvez les noms avec "
+                    "wds_get_cube_metadata(member_query=...).",
                 )
             )
-        if dimension.member_count == len(dimension.members):
-            spelled = {
-                _fold(label.strip()): label
-                for m in dimension.members
-                for label in [m.member_name_en if lang == "en" else m.member_name_fr]
-            }
-            unknown = [v for v in values if _fold(v.strip()) not in spelled]
-            values = [spelled.get(_fold(v.strip()), v) for v in values]
-            if unknown:
-                raise InvalidInput(
-                    _m(
-                        f"{', '.join(map(repr, unknown))} is not a member of {name!r} in table "
-                        f"{pid}; wds_get_cube_metadata lists the members.",
-                        f"{', '.join(map(repr, unknown))} n'est pas un membre de {name!r} dans le "
-                        f"tableau {pid} ; wds_get_cube_metadata donne la liste des membres.",
-                    )
+        kept.append(found)
+    return kept
+
+
+async def _rebuild(
+    pid: int,
+    members: dict[str, list[str]] | None,
+    start_period: str | None,
+    end_period: str | None,
+) -> tuple[TableRebuild | None, list[Script]]:
+    """The size of a WDS rebuild and, within the limit, its script."""
+    for name, value in (("start_period", start_period), ("end_period", end_period)):
+        if value is not None and not _PERIOD.match(value):
+            raise InvalidInput(
+                _m(
+                    f"{name} must look like 2020, 2020-01 or 2020-01-15 (REF_DATE's form), "
+                    f"got {value!r}.",
+                    f"{name} doit ressembler à 2020, 2020-01 ou 2020-01-15 (forme de REF_DATE), "
+                    f"reçu {value!r}.",
                 )
-        # The CSV names its columns after the dimensions, in the file's
-        # language, except the geography, which is GEO (GÉO in French).
-        column = dimension.dimension_name_en if lang == "en" else dimension.dimension_name_fr
-        checked[column] = values
-    return checked
+            )
+    try:
+        cube, _ = await cube_metadata_raw(pid)
+    except NotFound:
+        # A bulk-only table (16-10-0118) has no WDS metadata, so no rebuild.
+        return None, []
+    kept = _kept_members(cube, members)
+    combinations = math.prod(len(k) for k in kept)
+    latest_n = wds_table.periods_to_ask(cube, start_period)
+    calls = wds_table.wds_calls(combinations, latest_n)
+    rebuild = TableRebuild(
+        series_in_table=int(cube.get("nbSeriesCube") or 0),
+        combinations=combinations,
+        periods_per_series=latest_n,
+        wds_calls=calls,
+        within_limit=calls <= wds_table.MAX_CALLS,
+    )
+    if not rebuild.within_limit:
+        return rebuild, []
+    code = wds_table.rebuild_script(pid, members, start_period, end_period)
+    return rebuild, [Script(language="python", code=code, packages=["httpx[http2]"])]
 
 
 async def get_full_table_download_csv(
@@ -1545,25 +1693,22 @@ async def get_full_table_download_csv(
     start_period: str | None = None,
     end_period: str | None = None,
 ) -> FullTableDownloadLink:
-    # Lazy import: reproduce's builders reach other modules' code at import.
-    from maplestats_mcp.modules.reproduce.builders import full_table_spec
-    from maplestats_mcp.modules.reproduce.client import render_scripts
-
     method = "getFullTableDownloadCSV"
     pid = normalize_product_id(product_id)
     await _require_known_table(pid)
-    if members:
-        members = await _check_members(pid, members, lang)
-    # Built before the request so a bad period fails without a WDS call.
-    spec = full_table_spec(pid, lang, members, start_period, end_period)
-    spec.summary = True
-    scripts, _ = render_scripts(spec, "wds_get_full_table_download", ["python", "r"])
+    # Built before the link request, so bad members or periods fail without it.
+    rebuild, scripts = await _rebuild(pid, members, start_period, end_period)
     data = await _get(method, path_suffix=f"/{pid}/{lang}")
+    download_url = _download_url(data, method)
+    check = await check_file(download_url)
     return FullTableDownloadLink(
         product_id=pid,
         format="csv",
         language=lang,
-        download_url=_download_url(data, method),
+        download_url=download_url,
+        file_check=check,
+        notes=[*_file_notes(check), *_rebuild_notes(rebuild, lang)],
+        rebuild=rebuild,
         scripts=scripts,
         provenance=make_provenance(
             source="statcan-wds",
@@ -1584,11 +1729,15 @@ async def get_full_table_download_sdmx(product_id: int | str) -> FullTableDownlo
     pid = normalize_product_id(product_id)
     await _require_known_table(pid)
     data = await _get(method, path_suffix=f"/{pid}")
+    download_url = _download_url(data, method)
+    check = await check_file(download_url)
     return FullTableDownloadLink(
         product_id=pid,
         format="sdmx",
         language="en+fr",
-        download_url=_download_url(data, method),
+        download_url=download_url,
+        file_check=check,
+        notes=_file_notes(check),
         provenance=make_provenance(
             source="statcan-wds",
             url=f"{constants.BASE_URL}{method}/{pid}",

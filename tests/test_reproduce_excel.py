@@ -156,11 +156,8 @@ def test_hostile_filter_values_stay_text():
 @pytest.mark.parametrize(
     ("tool", "arguments"),
     [
-        ("wds_get_cube_metadata", {"product_id": 18100004}),
-        ("wds_get_cube_metadata", {"product_id": 18100004, "lang": "fr"}),
         ("wds_get_data_from_vectors", {"vector_ids": [41690973, 41690914], "latest_n": 3}),
         ("sdmx_get_vector_data", {"vector_id": 41690973, "last_n_observations": 6}),
-        ("sdmx_get_data", {"product_id": 18100004, "key": "2.2", "last_n_observations": 3}),
         ("boc_get_observations", {"series_names": ["FXUSDCAD", "V39079"], "recent": 5}),
         (
             "socrata_query_dataset_rows",
@@ -183,20 +180,6 @@ async def test_queries_are_well_formed(tool, arguments):
     assert "Power Query" in result.scripts[0].packages[0]
 
 
-async def test_table_query_unzips_and_scales():
-    result = await client.reproduce("wds_get_cube_metadata", {"product_id": 18100004}, "excel")
-    code = result.scripts[0].code
-    assert 'Web.Contents("https://www150.statcan.gc.ca/n1/tbl/csv/18100004-eng.zip")' in code
-    assert "Binary.Decompress(Packed, Compression.Deflate)" in code
-    assert '"metadata"' in code
-    assert "[value] * Number.Power(10, [scalar_id])" in code
-    french = await client.reproduce(
-        "wds_get_cube_metadata", {"product_id": 18100004, "lang": "fr"}, "excel"
-    )
-    assert 'Delimiter = ";"' in french.scripts[0].code
-    assert "valeur_normalisee" in french.scripts[0].code
-
-
 async def test_vectors_query_posts_the_same_body():
     result = await client.reproduce(
         "wds_get_data_from_vectors", {"vector_ids": [41690973], "latest_n": 3}, "excel"
@@ -205,25 +188,6 @@ async def test_vectors_query_posts_the_same_body():
     assert 'Json.FromValue({[#"vectorId" = 41690973, #"latestN" = 3]})' in code
     assert '#"Content-Type" = "application/json"' in code
     assert 'Record.Field(item, "object")' in code and '"vectorDataPoint"' in code
-
-
-async def test_sdmx_data_reads_the_key_not_the_table():
-    result = await client.reproduce(
-        "sdmx_get_data", {"product_id": 18100004, "key": "2.2", "last_n_observations": 3}
-    )
-    by_language = {s.language: s.code for s in result.scripts}
-    url = "https://www150.statcan.gc.ca/t1/wds/sdmx/statcan/rest/data/DF_18100004/2.2"
-    assert f'"{url}?lastNObservations=3"' in by_language["excel"]
-    assert "Xml.Document(Raw)" in by_language["excel"]
-    # Every script reads the key's series too, not the full table.
-    assert result.source_url == f"{url}?lastNObservations=3"
-    assert (
-        "get_cansim" not in by_language["r"]
-        and "xml_find_all(document, \"//*[local-name()='Series']\")" in (by_language["r"])
-    )
-    assert 'series.findall("{*}Obs")' in by_language["python"]
-    assert "python:" in by_language["stata"] and "readxml(" in by_language["julia"]
-    assert any("SDMX" in note for note in result.notes)
 
 
 def test_filters_and_sort_repeat_the_tool():
@@ -246,7 +210,9 @@ def test_filters_and_sort_repeat_the_tool():
 
 
 async def test_all_includes_excel_and_explains_a_missing_query():
-    result = await client.reproduce("wds_get_cube_metadata", {"product_id": 18100004})
+    result = await client.reproduce(
+        "wds_get_data_from_vectors", {"vector_ids": [41690973], "latest_n": 3}
+    )
     assert [s.language for s in result.scripts] == ["r", "python", "stata", "julia", "excel"]
 
 

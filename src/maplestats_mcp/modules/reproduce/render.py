@@ -15,7 +15,7 @@ import json
 import re
 import tokenize
 from typing import Any
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlparse
 
 from maplestats_mcp.modules.reproduce import cleaning
 from maplestats_mcp.modules.reproduce.spec import Filter, Spec, term_groups
@@ -243,8 +243,36 @@ def _needs_request(spec: Spec) -> bool:
     return bool(spec.post_json is not None or spec.post_form or spec.headers)
 
 
+def _statcan_file(spec: Spec) -> bool:
+    """A plain GET of a Statistics Canada file, which StatCan may answer with its captcha.
+
+    Since November 2026 StatCan answers some automated requests with a Cloudflare
+    check only a person in a browser can pass. reproduce_code writes no script for
+    the services it blocks (shared/challenge_notes.py); for the files that still
+    download (PUMF and LODE zips, the Delta File), the script stops with a plain
+    message if StatCan starts answering with the captcha, instead of failing later
+    on a "bad zip" built from the captcha page.
+    """
+    host = urlparse(spec.url).hostname or ""
+    return (host == "statcan.gc.ca" or host.endswith(".statcan.gc.ca")) and not _needs_request(spec)
+
+
+_CAPTCHA_MESSAGE = (
+    "Statistics Canada answered with its captcha instead of the file: since November 2026 "
+    "it blocks some automated downloads, and a script cannot pass the check."
+)
+
+
 def _r_download(spec: Spec, path: str) -> str:
     """download.file for a plain GET; httr2 when the request needs a body or headers."""
+    if _statcan_file(spec):
+        return (
+            "tryCatch(\n"
+            f'  download.file({_quote(spec.url)}, "{path}", mode = "wb"),\n'
+            f"  error = function(e) stop({_quote(_CAPTCHA_MESSAGE + ' ')}, conditionMessage(e), "
+            "call. = FALSE)\n"
+            ")\n"
+        )
     if not _needs_request(spec):
         return f'download.file({_quote(spec.url)}, "{path}", mode = "wb")\n'
     request = f"request({_quote(spec.url)})"
@@ -572,6 +600,22 @@ def _py_filter(item: Filter) -> str:
     return f"{column} {symbol} {item.value!r}"
 
 
+# What a generated script tells a server it is: MapleStats' own name and address, the
+# same as the CFIA scripts (reproduce/cfia.py). Scripts never pose as a web browser.
+SCRIPT_USER_AGENT = (
+    "MapleStats MCP reproduction script (https://github.com/dsanchezp18/maplestats-mcp)"
+)
+
+# NOT USED. Kept only as a record, for the project owner to decide on later.
+# Until 2026-11-18 the Python scripts sent this browser-like User-Agent, added
+# because some government file servers answer 403 to httpx's default one. Since
+# Statistics Canada began blocking automated clients with a captcha (November
+# 2026), the owner asked that no code look like an attempt to get past such a
+# block, so scripts send SCRIPT_USER_AGENT instead. If a server is found that
+# refuses SCRIPT_USER_AGENT but accepts this, record it here before deciding.
+_RETIRED_BROWSER_LIKE_USER_AGENT = "Mozilla/5.0 (compatible; research script)"
+
+
 def _py_fetch(spec: Spec) -> str:
     # http2=True is required: StatCan drops TLS connections from clients that
     # offer only HTTP/1.1 (see shared/http.py), so a plain httpx.get fails there.
@@ -582,17 +626,25 @@ def _py_fetch(spec: Spec) -> str:
         call = f"client.post({spec.url!r}, data={spec.post_form!r}{headers})"
     else:
         call = f"client.get({spec.url!r}{headers})"
-    # Some government file servers answer 403 to httpx's default User-Agent.
+    # Some government file servers answer 403 to httpx's default User-Agent, so the
+    # script names itself (see SCRIPT_USER_AGENT).
     return (
         "with httpx.Client(\n"
         "    http2=True,\n"
         "    follow_redirects=True,\n"
         "    timeout=300,\n"
-        '    headers={"User-Agent": "Mozilla/5.0 (compatible; research script)"},\n'
+        f'    headers={{"User-Agent": "{SCRIPT_USER_AGENT}"}},\n'
         ") as client:\n"
         f"    response = {call}\n"
-        "response.raise_for_status()\n"
-        "raw_path.write_bytes(response.content)\n"
+        + (
+            # Checked before writing, so the captcha page is never saved as the file.
+            'if response.headers.get("cf-mitigated", "").lower() == "challenge":\n'
+            f"    raise RuntimeError({_CAPTCHA_MESSAGE!r})\n"
+            "response.raise_for_status()\n"
+            "raw_path.write_bytes(response.content)\n"
+            if _statcan_file(spec)
+            else "response.raise_for_status()\nraw_path.write_bytes(response.content)\n"
+        )
     )
 
 

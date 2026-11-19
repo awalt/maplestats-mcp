@@ -402,6 +402,21 @@ FR: dict[str, str] = {
         "fichiers complets des profils du recensement de 2001 à 2016 : year=2001, 2006, "
         "2011 ou 2016"
     ),
+    "2016 (or 1996-2021) census geography from the GeoSuite (re-hosted): codes, unique "
+    "IDs, names, hierarchy and population or dwellings by CSD, CT, DA or DB: "
+    "year=2016, table='CSD', filters={'PRUID': ['35']} or name_contains=<place>": (
+        "géographie du recensement de 2016 (ou de 1996 à 2021) tirée de la GéoSuite (site "
+        "miroir) : codes, identificateurs uniques, noms, hiérarchie et population ou logements "
+        "par SDR, SR, AD ou ID : year=2016, table='CSD', filters={'PRUID': ['35']} ou "
+        "name_contains=<lieu>"
+    ),
+    "the official 2016 Standard Geographical Classification on StatCan's own service "
+    "(provinces, CDs, CSDs; 5,474 codes, retired): "
+    "classification_id='XsUsR9DJcyfpbpgz' (version 2016.1.0), query=<place or code>": (
+        "la Classification géographique type 2016 officielle, sur le service de Statistique "
+        "Canada (provinces, DR, SDR ; 5 474 codes, retirée) : "
+        "classification_id='XsUsR9DJcyfpbpgz' (version 2016.1.0), query=<lieu ou code>"
+    ),
     "census boundary maps and geography layers: year=2021": (
         "cartes des limites et couches géographiques du recensement : year=2021"
     ),
@@ -1160,6 +1175,24 @@ FR: dict[str, str] = {
         "34-10-0036, 36-10-0018, 36-10-0103, 36-10-0104 et 36-10-0434; tout autre tableau, "
         "le 14-10-0287 de l'Enquête sur la population active compris, est une erreur"
     ),
+    # StatCan's bot check
+    "Which StatCan services answer scripts now (StatCan's bot check)": (
+        "Services de StatCan qui répondent aux scripts en ce moment (vérification anti-robot)"
+    ),
+    "which StatCan services answer scripts right now, and which are blocked": (
+        "les services de StatCan qui répondent aux scripts en ce moment, et ceux qui sont bloqués"
+    ),
+    "a whole table from its product_id: the file link for a browser and a script that "
+    "rebuilds it through WDS": (
+        "un tableau complet à partir de son product_id : le lien du fichier pour un "
+        "navigateur et un script qui le reconstruit par le WDS"
+    ),
+    "A blocked service is StatCan's change, not an outage; WDS still answers scripts, "
+    "and each error names the closest route that still works.": (
+        "Un service bloqué est un changement de StatCan, pas une panne ; le WDS répond "
+        "toujours aux scripts, et chaque erreur nomme l'accès le plus proche qui fonctionne "
+        "encore."
+    ),
     # The Daily
     "The Daily: StatCan's release articles, their text and PDFs": (
         "Le Quotidien : les communiqués de Statistique Canada, leur texte et leurs PDF"
@@ -1203,11 +1236,11 @@ FR: dict[str, str] = {
     "the table's dimensions and members, to size a request": (
         "les dimensions et les membres du tableau, pour jauger la taille d'une requête"
     ),
-    "the whole table as one CSV from its product_id (the table number): a download link "
-    "only, no rows; the file has a VECTOR column to join on": (
+    "the whole table as one CSV from its product_id (the table number): the file link and "
+    "a script that rebuilds it through WDS, no rows; the CSV has a VECTOR column to join on": (
         "tout le tableau en un seul CSV à partir de son product_id (le numéro du tableau) : "
-        "un lien de téléchargement seulement, sans lignes; le fichier a une colonne VECTOR "
-        "pour les jointures"
+        "le lien du fichier et un script qui le reconstruit par le WDS, sans lignes; le CSV a "
+        "une colonne VECTOR pour la jointure"
     ),
     "one vector ID to its table and coordinate, or the reverse": (
         "d'un identifiant de vecteur à son tableau et sa coordonnée, ou l'inverse"
@@ -1218,14 +1251,14 @@ FR: dict[str, str] = {
     "a date window for a few known vectors, returned inline": (
         "une plage de dates pour quelques vecteurs connus, retournée directement"
     ),
-    "wds_get_full_table_download gives a link, not rows, and a Python script that "
-    "downloads the file, keeps the members asked for and prints a summary: run it and "
-    "read that. A large table can hold hundreds of thousands of rows across every "
-    "geography and measure, so filter after downloading.": (
-        "wds_get_full_table_download donne un lien, pas des lignes, et un script Python qui "
-        "télécharge le fichier, garde les membres demandés et imprime un résumé : exécutez-le "
-        "et lisez ce résumé. Un grand tableau peut compter des centaines de milliers de lignes "
-        "pour toutes les géographies et mesures; filtrez après le téléchargement."
+    "wds_get_full_table_download gives the file link for a browser (StatCan blocks "
+    "scripted full-table downloads since November 2026) and a Python script that "
+    "rebuilds the same CSV through WDS, keeping the members and periods asked for: "
+    "offer it, and read its output rather than the rows.": (
+        "wds_get_full_table_download donne le lien du fichier pour un navigateur (StatCan "
+        "bloque les téléchargements de tableaux complets par script depuis novembre 2026) et "
+        "un script Python qui reconstruit le même CSV par le WDS, en gardant les membres et "
+        "les périodes demandés : proposez-le, et lisez sa sortie plutôt que les lignes."
     ),
     "The vector tools return every observation inline, several fields each: fine for a "
     "handful of series, the wrong tool for hundreds.": (

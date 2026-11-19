@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="{{lang}}" data-root="{{root}}">
+<head>
+{{> head}}
+<title>{en}How MapleStats works with Toronto's open data{fr}Comment MapleStats travaille avec les données ouvertes de Toronto{/} · MapleStats MCP</title>
+<meta name="description" content="{en}How MapleStats MCP reads Toronto's open data: finding a dataset, what its columns mean in the City's words, figures by ward, and the portal's rules.{fr}Comment MapleStats MCP lit les données ouvertes de Toronto : trouver un jeu de données, ses colonnes, des chiffres par quartier, les règles du portail.{/}">
+</head>
+<body>
+{{> header}}
+<main id="main" class="post">
+<div class="wrap post-shell">
+
+<header class="post-head">
+  <p class="label">{en}City of Toronto · Notes from the code{fr}Ville de Toronto · Notes tirées du code{/}</p>
+  <h1>{en}How MapleStats works with Toronto's open data{fr}Comment MapleStats travaille avec les données ouvertes de Toronto{/}</h1>
+  <p class="post-dek">{en}A number from a city dataset is only useful if you know what it measures. This post follows one question through open.toronto.ca: find the dataset, read what the City says its columns mean, then get the figures, with the citation and licence attached.{fr}Un chiffre tiré d'un jeu de données municipal n'est utile que si l'on sait ce qu'il mesure. Ce billet suit une question dans open.toronto.ca : trouver le jeu de données, lire ce que la Ville dit de ses colonnes, puis obtenir les chiffres, avec la citation et la licence. La Ville publie ses données en anglais seulement : les réponses ci-dessous sont donc en anglais.{/}</p>
+</header>
+
+<nav class="post-toc" data-toc aria-label="{en}On this page{fr}Sur cette page{/}">
+  <details open>
+    <summary>{en}On this page{fr}Sur cette page{/}</summary>
+    <ol>
+      <li><a href="#portal">{en}Finding a dataset{fr}Trouver un jeu de données{/}</a></li>
+      <li><a href="#meaning">{en}What a column means{fr}Ce que veut dire une colonne{/}</a></li>
+      <li><a href="#scores">{en}Apartment scores by ward{fr}Les notes des immeubles par quartier{/}</a></li>
+      <li><a href="#neighbourhood">{en}A neighbourhood beside the city{fr}Un quartier à côté de la ville{/}</a></li>
+      <li><a href="#rentals">{en}Short-term rentals{fr}La location à court terme{/}</a></li>
+      <li><a href="#rules">{en}The portal's rules{fr}Les règles du portail{/}</a></li>
+      <li><a href="#next">{en}Where to go next{fr}Pour aller plus loin{/}</a></li>
+    </ol>
+  </details>
+</nav>
+
+<article class="post-body">
+
+<section class="post-sec" id="portal">
+  <h2>{en}Finding a dataset{fr}Trouver un jeu de données{/}</h2>
+  <aside class="post-note">
+    <p class="fig">{{to_datasets}}</p>
+    <p>{en}datasets were listed on open.toronto.ca on {{to_captured}}, when the calls on this page were recorded.{fr}jeux de données figuraient dans open.toronto.ca le {{to_captured}}, quand les appels de cette page ont été enregistrés.{/}</p>
+  </aside>
+  <p>{en}The City's portal runs CKAN, the open-source catalogue many governments use, and its API answers anyone. MapleStats reads it with {{to_ckan_tool_count}} general CKAN tools, the same ones it uses for the federal portal and the other city and provincial catalogues, and adds {{to_tool_count}} tools written for the Toronto datasets people ask about most.{fr}Le portail de la Ville tourne sous CKAN, le catalogue libre qu'utilisent de nombreux gouvernements, et son API répond à tous. MapleStats le lit avec {{to_ckan_tool_count}} outils CKAN généraux, les mêmes que pour le portail fédéral et les autres catalogues municipaux et provinciaux, et y ajoute {{to_tool_count}} outils écrits pour les jeux de données de Toronto les plus demandés.{/}</p>
+  <p>{en}The question this post follows: how well are Toronto's rental apartment buildings kept? The City's RentSafeTO program scores them. A search of the catalogue finds the dataset:{fr}La question que suit ce billet : les immeubles locatifs de Toronto sont-ils bien entretenus? Le programme RentSafeTO de la Ville leur attribue une note. Une recherche dans le catalogue trouve le jeu de données :{/}</p>
+  {{to_search_box}}
+</section>
+
+<section class="post-sec" id="meaning">
+  <h2>{en}What a column means{fr}Ce que veut dire une colonne{/}</h2>
+  <p>{en}A column called <code>CURRENT BUILDING EVAL SCORE</code> invites a guess. The City does not leave it to one: its DataStore keeps a note on each column, and the dataset's record says how the data were collected and how often they change. <code>ckan_get_dataset_documents</code> returns both, here for the {{to_score_fields}} columns of the current evaluations, kept to the ones that match "score":{fr}Une colonne nommée <code>CURRENT BUILDING EVAL SCORE</code> invite à deviner. La Ville ne s'en remet pas à une supposition : son DataStore garde une note sur chaque colonne, et la fiche du jeu de données dit comment les données sont recueillies et à quel rythme elles changent. <code>ckan_get_dataset_documents</code> renvoie les deux, ici pour les {{to_score_fields}} colonnes des évaluations en cours, réduites à celles qui contiennent « score » :{/}</p>
+  {{to_docs_box}}
+  <p>{en}Two things change how the score should be read. It adds two parts: the latest proactive evaluation, and the orders and notices of violation issued since. And the dataset's description says the officers inspect common areas, mechanical and security systems, parking and exterior grounds. A building's score says nothing about the inside of any one unit. An agent that reads this before answering will say so.{fr}Deux éléments changent la façon de lire la note. Elle additionne deux parties : la dernière évaluation proactive, et les ordres et avis d'infraction émis depuis. Et la description du jeu de données précise que les agents inspectent les aires communes, les systèmes mécaniques et de sécurité, le stationnement et les terrains extérieurs. La note d'un immeuble ne dit rien de l'intérieur d'un logement. Un agent qui lit ceci avant de répondre le dira.{/}</p>
+  <p>{en}The {{to_docs_listed}} pages the dataset points to are listed with their address but not opened. The City's website terms bar copying its pages without permission, so the agent gives you the link to read and cite. The idea for this tool comes from the <a href="https://github.com/ruchir321/ckan-mcp-server">CKAN MCP Server</a>, an honourable mention at the 2025 Toronto Open Data Awards; MapleStats' version reads only what the portal's API serves.{fr}Les {{to_docs_listed}} pages vers lesquelles pointe le jeu de données sont énumérées avec leur adresse, mais pas ouvertes. Les conditions du site de la Ville interdisent d'en copier les pages sans permission : l'agent vous donne donc le lien à lire et à citer. L'idée de cet outil vient du <a href="https://github.com/ruchir321/ckan-mcp-server">CKAN MCP Server</a>, mention honorable aux Toronto Open Data Awards de 2025; la version de MapleStats ne lit que ce que sert l'API du portail.{/}</p>
+</section>
+
+<section class="post-sec" id="scores">
+  <h2>{en}Apartment scores by ward{fr}Les notes des immeubles par quartier{/}</h2>
+  <aside class="post-note">
+    <p class="fig">{{to_buildings}}</p>
+    <p>{en}apartment buildings with a RentSafeTO evaluation since 2023, each counted once at its latest evaluation.{fr}immeubles d'appartements évalués par RentSafeTO depuis 2023, chacun compté une fois, à sa dernière évaluation.{/}</p>
+  </aside>
+  <p>{en}With the meaning settled, <code>toronto_summarize_apartment_scores</code> reads the evaluations and groups the buildings by ward. On {{to_captured}}, {{to_low_ward}} had the lowest mean score ({{to_low_mean}}) of the {{to_wards}} wards, and {{to_high_ward}} the highest ({{to_high_mean}}).{fr}Le sens étant établi, <code>toronto_summarize_apartment_scores</code> lit les évaluations et regroupe les immeubles par quartier. Le {{to_captured}}, {{to_low_ward}} avait la note moyenne la plus basse ({{to_low_mean}}) des {{to_wards}} quartiers, et {{to_high_ward}} la plus haute ({{to_high_mean}}).{/}</p>
+  {{to_scores_table}}
+  <p>{en}The means and medians are of buildings, not of units: a 300-unit tower counts as much as a 12-unit walk-up. The result says so, so an agent can say so too.{fr}Les moyennes et les médianes portent sur les immeubles, pas sur les logements : une tour de 300 logements compte autant qu'un petit immeuble de 12. Le résultat le précise, et l'agent peut le préciser à son tour.{/}</p>
+</section>
+
+<section class="post-sec" id="neighbourhood">
+  <h2>{en}A neighbourhood beside the city{fr}Un quartier à côté de la ville{/}</h2>
+  <p>{en}The City's Neighbourhood Profiles give each of its 140 neighbourhoods a column of census figures, with the city as a whole beside them. <code>toronto_get_neighbourhood_profile</code> returns one neighbourhood and the city on the same row, here for housing in Regent Park:{fr}Les profils de quartier de la Ville donnent à chacun de ses 140 quartiers une colonne de chiffres du recensement, avec la ville entière à côté. <code>toronto_get_neighbourhood_profile</code> renvoie un quartier et la ville sur la même ligne, ici pour le logement à Regent Park :{/}</p>
+  {{to_profile_box}}
+  <p>{en}In 2016, {{to_unaff}}% of Regent Park's households spent 30% or more of their income on shelter, against {{to_unaff_city}}% for the city. The City published no rate of core housing need for the neighbourhood (the city's was {{to_city_core}}%), and the response leaves it empty rather than fill it in. These are the 2016 profiles: the 2021 ones come only as a spreadsheet file, which the server does not download (see <a href="#rules">the portal's rules</a>).{fr}En 2016, {{to_unaff}} % des ménages de Regent Park consacraient 30 % ou plus de leur revenu au logement, contre {{to_unaff_city}} % pour la ville. La Ville n'a publié aucun taux de besoins impérieux en matière de logement pour le quartier (celui de la ville était de {{to_city_core}} %), et la réponse le laisse vide plutôt que de le remplir. Ce sont les profils de 2016 : ceux de 2021 n'existent qu'en fichier tableur, que le serveur ne télécharge pas (voir <a href="#rules">les règles du portail</a>).{/}</p>
+</section>
+
+<section class="post-sec" id="rentals">
+  <h2>{en}Short-term rentals{fr}La location à court terme{/}</h2>
+  <aside class="post-note">
+    <p class="fig">{{to_str_share}}</p>
+    <p>{en}of Toronto's short-term rental registrations were in {{to_str_ward}} on {{to_captured}}.{fr}des inscriptions de location à court terme de Toronto se trouvaient dans {{to_str_ward}} le {{to_captured}}.{/}</p>
+  </aside>
+  <p>{en}Of {{to_str_total}} registrations in force with the City's short-term rental program, {{to_str_count}} were in {{to_str_ward}}. <code>toronto_summarize_short_term_rentals</code> counts them by ward, property type or postal code. The City's table also lists each operator's registration number and street address; the tool returns counts only. A registration is not a booking or a night stayed, and the result says that as well.{fr}Sur {{to_str_total}} inscriptions en vigueur au programme de location à court terme de la Ville, {{to_str_count}} se trouvaient dans {{to_str_ward}}. <code>toronto_summarize_short_term_rentals</code> les compte par quartier, par type de propriété ou par code postal. La table de la Ville donne aussi le numéro d'inscription et l'adresse de chaque exploitant; l'outil ne renvoie que des comptes. Une inscription n'est ni une réservation ni une nuitée, et le résultat le dit aussi.{/}</p>
+</section>
+
+<section class="post-sec" id="rules">
+  <h2>{en}The portal's rules{fr}Les règles du portail{/}</h2>
+  <p>{en}<b>The API, not the files.</b> The portal's robots.txt allows its API and disallows automated downloads of its resource files. MapleStats reads the catalogue and the DataStore tables through the API and downloads none of the files. Some datasets exist only as files, so they are out of reach for now: 311 service requests (yearly ZIP files), the TTC's GTFS schedules, the 2021 Neighbourhood Profiles (a spreadsheet) and DineSafe inspections older than the DataStore table. Asked to read one of these files, the CKAN file tools say why they will not.{fr}<b>L'API, pas les fichiers.</b> Le robots.txt du portail autorise son API et interdit le téléchargement automatisé de ses fichiers. MapleStats lit le catalogue et les tables DataStore par l'API et ne télécharge aucun fichier. Certains jeux de données n'existent qu'en fichiers et restent donc hors de portée pour l'instant : les demandes de service 311 (fichiers ZIP annuels), les horaires GTFS de la TTC, les profils de quartier de 2021 (un tableur) et les inspections DineSafe antérieures à la table DataStore. Quand on leur demande un de ces fichiers, les outils de fichiers CKAN expliquent pourquoi ils ne le lisent pas.{/}</p>
+  <p>{en}<b>The City's pages.</b> The documents a dataset links to are listed, not copied, as above.{fr}<b>Les pages de la Ville.</b> Les documents vers lesquels pointe un jeu de données sont énumérés, pas copiés, comme plus haut.{/}</p>
+  <p>{en}<b>The licence.</b> The data are under the Open Government Licence - Toronto, which allows use, copying and publishing, commercially too, with an acknowledgement. Every result from the {{to_tool_count}} Toronto tools carries the dataset's citation and the sentence the licence asks for: "Contains information licensed under the Open Government Licence - Toronto."{fr}<b>La licence.</b> Les données sont sous la licence <span lang="en">Open Government Licence - Toronto</span>, qui permet d'utiliser, de copier et de publier, aussi à des fins commerciales, avec une mention de la source. Chaque résultat des {{to_tool_count}} outils de Toronto porte la citation du jeu de données et la phrase que demande la licence : « <span lang="en">Contains information licensed under the Open Government Licence - Toronto.</span> »{/}</p>
+  <p>{en}<b>A named, paced client.</b> Requests carry MapleStats' own User-Agent and go through one rate limit per portal, shared by every tool that reads it.{fr}<b>Un client qui se nomme et qui ralentit.</b> Les requêtes portent l'agent utilisateur de MapleStats et passent par une seule limite de débit par portail, partagée par tous les outils qui le lisent.{/}</p>
+</section>
+
+<section class="post-sec" id="next">
+  <h2>{en}Where to go next{fr}Pour aller plus loin{/}</h2>
+  <ul class="post-next">
+    <li><a href="{{root}}tools.html#m-toronto">{en}The {{to_tool_count}} City of Toronto tools{fr}Les {{to_tool_count}} outils de la Ville de Toronto{/}</a><span>{en}Apartment evaluations and scores by ward, neighbourhood profiles, DineSafe inspections and short-term rental counts.{fr}Les évaluations d'immeubles et les notes par quartier, les profils de quartier, les inspections DineSafe et les comptes de location à court terme.{/}</span></li>
+    <li><a href="{{root}}tools.html#m-ckan">{en}The {{to_ckan_tool_count}} CKAN tools{fr}Les {{to_ckan_tool_count}} outils CKAN{/}</a><span>{en}Any dataset on open.toronto.ca, with <code>portal="toronto"</code>.{fr}N'importe quel jeu de données d'open.toronto.ca, avec <code>portal="toronto"</code>.{/}</span></li>
+    <li><a href="{{root}}connect.html">{en}Connect MapleStats to your agent{fr}Connecter MapleStats à votre agent{/}</a><span>{en}One address, no account or API key.{fr}Une adresse, sans compte ni clé d'API.{/}</span></li>
+  </ul>
+</section>
+
+</article>
+</div>
+</main>
+{{> footer}}
+</body>
+</html>

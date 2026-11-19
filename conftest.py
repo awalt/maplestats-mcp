@@ -83,6 +83,7 @@ def _empty_response_cache() -> None:
     """
     cache._caches.clear()
     cache._inflight.clear()
+    cache.clear_last_good()
 
 
 @pytest.fixture(autouse=True)
