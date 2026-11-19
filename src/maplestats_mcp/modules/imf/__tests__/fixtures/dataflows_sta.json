@@ -1,0 +1,258 @@
+{
+ "data": {
+  "dataflows": [
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=IMF.STA:ANEA_2026_APR_VINTAGE(1.0.0)",
+      "type": "dataflow",
+      "rel": "self"
+     }
+    ],
+    "annotations": [
+     {
+      "id": "isFinal"
+     },
+     {
+      "id": "lastUpdatedAt"
+     }
+    ],
+    "id": "ANEA_2026_APR_VINTAGE",
+    "name": "National Economic Accounts (NEA), Annual Data 2026 April",
+    "names": {
+     "en": "National Economic Accounts (NEA), Annual Data 2026 April"
+    },
+    "description": "National Economic Accounts (NEA), Annual Data 2026 April",
+    "descriptions": {
+     "en": "National Economic Accounts (NEA), Annual Data 2026 April"
+    },
+    "version": "1.0.0",
+    "isFinal": true,
+    "agencyID": "IMF.STA",
+    "structure": "urn:sdmx:org.sdmx.infomodel.datastructure.DataStructure=IMF.STA:DSD_ANEA_VINTAGE(4.0.0)"
+   },
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=IMF.STA:BOP(21.0.0)",
+      "type": "dataflow",
+      "rel": "self"
+     }
+    ],
+    "annotations": [
+     {
+      "id": "isFinal"
+     },
+     {
+      "id": "lastUpdatedAt"
+     }
+    ],
+    "id": "BOP",
+    "name": "Balance of Payments (BOP)",
+    "names": {
+     "en": "Balance of Payments (BOP)"
+    },
+    "description": "The Balance of Payments (BOP) is a statistical statement that summarizes transactions between residents and nonresidents during a period. It consists of the goods and services account, the primary income account, the secondary income account, the capital account, and the financial account.",
+    "descriptions": {
+     "en": "The Balance of Payments (BOP) is a statistical statement that summarizes transactions between residents and nonresidents during a period. It consists of the goods and services account, the primary income account, the secondary income account, the capital account, and the financial account."
+    },
+    "version": "21.0.0",
+    "isFinal": true,
+    "agencyID": "IMF.STA",
+    "structure": "urn:sdmx:org.sdmx.infomodel.datastructure.DataStructure=IMF.STA:DSD_BOP(24.0.0)"
+   },
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=IMF.STA:IMTS(1.0.0)",
+      "type": "dataflow",
+      "rel": "self"
+     }
+    ],
+    "annotations": [
+     {
+      "id": "isFinal"
+     },
+     {
+      "id": "lastUpdatedAt"
+     }
+    ],
+    "id": "IMTS",
+    "name": "International Trade in Goods (by partner country) (IMTS)",
+    "names": {
+     "en": "International Trade in Goods (by partner country) (IMTS)"
+    },
+    "description": "The International trade in goods by partner country dataset (formerly Direction of Trade Statistics (DOTS)) includes goods (merchandise) export and import statistics disaggregated according to a country's trading partners. ",
+    "descriptions": {
+     "en": "The International trade in goods by partner country dataset (formerly Direction of Trade Statistics (DOTS)) includes goods (merchandise) export and import statistics disaggregated according to a country's trading partners. "
+    },
+    "version": "1.0.0",
+    "isFinal": true,
+    "agencyID": "IMF.STA",
+    "structure": "urn:sdmx:org.sdmx.infomodel.datastructure.DataStructure=IMF.STA:DSD_IMTS(1.0.0)"
+   },
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=IMF.STA:CPI(5.0.0)",
+      "type": "dataflow",
+      "rel": "self"
+     }
+    ],
+    "annotations": [
+     {
+      "id": "isFinal"
+     },
+     {
+      "id": "lastUpdatedAt"
+     }
+    ],
+    "id": "CPI",
+    "name": "Consumer Price Index (CPI)",
+    "names": {
+     "en": "Consumer Price Index (CPI)"
+    },
+    "description": "The Consumer Price Index (CPI) dataset includes the national consumer price indexes by economy. In addition to the all items, headline index, detailed indexes by Division (e.g. Food and Non-alcoholic beverages, Clothing, etc.), their associated weights, and contributions to national annual inflation are published where available. In addition to the national CPIs, the CPI dataset includes the Harmonised Indices of Consumer Prices (HICPs) compiled by Eurostat for Europe. Consumer price indexes measure the relative changes over time in the prices of goods and services purchased by households, which households use directly, or indirectly, to satisfy their own needs and wants.",
+    "descriptions": {
+     "en": "The Consumer Price Index (CPI) dataset includes the national consumer price indexes by economy. In addition to the all items, headline index, detailed indexes by Division (e.g. Food and Non-alcoholic beverages, Clothing, etc.), their associated weights, and contributions to national annual inflation are published where available. In addition to the national CPIs, the CPI dataset includes the Harmonised Indices of Consumer Prices (HICPs) compiled by Eurostat for Europe. Consumer price indexes measure the relative changes over time in the prices of goods and services purchased by households, which households use directly, or indirectly, to satisfy their own needs and wants."
+    },
+    "version": "5.0.0",
+    "isFinal": true,
+    "agencyID": "IMF.STA",
+    "structure": "urn:sdmx:org.sdmx.infomodel.datastructure.DataStructure=IMF.STA:DSD_CPI(5.0.0)"
+   },
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=IMF.STA:LS(9.0.0)",
+      "type": "dataflow",
+      "rel": "self"
+     }
+    ],
+    "annotations": [
+     {
+      "id": "isFinal"
+     },
+     {
+      "id": "lastUpdatedAt"
+     }
+    ],
+    "id": "LS",
+    "name": "Labor Statistics (LS)",
+    "names": {
+     "en": "Labor Statistics (LS)"
+    },
+    "description": "Labor Force Statistics provide information on various aspects of labor markets including employment rates, unemployment rates, labor force participation. Data are obtained from national statistical organizations.  The data are used by policymakers, researchers, and analysts to understand labor market conditions, identifying trends, and making informed decisions related to economic development, social policies, and labor force planning.",
+    "descriptions": {
+     "en": "Labor Force Statistics provide information on various aspects of labor markets including employment rates, unemployment rates, labor force participation. Data are obtained from national statistical organizations.  The data are used by policymakers, researchers, and analysts to understand labor market conditions, identifying trends, and making informed decisions related to economic development, social policies, and labor force planning."
+    },
+    "version": "9.0.0",
+    "isFinal": true,
+    "agencyID": "IMF.STA",
+    "structure": "urn:sdmx:org.sdmx.infomodel.datastructure.DataStructure=IMF.STA:DSD_LS(9.0.0)"
+   },
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=IMF.STA:QNEA(7.0.0)",
+      "type": "dataflow",
+      "rel": "self"
+     }
+    ],
+    "annotations": [
+     {
+      "id": "isFinal"
+     },
+     {
+      "id": "lastUpdatedAt"
+     }
+    ],
+    "id": "QNEA",
+    "name": "National Economic Accounts (NEA), Quarterly Data",
+    "names": {
+     "en": "National Economic Accounts (NEA), Quarterly Data"
+    },
+    "description": "This dataset provides a snapshot of the economic activity of various countries on a quarterly basis.  It offers quarterly measurements of key indicators like Gross Domestic Product (GDP), consumption, investment, government spending, and foreign trade.  Quarterly estimates are disseminated on non-seasonally adjusted and seasonally adjusted bases.  ",
+    "descriptions": {
+     "en": "This dataset provides a snapshot of the economic activity of various countries on a quarterly basis.  It offers quarterly measurements of key indicators like Gross Domestic Product (GDP), consumption, investment, government spending, and foreign trade.  Quarterly estimates are disseminated on non-seasonally adjusted and seasonally adjusted bases.  "
+    },
+    "version": "7.0.0",
+    "isFinal": true,
+    "agencyID": "IMF.STA",
+    "structure": "urn:sdmx:org.sdmx.infomodel.datastructure.DataStructure=IMF.STA:DSD_QNEA(7.0.0)"
+   },
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=IMF.STA:CPI_WCA(3.0.0)",
+      "type": "dataflow",
+      "rel": "self"
+     }
+    ],
+    "annotations": [
+     {
+      "id": "isFinal"
+     },
+     {
+      "id": "lastUpdatedAt"
+     }
+    ],
+    "id": "CPI_WCA",
+    "name": "Consumer Price Index (CPI), World and Country Aggregates (CPI_WCA)",
+    "names": {
+     "en": "Consumer Price Index (CPI), World and Country Aggregates (CPI_WCA)"
+    },
+    "description": "This dataset provides monthly price indexes at world and country aggregate levels, based on published national CPIs all-item indexes. For monthly indexes the transformation type “period average” indicated in the metadata is not applicable: the values are recorded for the period itself, not averaged across it",
+    "descriptions": {
+     "en": "This dataset provides monthly price indexes at world and country aggregate levels, based on published national CPIs all-item indexes. For monthly indexes the transformation type “period average” indicated in the metadata is not applicable: the values are recorded for the period itself, not averaged across it"
+    },
+    "version": "3.0.0",
+    "isFinal": true,
+    "agencyID": "IMF.STA",
+    "structure": "urn:sdmx:org.sdmx.infomodel.datastructure.DataStructure=IMF.STA:DSD_CPI_WCA(3.0.0)"
+   },
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=IMF.STA:ER(4.0.1)",
+      "type": "dataflow",
+      "rel": "self"
+     }
+    ],
+    "annotations": [
+     {
+      "id": "isFinal"
+     },
+     {
+      "id": "lastUpdatedAt"
+     }
+    ],
+    "id": "ER",
+    "name": "Exchange Rates (ER)",
+    "names": {
+     "en": "Exchange Rates (ER)"
+    },
+    "description": "This dataset contains historical exchange rate data between the US Dollar, Special Drawing Rights (SDR), Euro, and various national currencies. It includes both period average and end-of-period exchange rates.",
+    "descriptions": {
+     "en": "This dataset contains historical exchange rate data between the US Dollar, Special Drawing Rights (SDR), Euro, and various national currencies. It includes both period average and end-of-period exchange rates."
+    },
+    "version": "4.0.1",
+    "isFinal": true,
+    "agencyID": "IMF.STA",
+    "structure": "urn:sdmx:org.sdmx.infomodel.datastructure.DataStructure=IMF.STA:DSD_ER_PUB(4.0.0)"
+   }
+  ]
+ },
+ "meta": {
+  "schema": "https://github.com/sdmx-twg/sdmx-json/blob/v1.0/structure-message/tools/schemas/1.0/sdmx-json-structure-schema.json",
+  "id": "IDREF6623",
+  "test": false,
+  "prepared": "2026-11-19T04:13:43.459039916Z",
+  "contentLanguages": [
+   "en"
+  ],
+  "sender": {
+   "id": "IMF"
+  }
+ }
+}

@@ -1,0 +1,110 @@
+{
+ "data": {
+  "dataflows": [
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=IMF.RES:CTOT(5.0.1)",
+      "type": "dataflow",
+      "rel": "self"
+     }
+    ],
+    "annotations": [],
+    "id": "CTOT",
+    "name": "Commodity Terms of Trade (CTOT)",
+    "names": {
+     "en": "Commodity Terms of Trade (CTOT)"
+    },
+    "description": "CTOT is a comprehensive database of country-specific commodity price indices for 182 economies covering the period from 1962 onwards. For each country, the change in the international price of up to 45 individual commodities is weighted using commodity-level trade data. The database includes a commodity terms-of-trade index—which proxies the windfall gains and losses of income associated with changes in world prices—as well as additional country-specific series, including commodity export and import price indices. It includes indices that are constructed using, alternatively, fixed weights (based on average trade flows over several decades) and time-varying weights (which can account for time variation in the mix of commodities traded and the overall importance of commodities in economic activity)",
+    "descriptions": {
+     "en": "CTOT is a comprehensive database of country-specific commodity price indices for 182 economies covering the period from 1962 onwards. For each country, the change in the international price of up to 45 individual commodities is weighted using commodity-level trade data. The database includes a commodity terms-of-trade index—which proxies the windfall gains and losses of income associated with changes in world prices—as well as additional country-specific series, including commodity export and import price indices. It includes indices that are constructed using, alternatively, fixed weights (based on average trade flows over several decades) and time-varying weights (which can account for time variation in the mix of commodities traded and the overall importance of commodities in economic activity)"
+    },
+    "version": "5.0.1",
+    "isFinal": true,
+    "agencyID": "IMF.RES",
+    "structure": "urn:sdmx:org.sdmx.infomodel.datastructure.DataStructure=IMF.RES:DSD_CTOT(6.0.0)"
+   },
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=IMF.RES:WEO_2026_APR_VINTAGE(1.0.0)",
+      "type": "dataflow",
+      "rel": "self"
+     }
+    ],
+    "annotations": [],
+    "id": "WEO_2026_APR_VINTAGE",
+    "name": "World Economic Outlook (WEO) 2026 April",
+    "names": {
+     "en": "World Economic Outlook (WEO) 2026 April"
+    },
+    "description": "World Economic Outlook (WEO) 2026 April",
+    "descriptions": {
+     "en": "World Economic Outlook (WEO) 2026 April"
+    },
+    "version": "1.0.0",
+    "isFinal": true,
+    "agencyID": "IMF.RES",
+    "structure": "urn:sdmx:org.sdmx.infomodel.datastructure.DataStructure=IMF.RES:DSD_WEO_VINTAGE(2.0.0)"
+   },
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=IMF.RES:PCPS(9.0.0)",
+      "type": "dataflow",
+      "rel": "self"
+     }
+    ],
+    "annotations": [],
+    "id": "PCPS",
+    "name": "Primary Commodity Price System (PCPS)",
+    "names": {
+     "en": "Primary Commodity Price System (PCPS)"
+    },
+    "description": "Indices of market prices for fuel and non-fuel commodities, and actual market prices for fuel and non-fuel commodities.",
+    "descriptions": {
+     "en": "Indices of market prices for fuel and non-fuel commodities, and actual market prices for fuel and non-fuel commodities."
+    },
+    "version": "9.0.0",
+    "isFinal": true,
+    "agencyID": "IMF.RES",
+    "structure": "urn:sdmx:org.sdmx.infomodel.datastructure.DataStructure=IMF.RES:DSD_PCPS(10.0.0)"
+   },
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=IMF.RES:WEO(9.0.0)",
+      "type": "dataflow",
+      "rel": "self"
+     }
+    ],
+    "annotations": [],
+    "id": "WEO",
+    "name": "World Economic Outlook (WEO)",
+    "names": {
+     "en": "World Economic Outlook (WEO)"
+    },
+    "description": "The World Economic Outlook (WEO) database is created during the biannual WEO exercise, which begins in January and June of each year and results in the April and September/October WEO publication. Selected series from the publication are available in a database format. ",
+    "descriptions": {
+     "en": "The World Economic Outlook (WEO) database is created during the biannual WEO exercise, which begins in January and June of each year and results in the April and September/October WEO publication. Selected series from the publication are available in a database format. "
+    },
+    "version": "9.0.0",
+    "isFinal": true,
+    "agencyID": "IMF.RES",
+    "structure": "urn:sdmx:org.sdmx.infomodel.datastructure.DataStructure=IMF.RES:DSD_WEO(9.0.0)"
+   }
+  ]
+ },
+ "meta": {
+  "schema": "https://github.com/sdmx-twg/sdmx-json/blob/v1.0/structure-message/tools/schemas/1.0/sdmx-json-structure-schema.json",
+  "id": "IDREF1383",
+  "test": false,
+  "prepared": "2026-11-19T04:15:38.798901828Z",
+  "contentLanguages": [
+   "en"
+  ],
+  "sender": {
+   "id": "IMF"
+  }
+ }
+}
