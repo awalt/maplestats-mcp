@@ -10,7 +10,11 @@
 # Outputs: JSON with the answer, the MCP tool calls the model made, and the
 #          series and sources those calls returned (drawn by the page); the
 #          stream route sends the same result as newline-delimited JSON events,
-#          after progress events (a tool call started, a piece of the answer)
+#          after progress events (a tool call started, a piece of the answer);
+#          POST /api/code and /api/workbook return the reproduce_code scripts
+#          and the reproduce_workbook .xlsx for one data call behind an answer.
+#          A request with "lang": "fr" gets French text and a model told to
+#          pass lang="fr" to the MCP tools.
 # ============================================================
 
 import asyncio
@@ -205,6 +209,84 @@ DATA_SERVER_ANSWER = (
     "The data server returned errors for this question; it may be restarting. "
     "Try again in a minute."
 )
+
+# Added to the system prompt when the visitor chose the French interface (the
+# page sends "lang": "fr"). The MCP server answers in French when each tool gets
+# lang="fr", so the model is told to pass it, not only to write in French.
+FRENCH_PROMPT = (
+    "The visitor chose the French interface. Answer in French, and pass "
+    "lang='fr' to plan_query and in the arguments of every tool you run through "
+    "call_tool."
+)
+
+# What a visitor reads from this service, in French. The page sends "lang" with
+# each request; every fixed answer and refusal goes through say() on its way out.
+# A space before ";" is a no-break space, as French typography wants.
+FRENCH = {
+    "I could not finish within the demo's tool-call limit. Try a narrower "
+    "question, for example fewer places or a shorter period.": (
+        "Je n'ai pas pu terminer dans la limite d'appels d'outils de la démo. "
+        "Posez une question plus précise, par exemple sur moins de lieux ou une "
+        "période plus courte."
+    ),
+    "The answer was longer than the demo allows and was cut off. Try a "
+    "narrower question, for example fewer places or a shorter period.": (
+        "La réponse dépassait la longueur permise par la démo et a été coupée. "
+        "Posez une question plus précise, par exemple sur moins de lieux ou une "
+        "période plus courte."
+    ),
+    "\n\n_(Cut off at the demo's length limit.)_": (
+        "\n\n_(Coupée à la limite de longueur de la démo.)_"
+    ),
+    "The data server returned errors for this question; it may be restarting. "
+    "Try again in a minute.": (
+        "Le serveur de données a renvoyé des erreurs pour cette question ; il "
+        "redémarre peut-être. Réessayez dans une minute."
+    ),
+    "The demo has reached its daily limit. Please try again tomorrow.": (
+        "La démo a atteint sa limite quotidienne. Réessayez demain."
+    ),
+    "The demo has used its model budget for today. Please try again tomorrow.": (
+        "La démo a épuisé son budget de modèle pour aujourd'hui. Réessayez demain."
+    ),
+    "Too many questions from this address. Please try again later.": (
+        "Trop de questions depuis cette adresse. Réessayez plus tard."
+    ),
+    "Too many downloads from this address. Please try again later.": (
+        "Trop de téléchargements depuis cette adresse. Réessayez plus tard."
+    ),
+    "This conversation is long enough. Please start a new one.": (
+        "Cette conversation est assez longue. Commencez-en une nouvelle."
+    ),
+    "This conversation is too large. Please start a new one.": (
+        "Cette conversation est trop volumineuse. Commencez-en une nouvelle."
+    ),
+    "The model returned no answer. Try again.": (
+        "Le modèle n'a renvoyé aucune réponse. Réessayez."
+    ),
+    "The demo is temporarily unavailable. Please try again later.": (
+        "La démo est temporairement indisponible. Réessayez plus tard."
+    ),
+    "The model or the data server did not answer. Try again.": (
+        "Le modèle ou le serveur de données n'a pas répondu. Réessayez."
+    ),
+    "The data server did not answer. Try again.": (
+        "Le serveur de données n'a pas répondu. Réessayez."
+    ),
+    "The demo failed. Try again.": "La démo a échoué. Réessayez.",
+}
+
+
+def say(text: str, lang: str) -> str:
+    """`text` in the visitor's language: French when asked and known, else as is."""
+    return FRENCH.get(text, text) if lang == "fr" else text
+
+
+def request_lang(payload: Any) -> str:
+    """The interface language a request asks for: "fr", or "en" for anything else."""
+    lang = payload.get("lang") if isinstance(payload, dict) else None
+    return "fr" if lang == "fr" else "en"
+
 
 # 1. Rate limiting ----
 
@@ -405,13 +487,24 @@ def stream_progress(event: Any) -> dict[str, Any] | None:
     return None
 
 
-def system_text(wrap_up: bool) -> str:
-    """The system prompt as one string, with the wrap-up instruction when asked."""
-    return f"{SYSTEM_PROMPT}\n\n{WRAP_UP_PROMPT}" if wrap_up else SYSTEM_PROMPT
+def system_parts(wrap_up: bool, lang: str = "en") -> list[str]:
+    """The system prompt's parts in order: the fixed prompt, then the French and
+    wrap-up instructions when they apply, so the fixed prompt stays the cached prefix."""
+    parts = [SYSTEM_PROMPT]
+    if lang == "fr":
+        parts.append(FRENCH_PROMPT)
+    if wrap_up:
+        parts.append(WRAP_UP_PROMPT)
+    return parts
+
+
+def system_text(wrap_up: bool, lang: str = "en") -> str:
+    """The system prompt as one string, with the French and wrap-up instructions when asked."""
+    return "\n\n".join(system_parts(wrap_up, lang))
 
 
 def anthropic_request(
-    conversation: list[dict[str, Any]], wrap_up: bool = False
+    conversation: list[dict[str, Any]], wrap_up: bool = False, lang: str = "en"
 ) -> dict[str, Any]:
     """The keyword arguments of one Messages API request through the MCP connector.
 
@@ -419,25 +512,21 @@ def anthropic_request(
     that block and the MCP toolset each carry cache_control {"type": "ephemeral"}:
     the cached prefix is the tool list plus the system prompt (about 1,800 tokens,
     above Haiku 5.5's 512-token minimum). With it off the request has no cache
-    fields. The wrap-up instruction (the last request of a question) goes after the
-    cached block, so the cached prefix is the same on every request.
+    fields. The French instruction (lang "fr") and the wrap-up instruction (the last
+    request of a question) go after the cached block, so the cached prefix is the
+    same on every request.
     """
     toolset: dict[str, Any] = {"type": "mcp_toolset", "mcp_server_name": "maplestats"}
     system: str | list[dict[str, Any]]
     if PROMPT_CACHE:
         toolset["cache_control"] = {"type": "ephemeral"}
-        blocks: list[dict[str, Any]] = [
-            {
-                "type": "text",
-                "text": SYSTEM_PROMPT,
-                "cache_control": {"type": "ephemeral"},
-            }
+        first, *rest = system_parts(wrap_up, lang)
+        system = [
+            {"type": "text", "text": first, "cache_control": {"type": "ephemeral"}},
+            *({"type": "text", "text": text} for text in rest),
         ]
-        if wrap_up:
-            blocks.append({"type": "text", "text": WRAP_UP_PROMPT})
-        system = blocks
     else:
-        system = system_text(wrap_up)
+        system = system_text(wrap_up, lang)
     return {
         "model": MODEL,
         "max_tokens": MAX_OUTPUT_TOKENS,
@@ -470,13 +559,14 @@ async def anthropic_response(
     conversation: list[dict[str, Any]],
     emit: Emit | None,
     wrap_up: bool = False,
+    lang: str = "en",
 ) -> Any:
     """One model call; streamed, with progress sent to `emit`, when `emit` is given.
 
     The stream is only for the visitor's wait: the finished message is read the
     same way either way, so billing, counts and the answer do not depend on it.
     """
-    request = anthropic_request(conversation, wrap_up)
+    request = anthropic_request(conversation, wrap_up, lang)
     if emit is None:
         return await client.beta.messages.create(**request)
     async with client.beta.messages.stream(**request) as stream:
@@ -488,14 +578,16 @@ async def anthropic_response(
 
 
 async def ask_anthropic(
-    messages: list[dict[str, str]], emit: Emit | None = None
+    messages: list[dict[str, str]], emit: Emit | None = None, lang: str = "en"
 ) -> dict[str, Any]:
     """Let Anthropic's MCP connector call the public MapleStats server."""
     conversation: list[dict[str, Any]] = list(messages)
     tools_used: list[dict[str, Any]] = []
     # (tool name, result text) for every successful call, in order, for the page.
     returned: list[tuple[str, Any]] = []
-    names: dict[str, str] = {}
+    # (described call, result text) for the same calls, for the export buttons.
+    fetched: list[tuple[dict[str, Any], Any]] = []
+    calls_by_id: dict[str, dict[str, Any]] = {}
     tool_errors = 0
     model_calls = 0
     model_steps = 0
@@ -511,7 +603,7 @@ async def ask_anthropic(
                 # first request must stay free to call tools.
                 wrapped_up = requests > 1 and number == requests
                 response = await anthropic_response(
-                    client, conversation, emit, wrap_up=wrapped_up
+                    client, conversation, emit, wrap_up=wrapped_up, lang=lang
                 )
                 billed = True
                 usage_counts = getattr(response, "usage", None)
@@ -523,16 +615,19 @@ async def ask_anthropic(
                     if block.type == "mcp_tool_use":
                         call = describe_call(block.name, block.input)
                         tools_used.append(call)
-                        names[str(getattr(block, "id", ""))] = call["name"]
+                        calls_by_id[str(getattr(block, "id", ""))] = call
                     elif block.type == "mcp_tool_result":
-                        name = names.get(str(getattr(block, "tool_use_id", "")), "")
+                        used = calls_by_id.get(str(getattr(block, "tool_use_id", "")))
+                        name = used["name"] if used else ""
                         failed = bool(getattr(block, "is_error", False))
                         STATS.tool_call(name, ok=not failed)
                         if failed:
                             tool_errors += 1
                         else:
-                            content = getattr(block, "content", None)
-                            returned.append((name, results.text_of(content)))
+                            text = results.text_of(getattr(block, "content", None))
+                            returned.append((name, text))
+                            if used:
+                                fetched.append((used, text))
                 # pause_turn means the server paused a long turn; resume it unchanged.
                 if response.stop_reason != "pause_turn":
                     break
@@ -555,17 +650,22 @@ async def ask_anthropic(
             "yes" if answer else "empty",
         )
         if response.stop_reason == "pause_turn":  # still working after the last resume
-            answer = answer or STEP_LIMIT_ANSWER
+            answer = answer or say(STEP_LIMIT_ANSWER, lang)
         elif response.stop_reason == "max_tokens":
-            answer = answer + CUT_OFF_NOTE if answer else LENGTH_LIMIT_ANSWER
+            answer = (
+                answer + say(CUT_OFF_NOTE, lang)
+                if answer
+                else say(LENGTH_LIMIT_ANSWER, lang)
+            )
         elif not answer and tool_errors:
-            answer = DATA_SERVER_ANSWER
+            answer = say(DATA_SERVER_ANSWER, lang)
         elif not answer and wrapped_up:  # told to answer, and wrote nothing
-            answer = STEP_LIMIT_ANSWER
+            answer = say(STEP_LIMIT_ANSWER, lang)
         return {
             "answer": answer,
             "tools_used": tools_used,
             **results.collect(returned),
+            "calls": results.calls_behind(fetched),
             "work": {
                 "model_requests": model_calls,
                 "model_steps": model_steps,
@@ -603,12 +703,13 @@ async def load_openai_tools(mcp: Client) -> list[dict[str, Any]]:
 
 
 async def ask_openai_compatible(
-    messages: list[dict[str, str]], emit: Emit | None = None
+    messages: list[dict[str, str]], emit: Emit | None = None, lang: str = "en"
 ) -> dict[str, Any]:
     """Run the tool loop here, against any OpenAI-compatible chat API."""
     conversation: list[dict[str, Any]] = list(messages)
     tools_used: list[dict[str, Any]] = []
     returned: list[tuple[str, Any]] = []
+    fetched: list[tuple[dict[str, Any], Any]] = []
     model_calls = 0
     billed = False
     rounds = max(1, MAX_TOOL_ROUNDS)
@@ -637,7 +738,7 @@ async def ask_openai_compatible(
                     model=MODEL,
                     max_tokens=MAX_OUTPUT_TOKENS,
                     messages=[
-                        {"role": "system", "content": system_text(wrapping_up)},
+                        {"role": "system", "content": system_text(wrapping_up, lang)},
                         *conversation,
                     ],
                     tools=tools,
@@ -649,11 +750,12 @@ async def ask_openai_compatible(
                 message = response.choices[0].message
                 if not message.tool_calls:
                     # A wrap-up that wrote nothing is a spent budget, not an empty reply.
-                    empty = STEP_LIMIT_ANSWER if wrapping_up else ""
+                    empty = say(STEP_LIMIT_ANSWER, lang) if wrapping_up else ""
                     return {
                         "answer": message.content or empty,
                         "tools_used": tools_used,
                         **results.collect(returned),
+                        "calls": results.calls_behind(fetched),
                         "work": work(),
                     }
                 if wrapping_up:
@@ -676,9 +778,9 @@ async def ask_openai_compatible(
                     )
                     STATS.tool_call(described["name"], ok=not result.is_error)
                     if not result.is_error:
-                        returned.append(
-                            (described["name"], result.structured_content or text)
-                        )
+                        raw = result.structured_content or text
+                        returned.append((described["name"], raw))
+                        fetched.append((described, raw))
                     conversation.append(
                         {
                             "role": "tool",
@@ -689,9 +791,10 @@ async def ask_openai_compatible(
 
         # Still inside the try, so a failure here is reported as billed.
         return {
-            "answer": STEP_LIMIT_ANSWER,
+            "answer": say(STEP_LIMIT_ANSWER, lang),
             "tools_used": tools_used,
             **results.collect(returned),
+            "calls": results.calls_behind(fetched),
             "work": work(),
         }
     except Exception as error:  # reported with whether it cost money
@@ -699,25 +802,29 @@ async def ask_openai_compatible(
 
 
 async def ask_model(
-    messages: list[dict[str, str]], emit: Emit | None = None
+    messages: list[dict[str, str]], emit: Emit | None = None, lang: str = "en"
 ) -> dict[str, Any]:
     """Dispatch to the backend chosen by CHAT_PROVIDER."""
     if PROVIDER == "openai":
-        return await ask_openai_compatible(messages, emit)
-    return await ask_anthropic(messages, emit)
+        return await ask_openai_compatible(messages, emit, lang)
+    return await ask_anthropic(messages, emit, lang)
 
 
 # 3. HTTP routes ----
 
 
-def validate_messages(payload: Any) -> list[dict[str, str]] | str:
-    """Return the cleaned conversation, or a message naming what is wrong."""
+def validate_messages(payload: Any, lang: str = "en") -> list[dict[str, str]] | str:
+    """Return the cleaned conversation, or a message naming what is wrong.
+
+    The messages a visitor can meet (length limits) are in `lang`; the others
+    describe a malformed request only a script sends, and stay in English.
+    """
     raw = payload.get("messages") if isinstance(payload, dict) else None
     if not isinstance(raw, list) or not raw:
         return "Send a non-empty 'messages' list."
 
     if len(raw) > 2 * MAX_USER_TURNS - 1:
-        return "This conversation is long enough. Please start a new one."
+        return say("This conversation is long enough. Please start a new one.", lang)
     messages: list[dict[str, str]] = []
     total_chars = 0
     for index, item in enumerate(raw):
@@ -729,23 +836,26 @@ def validate_messages(payload: Any) -> list[dict[str, str]] | str:
             return "Messages must alternate between user and assistant, starting with user."
         limit = MAX_MESSAGE_CHARS if role == "user" else MAX_ASSISTANT_CHARS
         if not content.strip() or len(content) > limit:
+            if lang == "fr":
+                return f"Un message doit compter de 1 à {limit} caractères."
             return f"{role.capitalize()} messages must be 1 to {limit} characters."
         total_chars += len(content)
         if total_chars > MAX_CONVERSATION_CHARS:
-            return "This conversation is too large. Please start a new one."
+            return say("This conversation is too large. Please start a new one.", lang)
         messages.append({"role": role, "content": content})
 
     if messages[-1]["role"] != "user":
         return "The last message must come from the user."
     if sum(1 for m in messages if m["role"] == "user") > MAX_USER_TURNS:
-        return "This conversation is long enough. Please start a new one."
+        return say("This conversation is long enough. Please start a new one.", lang)
     return messages
 
 
 async def read_chat_request(
     request: Request,
-) -> tuple[list[dict[str, str]], str] | JSONResponse:
-    """The cleaned conversation and the caller's address, or the error to send.
+) -> tuple[list[dict[str, str]], str, str] | JSONResponse:
+    """The cleaned conversation, the caller's address and the interface language
+    ("en" or "fr"), or the error to send.
 
     Every guard (content type, size, shape, limits) runs here, before any model
     call, for the plain route and the stream route alike.
@@ -787,7 +897,8 @@ async def read_chat_request(
         STATS.outcome("rejected")
         return JSONResponse({"error": "Body must be JSON."}, status_code=400)
 
-    messages = validate_messages(payload)
+    lang = request_lang(payload)
+    messages = validate_messages(payload, lang)
     if isinstance(messages, str):
         STATS.outcome("rejected")
         return JSONResponse({"error": messages}, status_code=400)
@@ -796,27 +907,32 @@ async def read_chat_request(
     reason = over_limit(address)
     if reason:
         STATS.outcome(LIMIT_OUTCOMES.get(reason, "limited_address"))
-        return JSONResponse({"error": reason}, status_code=429)
-    return messages, address
+        return JSONResponse({"error": say(reason, lang)}, status_code=429)
+    return messages, address, lang
 
 
 async def run_turn(
     messages: list[dict[str, str]],
     address: str,
     emit: Emit | None = None,
+    lang: str = "en",
 ) -> tuple[int, dict[str, Any]]:
     """Ask the model and return (HTTP status, body), counting the turn.
 
-    `emit` receives progress events while the model works (the stream route).
+    `emit` receives progress events while the model works (the stream route);
+    `lang` is the interface language, "en" or "fr".
     """
     STATS.turn(sum(1 for m in messages if m["role"] == "user"))
     started = time.perf_counter()
     try:
-        # Only a watched turn passes `emit`, so a replaced ask_model that takes
-        # just the messages keeps working for the plain route.
-        result = await (
-            ask_model(messages) if emit is None else ask_model(messages, emit)
-        )
+        # Only a watched turn passes `emit`, and only a French one `lang`, so a
+        # replaced ask_model that takes just the messages keeps working.
+        options: dict[str, Any] = {}
+        if emit is not None:
+            options["emit"] = emit
+        if lang != "en":
+            options["lang"] = lang
+        result = await ask_model(messages, **options)
         # The size of the turn is for /stats only; the visitor's body does not carry it.
         work = result.pop("work", None)
         # Keep our own answers valid when the browser sends them back on the next turn.
@@ -824,7 +940,7 @@ async def run_turn(
         if not answer:
             # The model call completed and was billed, so the request stays counted.
             STATS.outcome("empty")
-            return 502, {"error": "The model returned no answer. Try again."}
+            return 502, {"error": say("The model returned no answer. Try again.", lang)}
         result["answer"] = answer[:MAX_ASSISTANT_CHARS]
         STATS.outcome("answered")
         STATS.answered_in(time.perf_counter() - started)
@@ -854,18 +970,24 @@ async def run_turn(
         if getattr(cause, "status_code", None) in (401, 403, 404):
             STATS.outcome("unavailable")
             return 503, {
-                "error": "The demo is temporarily unavailable. Please try again later."
+                "error": say(
+                    "The demo is temporarily unavailable. Please try again later.", lang
+                )
             }
         STATS.outcome("failed")
-        return 502, {"error": "The model or the data server did not answer. Try again."}
+        return 502, {
+            "error": say(
+                "The model or the data server did not answer. Try again.", lang
+            )
+        }
 
 
 async def chat(request: Request) -> JSONResponse:
     prepared = await read_chat_request(request)
     if isinstance(prepared, JSONResponse):
         return prepared
-    messages, address = prepared
-    status, body = await run_turn(messages, address)
+    messages, address, lang = prepared
+    status, body = await run_turn(messages, address, lang=lang)
     return JSONResponse(body, status_code=status)
 
 
@@ -886,16 +1008,18 @@ async def chat_stream(request: Request) -> Response:
     prepared = await read_chat_request(request)
     if isinstance(prepared, JSONResponse):
         return prepared
-    messages, address = prepared
+    messages, address, lang = prepared
     queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
     async def work() -> None:
         try:
-            status, body = await run_turn(messages, address, queue.put_nowait)
+            status, body = await run_turn(
+                messages, address, queue.put_nowait, lang=lang
+            )
         except Exception as error:  # noqa: BLE001 - the stream must always end with an event
             # The type only: exception text can echo the question.
             logger.error("Stream turn failed (%s)", type(error).__name__)
-            status, body = 500, {"error": "The demo failed. Try again."}
+            status, body = 500, {"error": say("The demo failed. Try again.", lang)}
         if status == 200:
             queue.put_nowait({"type": "final", **body})
         else:
@@ -926,6 +1050,213 @@ async def chat_stream(request: Request) -> Response:
     )
 
 
+# 4. Code and workbook exports ----
+
+# Under an answer, "Get the code" and "Download Excel" send back one of the data
+# calls behind it (results.calls_behind) and this service asks the MCP server's
+# reproduce_code or reproduce_workbook for it, through call_tool, as the openai
+# backend calls tools. No model is called, so these never touch the model budget;
+# they have their own hourly limit per address, because each one is a call to the
+# data server from this service's address (and a workbook runs the data tool once).
+EXPORT_PER_HOUR = int(os.environ.get("CHAT_EXPORT_PER_HOUR", "30"))
+EXPORT_MAX_BODY_BYTES = 65536
+EXPORT_TIMEOUT_SECONDS = float(os.environ.get("CHAT_EXPORT_TIMEOUT_SECONDS", "120"))
+# The server's own errors (a tool with no script, bad arguments) are shown as text;
+# a longer one is cut.
+EXPORT_ERROR_CHARS = 600
+# Names shaped like a MapleStats data tool; anything else is refused before any call.
+_DATA_TOOL_NAME = re.compile(r"[a-z][a-z0-9_]{0,99}")
+SCRIPT_LANGUAGES = {"r", "python", "stata", "julia", "excel", "all"}
+_export_hits: dict[str, deque[float]] = {}
+
+
+def export_over_limit(address: str) -> bool:
+    """Record one export for `address`; True when its last hour is already full."""
+    now = time.time()
+    for key in list(_export_hits):
+        old_hits = _export_hits[key]
+        while old_hits and now - old_hits[0] > 3600:
+            old_hits.popleft()
+        if not old_hits:
+            del _export_hits[key]
+    hits = _export_hits.setdefault(address, deque())
+    if len(hits) >= EXPORT_PER_HOUR:
+        return True
+    hits.append(now)
+    return False
+
+
+async def read_export_request(request: Request) -> dict[str, Any] | JSONResponse:
+    """{tool_name, arguments, lang, language} from an export request, or the error.
+
+    The same content-type rule as /api/chat: a cross-site page cannot send JSON
+    without a preflight, so it cannot spend this service's calls either.
+    """
+    content_type = request.headers.get("content-type", "").strip().lower()
+    if not content_type.startswith("application/json"):
+        return JSONResponse(
+            {"error": "Content-Type must be application/json."}, status_code=415
+        )
+    try:
+        body = bytearray()
+        async for chunk in request.stream():
+            if len(body) + len(chunk) > EXPORT_MAX_BODY_BYTES:
+                return JSONResponse(
+                    {"error": "Request body is too large."}, status_code=413
+                )
+            body.extend(chunk)
+        payload = json.loads(body)
+    except ClientDisconnect:
+        return JSONResponse({"error": "Client disconnected."}, status_code=499)
+    except (ValueError, UnicodeDecodeError, RecursionError):
+        return JSONResponse({"error": "Body must be JSON."}, status_code=400)
+
+    lang = request_lang(payload)
+    name = payload.get("tool_name") if isinstance(payload, dict) else None
+    arguments = payload.get("arguments") if isinstance(payload, dict) else None
+    language = payload.get("language", "all") if isinstance(payload, dict) else None
+    if (
+        not isinstance(name, str)
+        or not _DATA_TOOL_NAME.fullmatch(name)
+        or name in results.NOT_REPRODUCIBLE
+    ):
+        return JSONResponse({"error": "Send a data tool's name."}, status_code=400)
+    if not isinstance(arguments, dict):
+        return JSONResponse({"error": "Send the call's arguments."}, status_code=400)
+    if language not in SCRIPT_LANGUAGES:
+        return JSONResponse({"error": "Unknown script language."}, status_code=400)
+    if export_over_limit(client_address(request)):
+        return JSONResponse(
+            {
+                "error": say(
+                    "Too many downloads from this address. Please try again later.",
+                    lang,
+                )
+            },
+            status_code=429,
+        )
+    return {
+        "tool_name": name,
+        "arguments": arguments,
+        "lang": lang,
+        "language": language,
+    }
+
+
+async def call_reproduce(tool: str, arguments: dict[str, Any]) -> tuple[bool, Any]:
+    """Run one reproduce tool on the MCP server: (ok, structured result or error text)."""
+    async with Client(MCP_CALL_URL) as mcp:
+        result = await asyncio.wait_for(
+            mcp.call_tool(
+                "call_tool",
+                {"name": tool, "arguments": arguments},
+                raise_on_error=False,
+            ),
+            EXPORT_TIMEOUT_SECONDS,
+        )
+    text = "\n".join(part.text for part in result.content if hasattr(part, "text"))
+    if result.is_error:
+        return False, text
+    return True, results.parse_result(result.structured_content or text) or {}
+
+
+async def run_export(
+    tool: str, arguments: dict[str, Any], lang: str
+) -> tuple[int, dict[str, Any]]:
+    """(HTTP status, structured result or error) for one export."""
+    try:
+        ok, result = await call_reproduce(tool, arguments)
+    except Exception as error:  # noqa: BLE001 - a failed export is a 502, not a crash
+        logger.error("Export failed (%s)", type(error).__name__)
+        return 502, {"error": say("The data server did not answer. Try again.", lang)}
+    if not ok:
+        message = str(result).strip()[:EXPORT_ERROR_CHARS]
+        return 502, {
+            "error": message or say("The data server did not answer. Try again.", lang)
+        }
+    return 200, result
+
+
+async def export_code(request: Request) -> JSONResponse:
+    """POST /api/code: reproduce_code's scripts for one data call behind an answer."""
+    prepared = await read_export_request(request)
+    if isinstance(prepared, JSONResponse):
+        return prepared
+    status, result = await run_export(
+        "reproduce_code",
+        {
+            "tool_name": prepared["tool_name"],
+            "arguments": prepared["arguments"],
+            "language": prepared["language"],
+            "lang": prepared["lang"],
+        },
+        prepared["lang"],
+    )
+    if status != 200:
+        return JSONResponse(result, status_code=status)
+    scripts = [
+        {
+            "language": script.get("language"),
+            "code": script.get("code"),
+            "packages": script.get("packages") or [],
+        }
+        for script in result.get("scripts") or []
+        if isinstance(script, dict) and isinstance(script.get("code"), str)
+    ]
+    return JSONResponse(
+        {
+            "tool": result.get("tool"),
+            "source_url": result.get("source_url"),
+            "method": result.get("method"),
+            "notes": [n for n in result.get("notes") or [] if isinstance(n, str)],
+            "scripts": scripts,
+        }
+    )
+
+
+async def export_workbook(request: Request) -> JSONResponse:
+    """POST /api/workbook: reproduce_workbook's .xlsx (base64) for one data call."""
+    prepared = await read_export_request(request)
+    if isinstance(prepared, JSONResponse):
+        return prepared
+    lang = prepared["lang"]
+    status, result = await run_export(
+        "reproduce_workbook",
+        {
+            "tool_name": prepared["tool_name"],
+            "arguments": prepared["arguments"],
+            "delivery": "base64",
+            "lang": lang,
+        },
+        lang,
+    )
+    if status != 200:
+        return JSONResponse(result, status_code=status)
+    encoded = result.get("workbook_base64")
+    if not isinstance(encoded, str) or not encoded:
+        return JSONResponse(
+            {"error": say("The data server did not answer. Try again.", lang)},
+            status_code=502,
+        )
+    return JSONResponse(
+        {
+            "file_name": result.get("file_name") or "maplestats.xlsx",
+            "workbook_base64": encoded,
+            "rows_written": result.get("rows_written"),
+            "rows_available": result.get("rows_available"),
+            "truncated": bool(result.get("truncated")),
+            # The server's note on decoding workbook_base64 is for a model client;
+            # the page has already saved the file, so it is left out (seen live
+            # 2026-11-19).
+            "notes": [
+                n
+                for n in result.get("notes") or []
+                if isinstance(n, str) and "workbook_base64" not in n
+            ],
+        }
+    )
+
+
 async def health(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "provider": PROVIDER, "model": MODEL})
 
@@ -950,7 +1281,7 @@ async def stats(request: Request) -> JSONResponse:
     )
 
 
-# 4. Upstream notice ----
+# 5. Upstream notice ----
 
 # The MCP server's public /stats lists the StatCan path groups that answered with StatCan's
 # bot check lately (upstreams.challenged_paths: a Cloudflare check only a person in a browser
@@ -1156,6 +1487,8 @@ app = Starlette(
         Route("/health", health),
         Route("/api/chat", chat, methods=["POST"]),
         Route("/api/chat/stream", chat_stream, methods=["POST"]),
+        Route("/api/code", export_code, methods=["POST"]),
+        Route("/api/workbook", export_workbook, methods=["POST"]),
         Route("/api/status", api_status),
         *([Route("/stats", stats)] if USAGE_STATS else []),
     ],
