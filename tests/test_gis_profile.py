@@ -24,7 +24,6 @@ from mcp.shared.exceptions import MCPError
 
 from maplestats_mcp import config, gis_profile, server
 from maplestats_mcp.catalogue import (
-    FRED_TOOLS,
     PROFILE_SWITCHES,
     TOOL_SWITCHES,
     module_hidden,
@@ -106,11 +105,6 @@ def test_every_tool_of_a_gis_module_is_classified():
     )
 
 
-def _keyless_tools() -> frozenset[str]:
-    """The FRED tools, which are not listed while FRED_API_KEY is unset."""
-    return frozenset() if config.get_fred_enabled() else FRED_TOOLS
-
-
 def test_a_classified_tool_lives_in_a_gis_module():
     tools = _catalogue_tools()
     strays = sorted(
@@ -130,14 +124,11 @@ def test_the_switch_hides_the_pure_class_and_only_it():
 def test_only_the_wholly_pure_modules_are_hidden_whole():
     catalogue = read_catalogue()
     assert catalogue is not None
-    # `fred` is nothing but tools that FRED_API_KEY switches on, so it is hidden whole too,
-    # in either profile, while the key is unset.
-    keyless = set() if config.get_fred_enabled() else {"fred"}
     with profile_env(STATS_ONLY):
         hidden = {name for name, entry in catalogue.items() if module_hidden(entry)}
-    assert hidden == WHOLLY_PURE_MODULES | keyless
+    assert hidden == WHOLLY_PURE_MODULES
     with profile_env(DEFAULT):
-        assert {name for name, entry in catalogue.items() if module_hidden(entry)} == keyless
+        assert not any(module_hidden(entry) for entry in catalogue.values())
 
 
 # The default changes nothing --------------------------------------------------------------
@@ -173,7 +164,7 @@ def test_the_default_profile_cuts_no_text():
 
 async def test_the_default_server_lists_every_tool_and_both_classes():
     names = {tool.name for tool in await server_for(DEFAULT)._list_tools()}
-    assert names == set(_catalogue_tools()) - _keyless_tools()
+    assert names == set(_catalogue_tools())
     assert PURE_GIS_TOOLS | HYBRID_GIS_TOOLS <= names
     providers = [
         p for p in server_for(DEFAULT).providers if isinstance(p, server.LazyModuleProvider)
@@ -270,7 +261,7 @@ async def test_the_pure_class_is_not_listed_and_the_rest_is(stats_only):
     names = {tool.name for tool in await stats_only._list_tools()}
     assert not names & PURE_GIS_TOOLS
     assert HYBRID_GIS_TOOLS <= names
-    assert names == set(_catalogue_tools()) - PURE_GIS_TOOLS - _keyless_tools()
+    assert names == set(_catalogue_tools()) - PURE_GIS_TOOLS
 
 
 async def test_a_wholly_pure_module_has_no_provider(stats_only):
@@ -335,10 +326,8 @@ async def test_the_instructions_and_the_module_page_name_no_hidden_tool(stats_on
     assert not _leaks(text), _leaks(text)
     for module in WHOLLY_PURE_MODULES:
         assert f"\n## {module}\n" not in text, module
-    # The page lists a module per registered folder: the catalogue's, less the three, and
-    # less `fred` while FRED_API_KEY is unset (nothing of it is registered then).
-    keyless = 0 if config.get_fred_enabled() else 1
-    assert text.count("\n## ") == (len(read_catalogue() or {}) - len(WHOLLY_PURE_MODULES) - keyless)
+    # The page lists a module per registered folder: the catalogue's, less the three.
+    assert text.count("\n## ") == len(read_catalogue() or {}) - len(WHOLLY_PURE_MODULES)
 
 
 async def _prompt_text(client: Client, prompt) -> str:

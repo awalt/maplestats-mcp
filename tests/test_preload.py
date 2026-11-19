@@ -27,8 +27,8 @@ def _transform(mcp) -> server.AnnotatedBM25SearchTransform:
 async def test_preload_loads_every_module_and_builds_the_index():
     built = server.build_server()
     providers = _lazy(built)
-    # A module that is nothing but switched-off tools (`fred` while FRED_API_KEY is unset)
-    # is not registered at all.
+    # A module that is nothing but switched-off tools (a wholly geospatial one while
+    # MAPLE_GIS is off) is not registered at all.
     catalogue = read_catalogue() or {}
     registered = [d for d in server.module_dirs() if not module_hidden(catalogue[d.name])]
     assert len(providers) == len(registered)
