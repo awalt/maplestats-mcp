@@ -130,6 +130,13 @@ async def test_search_geography_sends_accept_language_header(httpx_mock):
     assert request.headers["accept-language"] == "fr"
 
 
+async def test_codelist_fetch_waits_past_the_slow_outliers(httpx_mock):
+    httpx_mock.add_response(url=_GEO_CODELIST_URL, json=_GEO_CODELIST_RESPONSE)
+    await client.search_geography("canada_provinces_territories", "")
+    timeout = httpx_mock.get_requests()[0].extensions["timeout"]
+    assert timeout["read"] == constants.CODELIST_TIMEOUT_SECONDS == 45.0
+
+
 async def test_search_geography_invalid_level_raises():
     with pytest.raises(InvalidInput):
         await client.search_geography("not_a_real_level", "ontario")
