@@ -41,8 +41,11 @@ class CloudflareChallenge(UpstreamUnavailable):
 
     A kind of UpstreamUnavailable (so callers handling that keep working);
     modules catch this one to add where else the same data can be had.
-    MapleStats never tries to defeat the challenge.
+    MapleStats never tries to defeat the challenge. `host` is the host that
+    challenged, when the raiser knows it (shared/http.py does).
     """
+
+    host: str = ""
 
 
 class ModuleUnavailable(RuntimeError):

@@ -370,10 +370,24 @@ a personal computer. If the server is exposed beyond your machine, set
 is public, needs no token and reports calls per tool name and day, each tool's
 p50 and p95 duration, and each upstream host's error counts and circuit-breaker
 state (see `MAPLE_USAGE_STATS` and `MAPLE_BREAKER` below). After repeated
-failures (timeouts, connection errors, 5xx answers, Cloudflare challenges) a
-host is paused for a cooldown: its tools fail at once with an "unavailable"
-error that says when to retry, instead of waiting for another timeout. The
-`docs://status` resource lists the paused hosts.
+failures (timeouts, connection errors, 5xx answers) a host is paused for a
+cooldown: its tools fail at once with an "unavailable" error that says when to
+retry, instead of waiting for another timeout. The `docs://status` resource
+lists the paused hosts.
+
+A Cloudflare challenge is counted in `/stats` but never pauses a host, and it is
+reported as a block, not an outage: a retry in a minute does not clear it.
+Statistics Canada's `www150.statcan.gc.ca` host answers some paths (SDMX, CIMT)
+with one while its Web Data Service answers scripts, so pausing the host would
+cut off what works (`statcan_check_access` shows what answers now). The error
+says the host is challenging automated clients, not to retry, and what still
+works (the 2021 census profile and the CCEI and shared SDMX spaces on
+`api.statcan.gc.ca`, `geo.statcan.gc.ca`, the Bank of Canada, CMHC, the
+provincial modules and the OECD). MapleStats does not try to get past a
+challenge (no disguised User-Agent, headless browser, proxy or cookies); it
+recognises the challenge, by its `Cf-Mitigated: challenge` header or, without
+it, by the page title ("Just a moment", "Security Check", "Vérification de
+sécurité"), and reports it.
 
 | Env var | Default | Purpose |
 |---|---|---|
