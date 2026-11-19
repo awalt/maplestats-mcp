@@ -31,6 +31,7 @@ as one failure.
 from __future__ import annotations
 
 import functools
+import re
 import ssl
 from collections.abc import AsyncIterator, Callable, Coroutine, Iterator
 from contextlib import asynccontextmanager, contextmanager
@@ -51,6 +52,7 @@ from tenacity import (
 
 from maplestats_mcp import __version__
 from maplestats_mcp.shared import challenge_notes, upstream_wait
+from maplestats_mcp.shared.blocked_hosts import challenge_fix
 from maplestats_mcp.shared.breaker import BREAKER, is_failure_status, one_call
 from maplestats_mcp.shared.errors import CloudflareChallenge, TooLarge
 from maplestats_mcp.shared.fr_typography import call_error
@@ -324,21 +326,37 @@ def is_retryable(exc: BaseException) -> bool:
     return isinstance(exc, (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError))
 
 
+# The title of a challenge page that does not say "Just a moment": StatCan's own, served by
+# www150 from 2026-11-17 (measured the same day: HTTP 403, `Cf-Mitigated: challenge`, a
+# 21,545-byte page titled "Vérification de sécurité / Security Check", no "Just a moment").
+# Matched in the title only, so a page that merely mentions a security check is not one.
+_CHALLENGE_TITLE = re.compile(
+    rb"<title[^>]*>[^<]{0,120}?(?:Security Check|V(?:\xc3\xa9|&eacute;|e)rification de "
+    rb"s(?:\xc3\xa9|&eacute;|e)curit(?:\xc3\xa9|&eacute;|e))",
+    re.IGNORECASE,
+)
+
+
 def is_cloudflare_challenge(response: httpx.Response) -> bool:
     """True when Cloudflare answered with its managed bot challenge.
 
     Confirmed live 2026-10-02 for www12.statcan.gc.ca: HTTP 403 with
     `Server: cloudflare`, `Cf-Mitigated: challenge` and a "Just a moment..."
-    interstitial for every path. The challenge needs a browser to solve;
-    this project does not try to defeat it (no spoofed headers, no
-    automation), it only recognises it so a caller gets a clear
-    "unavailable" error instead of a misleading 403 or "not found".
+    interstitial for every path, and on 2026-11-17 for www150.statcan.gc.ca,
+    whose page carries StatCan's own title ("Security Check"). The challenge needs
+    a browser to solve; this project does not try to defeat it (no spoofed
+    headers, no automation), it only recognises it so a caller gets a clear
+    "unavailable" error instead of a misleading 403 or "not found". Without the
+    header the page's text decides: "Just a moment" or a Security Check title.
     """
     if response.status_code not in (403, 429, 503):
         return False
     if response.headers.get("cf-mitigated", "").lower() == "challenge":
         return True
-    return response.status_code == 403 and b"Just a moment" in response.content[:4096]
+    if response.status_code != 403:
+        return False
+    start = response.content[:4096]
+    return b"Just a moment" in start or _CHALLENGE_TITLE.search(start) is not None
 
 
 def raise_if_cloudflare_challenge(response: httpx.Response) -> None:
@@ -349,17 +367,22 @@ def raise_if_cloudflare_challenge(response: httpx.Response) -> None:
             BREAKER.record_failure(host, "cloudflare")
         # The publisher's own context and the closest route still open, when known.
         note = challenge_notes.note_for(host, response.request.url.path)
-        raise call_error(
+        note_en = f" {note[0]}" if note else ""
+        note_fr = f" {note[1]}" if note else ""
+        error = call_error(
             CloudflareChallenge,
             f"{host} is behind a Cloudflare bot challenge (HTTP {response.status_code}, "
             "Cf-Mitigated: challenge) that automated clients cannot pass, so this "
             "service is unavailable from MapleStats until its publisher lifts it. MapleStats "
-            "does not try to bypass it." + (f" {note[0]}" if note else ""),
+            f"does not try to bypass it.{note_en}{challenge_fix(host, False)}",
             f"{host} est protégé par un défi anti-robot Cloudflare (HTTP {response.status_code}, "
             "Cf-Mitigated : challenge) que les clients automatisés ne peuvent pas franchir ; ce "
             "service est donc indisponible depuis MapleStats tant que son éditeur ne le "
-            "lève pas. MapleStats n'essaie pas de le contourner." + (f" {note[1]}" if note else ""),
+            f"lève pas. MapleStats n'essaie pas de le contourner.{note_fr}"
+            f"{challenge_fix(host, True)}",
         )
+        error.host = host
+        raise error
 
 
 class NotJsonResponse(httpx.DecodingError):

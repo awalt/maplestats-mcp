@@ -34,6 +34,18 @@ def test_caller_text_is_never_stored() -> None:
     assert "neighbour" not in json.dumps(stats.snapshot())
 
 
+def test_fallback_answers_are_counted_by_a_fixed_list_of_sources() -> None:
+    stats = UsageStats(("wds_get_data_from_vectors",))
+    stats.record_fallback("ccei")
+    stats.record_fallback("ccei")
+    stats.record_fallback("boc")
+    stats.record_fallback("what is my neighbour's income?")
+    snap = stats.snapshot()
+    assert snap["fallbacks"] == {"ccei": 2, "boc": 1, "other": 1}
+    assert "neighbour" not in json.dumps(snap)
+    assert UsageStats().snapshot()["fallbacks"] == {}
+
+
 def test_old_days_are_dropped() -> None:
     stats = UsageStats(("boc_get_observations", "wds_search_cubes"))
     for n in range(MAX_DAYS + 10):
