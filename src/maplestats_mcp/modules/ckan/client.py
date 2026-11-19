@@ -24,7 +24,7 @@ from typing import Any
 
 import httpx
 
-from maplestats_mcp.modules.ckan import constants
+from maplestats_mcp.modules.ckan import constants, licences
 from maplestats_mcp.modules.ckan.constants import PORTALS, Portal
 from maplestats_mcp.modules.ckan.schemas import (
     DatastoreField,
@@ -130,9 +130,9 @@ def _dataset_licence(
 ) -> str:
     """The dataset's own licence, as the portal records it."""
     where = f" ({url})" if url else ""
-    status_en = {True: " The portal marks it open.", False: " The portal marks it not open."}
+    status_en = {True: " An open licence.", False: " The portal marks it not open."}
     status_fr = {
-        True: " Le portail la marque comme ouverte.",
+        True: " Une licence ouverte.",
         False: " Le portail la marque comme non ouverte.",
     }
     return pick(
@@ -287,7 +287,18 @@ def _keywords(obj: dict[str, Any], lang: str) -> list[str]:
 
 
 def _is_open(obj: dict[str, Any]) -> bool | None:
-    return None if obj.get("isopen") is None else to_bool(obj.get("isopen"))
+    """The portal's open flag, or True when the licence it names is an open one.
+
+    CKAN sets `isopen` only for licences in its own list, so a city's own open
+    licence comes back False: Toronto's "open-government-licence-toronto" did
+    on 2026-11-18. The licence's id and title are read as the file reader reads
+    them (licences.classify).
+    """
+    flag = None if obj.get("isopen") is None else to_bool(obj.get("isopen"))
+    if flag:
+        return True
+    named = licences.classify(_text(obj.get("license_id")), _text(obj.get("license_title")))
+    return True if named == "open" else flag
 
 
 def _package_summary(obj: dict[str, Any], portal: Portal, lang: str) -> PackageSummary:
