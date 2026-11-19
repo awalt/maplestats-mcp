@@ -32,9 +32,14 @@ from maplestats_mcp.modules.statcan.access import client
 RECORD = Path(__file__).resolve().parent.parent / "docs" / "findings" / "statcan-access.json"
 
 
-def _table(rows: list[tuple[str, str, str, str]]) -> str:
-    lines = ["| Service | Now | Recorded | Used by |", "| --- | --- | --- | --- |"]
-    lines += [f"| {s} | {now} | {before} | {used} |" for s, now, before, used in rows]
+def _table(rows: list[tuple[str, str, str, str, str]]) -> str:
+    lines = [
+        "| Service | Now | Seconds | Recorded | Used by |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    lines += [
+        f"| {s} | {now} | {secs} | {before} | {used} |" for s, now, secs, before, used in rows
+    ]
     return "\n".join(lines)
 
 
@@ -43,7 +48,10 @@ def main(argv: list[str]) -> int:
     now = {e.key: e.status for e in endpoints}
     record = json.loads(RECORD.read_text(encoding="utf-8")) if RECORD.exists() else {}
     before = record.get("status", {})
-    rows = [(e.service, e.status, before.get(e.key, "-"), e.used_by) for e in endpoints]
+    rows = [
+        (e.service, e.status, f"{e.elapsed_seconds}", before.get(e.key, "-"), e.used_by)
+        for e in endpoints
+    ]
     table = _table(rows)
     print(table)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")

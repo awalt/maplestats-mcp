@@ -19,6 +19,11 @@ WWW150 = "https://www150.statcan.gc.ca"
 # Bytes read from an answer at most; past it the answer still counts as served.
 MAX_BYTES = 64 * 1024
 TIMEOUT_SECONDS = 20.0
+# The 2021 Census Profile API is slow, not down: on 2026-11-19 its smallest codelist took
+# 27.7 s from a cloud host (a plain curl), past TIMEOUT_SECONDS, so the check said "no answer".
+# Its data requests take 33 to 47 s (census_profile/client.py). A longer wait for it alone
+# tells slow from down; elapsed_seconds in the report gives the time it took.
+SLOW_TIMEOUT_SECONDS = 60.0
 CACHE_TTL_SECONDS = 15 * 60
 CONCURRENCY = 4
 
@@ -32,6 +37,7 @@ class Endpoint:
     tools: str  # the MapleStats tools that use it
     post_json: Any = None
     headers: dict[str, str] = field(default_factory=dict)
+    timeout: float = TIMEOUT_SECONDS
 
 
 ENDPOINTS: tuple[Endpoint, ...] = (
@@ -119,6 +125,7 @@ ENDPOINTS: tuple[Endpoint, ...] = (
         "API du Profil du recensement de 2021 (api.statcan.gc.ca)",
         "https://api.statcan.gc.ca/census-recensement/profile/sdmx/rest/codelist/STC_CP/CL_GEO_PR/latest",
         "statcan_census_profile_",
+        timeout=SLOW_TIMEOUT_SECONDS,
     ),
     Endpoint(
         "rdaas",

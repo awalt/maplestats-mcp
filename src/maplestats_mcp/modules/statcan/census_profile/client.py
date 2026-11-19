@@ -130,7 +130,7 @@ async def _fetch_codelist(codelist_id: str, lang: str = "en") -> tuple[list[dict
     async def fetch() -> Any:
         await _LIMITER.acquire()
         try:
-            return await api_get(url, headers=headers)
+            return await api_get(url, headers=headers, timeout=constants.CODELIST_TIMEOUT_SECONDS)
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
             detail = exc.response.text[:200]

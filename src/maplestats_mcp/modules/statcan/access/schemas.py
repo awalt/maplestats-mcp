@@ -22,6 +22,14 @@ class EndpointStatus(BaseModel):
         "'no_answer' (timeout or connection failure)."
     )
     http_status: int | None = None
+    elapsed_seconds: float | None = Field(
+        default=None,
+        description="Seconds the service took to answer, or to time out. A service that "
+        "answers slowly (the 2021 Census Profile API takes about 30 s) is not down.",
+    )
+    timeout_seconds: float | None = Field(
+        default=None, description="Seconds the check waited before reporting 'no_answer'."
+    )
     used_by: str = Field(description="The MapleStats tools that read this service.")
     checked_at: datetime
 

@@ -10,6 +10,7 @@ fixed list. It only observes: a challenge is reported, never answered.
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
@@ -30,17 +31,21 @@ async def _check(
 ) -> EndpointStatus:
     status: str
     code: int | None = None
+    started = time.monotonic()
     try:
         if endpoint.post_json is not None:
             response = await client.post(
-                endpoint.url, json=endpoint.post_json, headers=endpoint.headers
+                endpoint.url,
+                json=endpoint.post_json,
+                headers=endpoint.headers,
+                timeout=endpoint.timeout,
             )
         else:
             response = await stream_capped(
                 client,
                 endpoint.url,
                 headers=endpoint.headers,
-                timeout=constants.TIMEOUT_SECONDS,
+                timeout=endpoint.timeout,
                 max_bytes=constants.MAX_BYTES,
             )
         code = response.status_code
@@ -63,6 +68,8 @@ async def _check(
         url=endpoint.url,
         status=status,  # type: ignore[arg-type]
         http_status=code,
+        elapsed_seconds=round(time.monotonic() - started, 1),
+        timeout_seconds=endpoint.timeout,
         used_by=endpoint.tools,
         checked_at=datetime.now(UTC),
     )
