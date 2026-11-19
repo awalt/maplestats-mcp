@@ -154,6 +154,50 @@ async def test_invalid_input_errors_follow_lang():
     assert "must" in str(english.value) or "at least" in str(english.value)
 
 
+def _codelist(codelist_id: str, codes: list[tuple[str, str]]) -> dict[str, object]:
+    return {
+        "data": {
+            "codelists": [{"id": codelist_id, "codes": [{"id": c, "name": n} for c, n in codes]}]
+        }
+    }
+
+
+async def test_search_geography_without_level_reads_a_province_at_that_level(httpx_mock):
+    # Issue #273: the first call failed for want of `level`.
+    httpx_mock.add_response(url=_GEO_CODELIST_URL, json=_GEO_CODELIST_RESPONSE)
+    result = await client.search_geography(None, "Québec")
+    assert result.level == "canada_provinces_territories"
+    assert [m.code for m in result.matches] == ["2021A000224"]
+    assert "'canada_provinces_territories'" in (result.provenance.coverage or "")
+
+
+async def test_search_geography_without_level_reads_a_place_as_a_municipality(httpx_mock):
+    url = f"{constants.BASE_URL}/codelist/{constants.AGENCY}/CL_GEO_CSD/latest"
+    httpx_mock.add_response(
+        url=url, json=_codelist("CL_GEO_CSD", [("2021A00054811061", "Edmonton")])
+    )
+    result = await client.search_geography(None, "edmonton")
+    assert (result.level, result.total_matched) == ("census_subdivisions", 1)
+    assert "census_metro_areas" in (result.provenance.coverage or "")
+
+
+async def test_search_geography_without_level_reads_an_fsa(httpx_mock):
+    url = f"{constants.BASE_URL}/codelist/{constants.AGENCY}/CL_GEO_FSA/latest"
+    httpx_mock.add_response(url=url, json=_codelist("CL_GEO_FSA", [("2021A0011T5J", "T5J")]))
+    assert (await client.search_geography(None, "T5J")).level == "forward_sortation_areas"
+
+
+async def test_search_geography_without_level_or_query_is_refused():
+    with pytest.raises(InvalidInput, match="give a query or a level"):
+        await client.search_geography(None, "  ")
+
+
+async def test_a_given_level_says_nothing_about_choosing_one(httpx_mock):
+    httpx_mock.add_response(url=_GEO_CODELIST_URL, json=_GEO_CODELIST_RESPONSE)
+    result = await client.search_geography("canada_provinces_territories", "onta")
+    assert result.provenance.coverage is None
+
+
 async def test_search_geography_invalid_limit_raises():
     with pytest.raises(InvalidInput):
         await client.search_geography("canada_provinces_territories", "ontario", limit=0)

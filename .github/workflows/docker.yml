@@ -217,6 +217,43 @@ jobs:
             -H "Accept: application/json, text/event-stream" "https://$fqdn/mcp" \
             -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"deploy-check","version":"1"}}}'
 
+  # The live module steps of scripts/smoke_test_modules.py, run over HTTP against
+  # the revision just deployed: the deployed code on Azure's own network, where a
+  # source can answer differently than from a laptop or a GitHub runner (the NL
+  # portal sent Azure a page that was not its own on 2026-11-19). The calls are
+  # spaced under the server's rate limit, so a full pass takes about 20 minutes.
+  # Exit 75 means a source was down or blocked: a warning, not a failure. A failure
+  # does not roll the deploy back; it says the new revision needs a look.
+  check-azure-live:
+    needs: deploy-azure
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      URL: https://mcp.maplestats.danielstats.io/mcp
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.HEAD_SHA }}
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          version: "0.11.7" # same uv as both Dockerfiles; bump all three together
+      - run: uv sync --locked
+      - name: Module steps against the Azure endpoint
+        shell: bash -o pipefail {0}
+        run: |
+          uv run python scripts/smoke_test_modules.py --url "$URL" 2>&1 | tee live.log && exit 0 || status=$?
+          { echo "### Live check on Azure (exit $status)"; echo '```'; grep -E "^(FAIL|SKIP)" live.log | head -n 40; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -eq 75 ]; then
+            echo "::warning::check-azure-live SKIPPED steps: an upstream source was unavailable"
+            exit 0
+          fi
+          exit "$status"
+
   # Rolls the chat image out to its own Azure container app, in the same
   # environment as the server, with the same deploy identity (which also holds
   # Contributor on maplestats-chat). The model key lives in the app's secrets,

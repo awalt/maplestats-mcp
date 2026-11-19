@@ -6,7 +6,12 @@ import pytest
 
 from maplestats_mcp.modules.nl_opendata import client, constants
 from maplestats_mcp.shared import cache as cache_module
-from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError
+from maplestats_mcp.shared.errors import (
+    InvalidInput,
+    NotFound,
+    UpstreamError,
+    UpstreamUnavailable,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -252,13 +257,28 @@ async def test_query_matches_every_word_in_any_order(httpx_mock):
     ).total_count == 0
 
 
-async def test_missing_listing_container_is_upstream_error(httpx_mock):
+async def test_portal_page_without_its_listing_is_upstream_error(httpx_mock):
+    # The portal's own page with no dataset block: its layout changed.
+    httpx_mock.add_response(
+        url=f"{constants.BASE_URL}?page-id=datasets-tabular",
+        text=(
+            "<html><head><title>Datasets | Open Data Newfoundland and Labrador</title>"
+            "</head><body>new layout</body></html>"
+        ),
+        headers={"content-type": "text/html"},
+    )
+    with pytest.raises(UpstreamError, match="did not contain its dataset container"):
+        await client.search_datasets("x", dataset_type="tabular")
+
+
+async def test_a_page_that_is_not_the_portal_is_unavailable(httpx_mock):
+    # Seen once from the Azure host (2026-11-19): a page that is not the portal's.
     httpx_mock.add_response(
         url=f"{constants.BASE_URL}?page-id=datasets-tabular",
         text="<html><body>unexpected page</body></html>",
         headers={"content-type": "text/html"},
     )
-    with pytest.raises(UpstreamError):
+    with pytest.raises(UpstreamUnavailable, match="not its dataset listing"):
         await client.search_datasets("x", dataset_type="tabular")
 
 

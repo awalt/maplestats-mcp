@@ -7,6 +7,8 @@ header or JSON API, so this module uses a conservative per-host limiter.
 
 BASE_URL = "https://opendata.gov.nl.ca/public/opendata/page/"
 RATE_LIMIT_SOURCE = "nl-opendata"
+# Every page of the portal ends its <title> with this name (checked 2026-11-19).
+PORTAL_TITLE = "Open Data Newfoundland and Labrador"
 RATE_LIMIT_PER_SECOND = 1.0
 RATE_LIMIT_CAPACITY = 2.0
 

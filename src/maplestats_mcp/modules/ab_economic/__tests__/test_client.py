@@ -292,3 +292,22 @@ def test_statcan_pid_is_read_before_a_suffix_but_not_from_seven_digits():
     assert client._pid("MultipleJobHolders_1410004") is None
     assert client._pid("Tourism_AllVisitorsLand_2410057_SQL") is None
     assert client._pid("AESO_PowerGen") is None
+
+
+async def test_working_tables_are_marked_and_listed_last(httpx_mock):
+    # Issue #265: the dashboard's index, lookup, "_stage" and Defence_* tables.
+    working = ["TableIndex", "Defence_Projects", "RigCount_stage", "HeatMapTempData"]
+    httpx_mock.add_response(
+        url=_TABLES_URL,
+        json=[
+            {"tableName": n}
+            for n in [*working[:2], *[t["tableName"] for t in _TABLES], *working[2:]]
+        ]
+        + [{"tableName": "JobVacanciesQuaterly_14100398_SQL"}],
+    )
+    tables = (await client.list_tables()).tables
+    assert [t.table for t in tables if t.internal] == working
+    assert all(t.internal for t in tables[-len(working) :])
+    # A "_SQL" table can be the live copy of a StatCan table: not marked.
+    sql = next(t for t in tables if t.table.endswith("_SQL"))
+    assert (sql.internal, sql.statcan_pid) == (False, "14100398")

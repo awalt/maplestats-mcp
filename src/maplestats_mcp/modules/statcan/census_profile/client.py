@@ -188,14 +188,60 @@ def _fold(text: str) -> str:
     return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
 
 
+def _default_level(query: str, lang: str) -> tuple[str, str]:
+    """The level a query without one most likely means, and a note saying so.
+
+    A province, territory or "Canada" by name reads at the provinces level, an FSA
+    (T5J) at the FSA level, and any other name as a municipality (census
+    subdivision): the level most place-name questions mean. An empty query names
+    nothing, so it is refused with the levels to choose from.
+    """
+    folded = _fold(query.strip())
+    if not folded:
+        raise InvalidInput(
+            say(
+                "statcan_census_profile:search_geography: give a query or a level; an "
+                f"empty query lists one whole level, one of "
+                f"{sorted(constants.GEOGRAPHY_LEVEL_TO_DATAFLOW)}.",
+                "statcan_census_profile:search_geography : donnez une requête ou un "
+                "niveau ; une requête vide liste tout un niveau, l'un de "
+                f"{sorted(constants.GEOGRAPHY_LEVEL_TO_DATAFLOW)}.",
+                lang,
+            )
+        )
+    if folded in constants.PROVINCE_LEVEL_NAMES:
+        level = "canada_provinces_territories"
+    elif re.match(constants.FSA_PATTERN, folded):
+        level = "forward_sortation_areas"
+    else:
+        level = "census_subdivisions"
+    note = say(
+        f"No level was given, so {query.strip()!r} was searched at level {level!r}. "
+        "Pass level for another one (census_metro_areas for a metro area, "
+        "census_divisions for a county or regional district).",
+        f"Aucun niveau n'a été donné : {query.strip()!r} a été cherché au niveau "
+        f"{level!r}. Passez level pour un autre (census_metro_areas pour une région "
+        "métropolitaine, census_divisions pour une division de recensement).",
+        lang,
+    )
+    return level, note
+
+
 async def search_geography(
-    level: str,
+    level: str | None,
     query: str = "",
     *,
     limit: int = constants.GEOGRAPHY_SEARCH_LIMIT_DEFAULT,
     lang: str = "en",
 ) -> GeographySearchResult:
-    """Search one geography level's codelist by place name substring."""
+    """Search one geography level's codelist by place name substring.
+
+    Without a level, one is chosen from the query (_default_level) and the
+    result's provenance coverage says which.
+    """
+    chosen_note = None
+    if level is None:
+        level, chosen_note = _default_level(query, lang)
     dataflow = constants.GEOGRAPHY_LEVEL_TO_DATAFLOW.get(level)
     if dataflow is None:
         raise InvalidInput(
@@ -231,6 +277,7 @@ async def search_geography(
             url=f"{constants.BASE_URL}/codelist/{constants.AGENCY}/{codelist_id}/latest",
             cached=cached,
             schema_name="statcan_census_profile.GeographySearchResult",
+            coverage=chosen_note,
             lang=lang,
         ),
     )
