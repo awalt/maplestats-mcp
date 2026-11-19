@@ -729,6 +729,16 @@ SOURCES: dict[str, Source] = {
         "FRED (Fed de St. Louis)",
         domain="statistics",
     ),
+    "imf": Source(
+        "International Monetary Fund (Canada and peers; a separate publisher from Statistics "
+        "Canada)",
+        "Fonds monétaire international (Canada et pays comparables ; un éditeur distinct de "
+        "Statistique Canada)",
+        "international",
+        "IMF",
+        "FMI",
+        domain="statistics",
+    ),
     "ons": Source(
         "UK Office for National Statistics (UK comparators)",
         "Office for National Statistics du Royaume-Uni (points de comparaison britanniques)",

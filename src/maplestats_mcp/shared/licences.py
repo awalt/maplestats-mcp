@@ -334,6 +334,14 @@ SOURCE_LICENCES: dict[str, str] = {
         "of St. Louis; series FRED marks Copyright belong to third parties whose "
         "permission is needed."
     ),
+    "imf": (
+        "Source: International Monetary Fund. Data may be copied, published and "
+        "distributed with the IMF credited as the source and any material "
+        "transformation stated; commercial reuse needs the IMF's permission "
+        "(copyright@imf.org) and bulk download by automated technology is not allowed "
+        "without it (https://www.imf.org/en/About/copyright-and-terms, special terms "
+        "for statistical data)."
+    ),
     # Quebec
     "isq": ISQ_LICENCE,
     # Federal: open.canada.ca and departmental open-data services (OGL - Canada)
@@ -565,6 +573,15 @@ LICENCES_FR: dict[str, str] = {
         "produit n'est ni approuvé ni certifié par la Federal Reserve Bank of St. Louis "
         "; les séries que FRED marque Copyright appartiennent à des tiers dont "
         "l'autorisation est requise."
+    ),
+    SOURCE_LICENCES["imf"]: (
+        "Source : Fonds monétaire international. Les données peuvent être copiées, "
+        "publiées et distribuées en citant le FMI comme source et en indiquant toute "
+        "transformation importante ; la réutilisation commerciale exige l'autorisation "
+        "du FMI (copyright@imf.org) et le téléchargement en masse par des moyens "
+        "automatisés est interdit sans elle "
+        "(https://www.imf.org/en/About/copyright-and-terms, conditions particulières "
+        "pour les données statistiques)."
     ),
     SOURCE_LICENCES["fed"]: (
         "Source : Conseil des gouverneurs de la Réserve fédérale. Domaine public ; citez le "
@@ -913,6 +930,9 @@ _SOURCE_COMMERCIAL_USE: dict[str, CommercialUse] = {
     # The FRED API terms say nothing on commercial use; third-party series need their
     # owner's permission (read 2026-11-18).
     "fred": "unknown",
+    # Data may be copied and distributed with credit; "For any potential commercial
+    # reuse of IMF Data, email copyright@imf.org to request permission" (read 2026-11-18).
+    "imf": "not_allowed",
     "cbsa-tariff": "not_allowed",
     "electricity": "varies",
     "dfo-iwls": "unknown",
