@@ -14,4 +14,4 @@
   `statcan_daily_get_releases` and `wds_get_full_table_download` are not marked: each has a route of its own.
   Nothing probes: no request is made for this. With no path seen blocked, both tools answer exactly as before
   (checked byte for byte over the 129 benchmark questions); with the CIMT and catalogue paths blocked, a plan
-  is 3 characters shorter on average and a search answer 9 shorter.
+  is 4 characters shorter on average and a search answer 9 shorter.
