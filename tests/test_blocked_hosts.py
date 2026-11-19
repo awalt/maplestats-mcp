@@ -3,13 +3,13 @@
 StatCan's www150 answered automated clients with a Cloudflare managed challenge from
 about 18:25 UTC on 2026-11-17 (HTTP 403, Cf-Mitigated: challenge, a page titled
 "Vérification de sécurité / Security Check"). The wording each place gives the caller is
-checked here in English and in French: no "retry in a minute", a "blocked since" time, and
-the sources that still work. Everything is offline.
+checked here in English and in French: no "retry in a minute", and the sources that still
+work. A challenge never opens the breaker (WDS answers on the host that challenges SDMX), so
+only the error a challenged call raises and the hint for one raised elsewhere carry it.
+Everything is offline.
 """
 
 from __future__ import annotations
-
-from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -19,7 +19,7 @@ from fastmcp.exceptions import ToolError
 from maplestats_mcp.catalogue import read_catalogue
 from maplestats_mcp.server import mcp
 from maplestats_mcp.shared import blocked_hosts
-from maplestats_mcp.shared.breaker import BREAKER, CircuitOpen
+from maplestats_mcp.shared.breaker import BREAKER
 from maplestats_mcp.shared.error_hints import error_code, hint_for, with_hint
 from maplestats_mcp.shared.errors import CloudflareChallenge, UpstreamUnavailable
 from maplestats_mcp.shared.http import api_get, is_cloudflare_challenge
@@ -27,32 +27,8 @@ from maplestats_mcp.shared.i18n import reset_call_lang, set_call_lang
 
 HOST = "www150.statcan.gc.ca"
 URL = f"https://{HOST}/t1/wds/rest/getCodeSets"
-FIRST_CHALLENGE = datetime(2026, 11, 17, 18, 25, 7, tzinfo=UTC)
 RETRY_IN_A_MINUTE = "Retry once in a minute"
 RETRY_IN_A_MINUTE_FR = "Réessayez une fois dans une minute"
-
-
-@pytest.fixture
-def wall(monkeypatch: pytest.MonkeyPatch) -> list[datetime]:
-    """The breaker's wall clock, set by the test: a one-item list holding the time."""
-    now = [FIRST_CHALLENGE]
-    monkeypatch.setattr(BREAKER, "_wall", lambda: now[0])
-    return now
-
-
-@pytest.fixture
-def clock(monkeypatch: pytest.MonkeyPatch) -> list[float]:
-    """The breaker's monotonic clock, frozen: a one-item list holding the time."""
-    now = [1000.0]
-    monkeypatch.setattr(BREAKER, "_clock", lambda: now[0])
-    return now
-
-
-@pytest.fixture
-def two_failures(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MAPLE_BREAKER_FAILURES", "2")
-    monkeypatch.setenv("MAPLE_BREAKER_COOLDOWN_SECONDS", "60")
-    monkeypatch.setenv("MAPLE_BREAKER_WINDOW_SECONDS", "300")
 
 
 async def _challenged(httpx_mock, statcan_security_check) -> CloudflareChallenge:
@@ -119,11 +95,11 @@ def test_the_header_alone_makes_a_challenge():
 
 
 async def test_a_header_less_security_check_page_counts_against_the_host(
-    httpx_mock, statcan_security_check, wall
+    httpx_mock, statcan_security_check
 ):
     headers = {k: v for k, v in statcan_security_check["headers"].items() if k != "Cf-Mitigated"}
     httpx_mock.add_response(url=URL, **{**statcan_security_check, "headers": headers})
-    with pytest.raises(CloudflareChallenge, match="Blocked since 18:25 UTC"):
+    with pytest.raises(CloudflareChallenge, match="Cloudflare bot challenge"):
         await api_get(URL)
     assert BREAKER.snapshot()["hosts"][HOST]["errors"]["cloudflare"] == 1
 
@@ -131,14 +107,13 @@ async def test_a_header_less_security_check_page_counts_against_the_host(
 # 2. The error a challenged call raises ----
 
 
-async def test_a_challenge_says_do_not_retry_and_when_it_began(
-    httpx_mock, statcan_security_check, wall
+async def test_a_challenge_says_do_not_retry_and_what_still_works(
+    httpx_mock, statcan_security_check
 ):
     error = await _challenged(httpx_mock, statcan_security_check)
     message = str(error)
     assert isinstance(error, UpstreamUnavailable) and error.host == HOST
     assert "Cloudflare bot challenge" in message and "does not try to bypass" in message
-    assert "Blocked since 18:25 UTC." in message
     assert "Fix: do not retry; StatCan's host www150.statcan.gc.ca is challenging" in message
     assert "not answer from memory" in message
     for source in (
@@ -153,7 +128,7 @@ async def test_a_challenge_says_do_not_retry_and_when_it_began(
     assert RETRY_IN_A_MINUTE not in message
 
 
-async def test_the_french_challenge_error_is_french(httpx_mock, statcan_security_check, wall):
+async def test_the_french_challenge_error_is_french(httpx_mock, statcan_security_check):
     httpx_mock.add_response(url=URL, **statcan_security_check)
     token = set_call_lang("fr")
     try:
@@ -163,7 +138,6 @@ async def test_the_french_challenge_error_is_french(httpx_mock, statcan_security
         reset_call_lang(token)
     message = str(raised.value)
     assert "défi anti-robot Cloudflare" in message
-    assert "Bloqué depuis 18 h 25 UTC." in message
     assert "Solution : ne réessayez pas" in message
     assert "l'hôte de Statistique Canada www150.statcan.gc.ca" in message
     assert "Toujours accessibles" in message and "la Banque du Canada" in message
@@ -172,7 +146,7 @@ async def test_the_french_challenge_error_is_french(httpx_mock, statcan_security
 
 
 async def test_the_challenge_error_gets_its_code_but_no_generic_retry_hint(
-    httpx_mock, statcan_security_check, wall
+    httpx_mock, statcan_security_check
 ):
     error = await _challenged(httpx_mock, statcan_security_check)
     hinted = with_hint(error, "en")
@@ -187,7 +161,7 @@ async def test_the_challenge_error_gets_its_code_but_no_generic_retry_hint(
 
 
 async def test_another_host_gets_the_generic_steer_not_statcans_list(
-    httpx_mock, cloudflare_challenge, wall
+    httpx_mock, cloudflare_challenge
 ):
     url = "https://data.example.invalid/x"
     httpx_mock.add_response(url=url, **cloudflare_challenge)
@@ -199,58 +173,7 @@ async def test_another_host_gets_the_generic_steer_not_statcans_list(
     assert "api.statcan.gc.ca" not in message and "Statistique" not in message
 
 
-# 3. The breaker's refusal and the hint for a challenge with no message of its own ----
-
-
-async def test_the_refusal_names_the_challenge_not_timeouts(
-    httpx_mock, statcan_security_check, two_failures, wall, clock
-):
-    for _ in range(2):
-        await _challenged(httpx_mock, statcan_security_check)
-    wall[0] = FIRST_CHALLENGE + timedelta(minutes=10)
-    with pytest.raises(CircuitOpen) as refused:
-        await api_get(URL)
-    message = str(refused.value)
-    assert "answers automated requests with a Cloudflare bot challenge" in message
-    assert "Blocked since 18:25 UTC." in message
-    assert "The next probe is allowed after 18:36 UTC (in about 60 s)" in message
-    assert "Fix: do not retry; StatCan's host" in message and "Still working" in message
-    for wrong in ("timeouts, connection errors", "server errors", "Try again after"):
-        assert wrong not in message
-    assert RETRY_IN_A_MINUTE not in str(with_hint(refused.value, "en"))
-
-
-async def test_the_french_refusal_names_the_challenge(
-    httpx_mock, statcan_security_check, two_failures, wall, clock
-):
-    for _ in range(2):
-        await _challenged(httpx_mock, statcan_security_check)
-    token = set_call_lang("fr")
-    try:
-        with pytest.raises(CircuitOpen) as refused:
-            await api_get(URL)
-    finally:
-        reset_call_lang(token)
-    message = str(refused.value)
-    assert "défi anti-robot Cloudflare" in message and "Bloqué depuis 18 h 25 UTC." in message
-    assert "prochain sondage est permis après" in message
-    assert "ne réessayez pas" in message and "Toujours accessibles" in message
-    for wrong in ("délais dépassés", "Réessayez après", "Try again"):
-        assert wrong not in message
-
-
-async def test_a_server_error_refusal_keeps_its_wording(httpx_mock, two_failures, wall, clock):
-    for _ in range(3):
-        httpx_mock.add_response(url=URL, status_code=503)
-    with pytest.raises(httpx.HTTPStatusError):
-        await api_get(URL)
-    # The second call's first failure opens the breaker, so its retry is refused.
-    httpx_mock.add_response(url=URL, status_code=503)
-    with pytest.raises(CircuitOpen) as refused:
-        await api_get(URL)
-    message = str(refused.value)
-    assert "failed 2 times in a row (timeouts, connection errors or server errors)" in message
-    assert "Try again after" in message and "Cloudflare" not in message
+# 3. The hint for a challenge with no message of its own ----
 
 
 def test_a_challenge_raised_without_a_message_of_its_own_still_says_do_not_retry():
@@ -260,7 +183,7 @@ def test_a_challenge_raised_without_a_message_of_its_own_still_says_do_not_retry
     assert RETRY_IN_A_MINUTE not in hint
     french = hint_for(bare, "fr")
     assert french.startswith("Solution : ne réessayez pas")
-    assert "dans une minute" not in french
+    assert RETRY_IN_A_MINUTE_FR not in french
     # A plain outage keeps the retry hint.
     assert RETRY_IN_A_MINUTE in hint_for(UpstreamUnavailable("down"), "en")
     assert RETRY_IN_A_MINUTE_FR in hint_for(UpstreamUnavailable("down"), "fr")
@@ -290,18 +213,11 @@ def test_only_statcan_hosts_get_the_statcan_list():
     assert "api.statcan.gc.ca" not in blocked_hosts.still_working("example.invalid", False)
 
 
-def test_the_time_clause_is_empty_when_the_time_is_unknown():
-    assert blocked_hosts.since_clause(None, False) == ""
-    assert blocked_hosts.since_clause(None, True) == ""
-    assert blocked_hosts.since_clause(FIRST_CHALLENGE, False) == " Blocked since 18:25 UTC."
-    assert blocked_hosts.since_clause(FIRST_CHALLENGE, True) == " Bloqué depuis 18 h 25 UTC."
-
-
 # 5. Through the server, as a client sees it ----
 
 
 async def test_a_wds_tool_answers_the_block_with_one_fix_and_no_retry_hint(
-    httpx_mock, statcan_security_check, wall
+    httpx_mock, statcan_security_check
 ):
     """wds_get_cube_metadata through call_tool, with www150 challenging: the error a model
     reads names the block and what works, once, and does not say to retry in a minute."""
@@ -314,7 +230,6 @@ async def test_a_wds_tool_answers_the_block_with_one_fix_and_no_retry_hint(
             )
     text = str(raised.value)
     assert "[upstream_unavailable]" in text
-    assert "Blocked since 18:25 UTC." in text
     assert text.count("Fix:") == 1 and "do not retry" in text
     assert "Still working: api.statcan.gc.ca" in text
     assert RETRY_IN_A_MINUTE not in text and "down or slow" not in text

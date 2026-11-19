@@ -52,7 +52,7 @@ from tenacity import (
 
 from maplestats_mcp import __version__
 from maplestats_mcp.shared import challenge_notes, upstream_wait
-from maplestats_mcp.shared.blocked_hosts import challenge_fix, since_clause
+from maplestats_mcp.shared.blocked_hosts import challenge_fix
 from maplestats_mcp.shared.breaker import BREAKER, is_failure_status, one_call
 from maplestats_mcp.shared.errors import CloudflareChallenge, TooLarge
 from maplestats_mcp.shared.fr_typography import call_error
@@ -365,7 +365,6 @@ def raise_if_cloudflare_challenge(response: httpx.Response) -> None:
         # BreakerClient counted the challenges that carry Cf-Mitigated already.
         if response.headers.get("cf-mitigated", "").lower() != "challenge":
             BREAKER.record_failure(host, "cloudflare")
-        since = BREAKER.challenge_since(host)
         # The publisher's own context and the closest route still open, when known.
         note = challenge_notes.note_for(host, response.request.url.path)
         note_en = f" {note[0]}" if note else ""
@@ -375,13 +374,12 @@ def raise_if_cloudflare_challenge(response: httpx.Response) -> None:
             f"{host} is behind a Cloudflare bot challenge (HTTP {response.status_code}, "
             "Cf-Mitigated: challenge) that automated clients cannot pass, so this "
             "service is unavailable from MapleStats until its publisher lifts it. MapleStats "
-            f"does not try to bypass it.{note_en}{since_clause(since, False)}"
-            f"{challenge_fix(host, False)}",
+            f"does not try to bypass it.{note_en}{challenge_fix(host, False)}",
             f"{host} est protégé par un défi anti-robot Cloudflare (HTTP {response.status_code}, "
             "Cf-Mitigated : challenge) que les clients automatisés ne peuvent pas franchir ; ce "
             "service est donc indisponible depuis MapleStats tant que son éditeur ne le "
             f"lève pas. MapleStats n'essaie pas de le contourner.{note_fr}"
-            f"{since_clause(since, True)}{challenge_fix(host, True)}",
+            f"{challenge_fix(host, True)}",
         )
         error.host = host
         raise error

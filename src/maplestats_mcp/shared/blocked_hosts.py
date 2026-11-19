@@ -2,9 +2,11 @@
 
 A Cloudflare managed challenge (HTTP 403, `Cf-Mitigated: challenge`) is a policy
 block, not an outage: it does not clear in a minute, and retrying only repeats it.
-Three places say so, and they share this wording so they cannot drift apart:
-http.py's CloudflareChallenge message, breaker.py's refusal while the host is
-paused, and error_hints.py's hint for a challenge raised by any other module.
+Two places say so, and they share this wording so they cannot drift apart:
+http.py's CloudflareChallenge message and error_hints.py's hint for a challenge
+raised by any other module. A challenge never opens the breaker (see breaker.py:
+StatCan answers WDS on the same host that challenges SDMX), so the breaker has
+no wording of its own for it.
 
 MapleStats never tries to pass a challenge (no browser-like User-Agent, headless
 browser, proxy, cookie or fingerprint change); this module only words the report.
@@ -17,8 +19,6 @@ CMHC, the provincial agencies and the OECD are other publishers' hosts.
 """
 
 from __future__ import annotations
-
-from datetime import datetime
 
 # The StatCan hosts a challenge has been seen on: www12 since 2026-10-02, www150
 # (WDS, SDMX, CIMT, The Daily, indicators, delta, reference, PUMF) since 2026-11-17.
@@ -34,20 +34,6 @@ STILL_WORKING_PREFIXES = (
     "cmhc_",
     "oecd_",
 )
-
-
-def clock_time(when: datetime, french: bool) -> str:
-    """HH:MM, or "H h MM" in French; the caller says UTC."""
-    return f"{when.hour} h {when.minute:02d}" if french else f"{when:%H:%M}"
-
-
-def since_clause(since: datetime | None, french: bool) -> str:
-    """ " Blocked since HH:MM UTC." (with its leading space), or "" when the time is unknown."""
-    if since is None:
-        return ""
-    if french:
-        return f" Bloqué depuis {clock_time(since, True)} UTC."
-    return f" Blocked since {clock_time(since, False)} UTC."
 
 
 def still_working(host: str, french: bool) -> str:
@@ -93,7 +79,7 @@ def challenge_fix(host: str, french: bool) -> str:
         )
     who = "StatCan's host" if host in STATCAN_HOSTS else "the host"
     return (
-        f" Fix: do not retry; {who} {host} is challenging automated clients, which usually "
+        f" Fix: do not retry; {who} {host} is challenging automated clients, which "
         "a retry in a minute does not clear. Say the figure could not be read from its source and why; "
         "do not answer from memory."
         f"{still_working(host, False)}"
