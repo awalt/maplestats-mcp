@@ -29,9 +29,14 @@ def _by_language(result) -> dict[str, str]:
     return {s.language: s.code for s in result.scripts}
 
 
-async def test_a_full_table_gets_no_script():
+async def test_a_full_table_gets_no_script(monkeypatch):
     # StatCan blocks automated full-table downloads (November 2026), so even with
-    # summary=True there is no script, and the note says why.
+    # summary=True there is no script, and the note says why. The builder reads only
+    # the arguments, so the tool's run is replaced and no request leaves the test.
+    async def run_tool(name, args, lang="en"):
+        return {}, []
+
+    monkeypatch.setattr(client, "_run_tool", run_tool)
     result = await client.reproduce(
         "wds_get_full_table_download", {"product_id": "18-10-0256-01"}, summary=True
     )
