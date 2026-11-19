@@ -28,9 +28,13 @@ async def phac_infobase_list_datasets(
     viral load, opioid and stimulant deaths and hospitalizations,
     supervised consumption sites, substance use surveys, measles, mpox,
     tuberculosis, notifiable diseases, vaccine adverse events, chronic
-    disease and cancer indicators, archived COVID-19 cases and vaccination.
+    disease and cancer indicators, perinatal health (c-sections, preterm
+    birth), cold-related injuries, PTSD workers' compensation claims,
+    antimicrobial resistance (MRSA, VRE, C. difficile, gonorrhoea), archived
+    COVID-19 cases and vaccination.
     `topic` is one of respiratory, covid19, wastewater, vaccination,
-    substance_use, infectious_disease, chronic_disease, health_status;
+    substance_use, infectious_disease, chronic_disease, health_status,
+    perinatal, injury, antimicrobial_resistance;
     `query` matches words in English or French titles, ignoring case and
     accents. `lang="fr"` returns French titles and descriptions for every
     dataset; `languages` shows which ones also have a French data file
@@ -40,12 +44,13 @@ async def phac_infobase_list_datasets(
     data tool has no downloadable file.
     Keywords: PHAC, Health Infobase, public health surveillance, FluWatch,
     influenza, COVID-19, RSV, opioid overdose, wastewater, measles,
-    tuberculosis, notifiable diseases.
+    tuberculosis, notifiable diseases, antimicrobial resistance, perinatal.
     Mots-clés : ASPC, Agence de la santé publique du Canada, Infobase
     santé, surveillance de la santé publique,
     ÉpiGrippe, grippe, influenza, COVID-19, VRS, virus respiratoires,
     surdoses d'opioïdes, eaux usées, rougeole, tuberculose, maladies à
-    déclaration obligatoire, vaccination.
+    déclaration obligatoire, vaccination, résistance aux antimicrobiens,
+    santé périnatale.
     """
     return client.list_datasets(topic, query, lang)
 

@@ -1,7 +1,8 @@
 """Curated catalogue of Health Infobase data files.
 
 Every URL, ZIP member and column named here was fetched and checked live
-on 2026-09-26 (scripts/smoke_test_phac_infobase.py re-checks them all).
+on 2026-09-26, and the report figures added at the end on 2026-11-19
+(scripts/smoke_test_phac_infobase.py re-checks them all).
 Files were found in each dashboard's page HTML and JavaScript (the
 `d3.csv(...)` calls and "Download data" links). Only files with stable
 names are listed: a few dashboards load date-stamped files
@@ -48,6 +49,12 @@ TOPICS: dict[str, tuple[str, str]] = {
     "health_status": (
         "Health status, risk factors and mental health",
         "État de santé, facteurs de risque et santé mentale",
+    ),
+    "perinatal": ("Perinatal and maternal health", "Santé périnatale et maternelle"),
+    "injury": ("Injuries", "Blessures"),
+    "antimicrobial_resistance": (
+        "Antimicrobial resistance (CARSS)",
+        "Résistance aux antimicrobiens (SCSRA)",
     ),
 }
 
@@ -103,6 +110,34 @@ _MEASLES_DATA = "/src/data/measles-rubella/"
 _TB = "/tuberculosis/"
 _TB_FR = "https://sante-infobase.canada.ca/tuberculose/"
 _TB_DATA = "/src/data/tuberculosis/"
+# Report figures, confirmed live 2026-11-19: each dashboard's script reads
+# these small CSVs with d3.csv (perinatal-health-trends/main.js,
+# cold-injuries/main.js, ptsd-awcbc/graphs.js, carss-app/main.js). They are
+# English files that carry French label columns side by side; there is no
+# French file. covid_phi_fig7.csv is commented out in main.js and answers
+# with the 404 page, so it is not listed.
+_PHT = "/covid-19/perinatal-health-trends/"
+_PHT_FR = "https://sante-infobase.canada.ca/covid-19/tendances-sante-perinatale/"
+_PHT_DATA = "/src/data/perinatal-health-trends/"
+_COLD = "/injuries/cold-related/"
+_COLD_FR = "https://sante-infobase.canada.ca/blessures/liees-au-froid/"
+_COLD_DATA = "/src/data/cold-injuries/"
+_PTSD = "/ptsd/lost-time-claims/"
+_PTSD_FR = "https://sante-infobase.canada.ca/tspt/demandes-indemnisation/"
+_PTSD_DATA = "/src/data/ptsd-awcbc/"
+_CARSS = "/carss/amr/"
+_CARSS_FR = "https://sante-infobase.canada.ca/scsra/ram/"
+_CARSS_DATA = "/src/data/carss-app/graphs/"
+_PHT_NOTE_EN = (
+    "Period runs March to February ('Mar 2015 - Feb 2016') and is not read as a date: filter "
+    "it with filters. Canada excluding Quebec (CIHI Discharge Abstract Database)."
+)
+_PHT_NOTE_FR = (
+    "Période (de mars à février) n'est pas lue comme une date : filtrez-la avec filters. Canada "
+    "sans le Québec (Base de données sur les congés des patients de l'ICIS)."
+)
+_CARSS_NOTE_EN = "From the CARSS report's figures; the _FR columns hold French labels."
+_CARSS_NOTE_FR = "Figures du rapport du SCSRA; les colonnes _FR portent les libellés français."
 
 DATASETS: tuple[Dataset, ...] = (
     # Respiratory viruses ----------------------------------------------------
@@ -1292,6 +1327,527 @@ DATASETS: tuple[Dataset, ...] = (
         dashboard_en="/positive-mental-health/",
         notes_en="Windows-1252. The live indicator framework tool publishes no newer file.",
         notes_fr="Windows-1252; le fichier français fait 16 Mo à cause de colonnes vides.",
+    ),
+    # Perinatal health ------------------------------------------------------
+    Dataset(
+        id="perinatal_live_births",
+        topic="perinatal",
+        title_en="Hospital and all live births in Canada, March-to-February years",
+        title_fr="Naissances vivantes à l'hôpital et au total au Canada, années de mars à février",
+        description_en=(
+            "Number of hospital live births and of all live births (20 weeks or more), Canada "
+            "excluding Quebec, March 2015 to February 2023, from the report on trends in "
+            "perinatal health during the COVID-19 pandemic."
+        ),
+        description_fr=(
+            "Nombre de naissances vivantes en milieu hospitalier et de toutes les naissances "
+            "vivantes (20 semaines ou plus), Canada sans le Québec, de mars 2015 à février 2023, "
+            "selon le rapport sur les tendances en santé périnatale pendant la pandémie."
+        ),
+        url_en=_PHT_DATA + "covid_phi_fig1.csv",
+        frequency="periodic",
+        dashboard_en=_PHT,
+        dashboard_fr=_PHT_FR,
+        notes_en=_PHT_NOTE_EN,
+        notes_fr=_PHT_NOTE_FR,
+    ),
+    Dataset(
+        id="perinatal_hospital_admissions",
+        topic="perinatal",
+        title_en="Antenatal and postpartum hospital admission rates per 100 deliveries",
+        title_fr="Taux d'hospitalisations prénatales et post-partum pour 100 accouchements",
+        description_en=(
+            "Hospital admission rates per 100 deliveries in the antenatal and postpartum periods, "
+            "Canada excluding Quebec, March 2015 to February 2023."
+        ),
+        description_fr=(
+            "Taux d'hospitalisations pour 100 accouchements pendant les périodes prénatale et "
+            "post-partum, Canada sans le Québec, de mars 2015 à février 2023."
+        ),
+        url_en=_PHT_DATA + "covid_phi_fig2.csv",
+        frequency="periodic",
+        dashboard_en=_PHT,
+        dashboard_fr=_PHT_FR,
+        notes_en=_PHT_NOTE_EN,
+        notes_fr=_PHT_NOTE_FR,
+    ),
+    Dataset(
+        id="perinatal_length_of_stay",
+        topic="perinatal",
+        title_en="Average length of hospital stay for delivery, in days",
+        title_fr="Durée moyenne du séjour à l'hôpital pour un accouchement, en jours",
+        description_en=(
+            "Average length of stay in hospital for delivery (days), Canada excluding Quebec, "
+            "March 2015 to February 2023."
+        ),
+        description_fr=(
+            "Durée moyenne du séjour à l'hôpital pour un accouchement (jours), Canada sans le "
+            "Québec, de mars 2015 à février 2023."
+        ),
+        url_en=_PHT_DATA + "covid_phi_fig2b.csv",
+        frequency="periodic",
+        dashboard_en=_PHT,
+        dashboard_fr=_PHT_FR,
+        notes_en=_PHT_NOTE_EN,
+        notes_fr=_PHT_NOTE_FR,
+    ),
+    Dataset(
+        id="perinatal_caesarean_sections",
+        topic="perinatal",
+        title_en="Caesarean sections: number and rate per 100 hospital deliveries",
+        title_fr="Césariennes : nombre et taux pour 100 accouchements à l'hôpital",
+        description_en=(
+            "Number of c-sections and c-section rate per 100 deliveries among hospital births "
+            "(20 weeks or more), Canada excluding Quebec, March 2015 to February 2023."
+        ),
+        description_fr=(
+            "Nombre de césariennes et taux pour 100 accouchements parmi les naissances à l'hôpital "
+            "(20 semaines ou plus), Canada sans le Québec, de mars 2015 à février 2023."
+        ),
+        url_en=_PHT_DATA + "covid_phi_fig3.csv",
+        frequency="periodic",
+        dashboard_en=_PHT,
+        dashboard_fr=_PHT_FR,
+        notes_en=_PHT_NOTE_EN,
+        notes_fr=_PHT_NOTE_FR,
+    ),
+    Dataset(
+        id="perinatal_labour_inductions",
+        topic="perinatal",
+        title_en="Labour inductions: number and rate per 100 hospital deliveries",
+        title_fr="Déclenchements du travail : nombre et taux pour 100 accouchements à l'hôpital",
+        description_en=(
+            "Number of labour inductions and induction rate per 100 deliveries among hospital "
+            "births (20 weeks or more), Canada excluding Quebec, March 2015 to February 2023."
+        ),
+        description_fr=(
+            "Nombre de déclenchements du travail et taux pour 100 accouchements parmi les "
+            "naissances à l'hôpital (20 semaines ou plus), Canada sans le Québec, de mars 2015 à "
+            "février 2023."
+        ),
+        url_en=_PHT_DATA + "covid_phi_fig4.csv",
+        frequency="periodic",
+        dashboard_en=_PHT,
+        dashboard_fr=_PHT_FR,
+        notes_en=_PHT_NOTE_EN,
+        notes_fr=_PHT_NOTE_FR,
+    ),
+    Dataset(
+        id="perinatal_hypertension_diabetes",
+        topic="perinatal",
+        title_en="Hypertensive disorders and diabetes in pregnancy per 100 deliveries",
+        title_fr="Troubles hypertensifs et diabète de grossesse pour 100 accouchements",
+        description_en=(
+            "Rates per 100 deliveries of hypertensive disorders of pregnancy and of diabetes "
+            "mellitus among persons delivering in hospital, Canada excluding Quebec, March 2015 "
+            "to February 2023."
+        ),
+        description_fr=(
+            "Taux pour 100 accouchements des troubles hypertensifs de la grossesse et du diabète "
+            "sucré chez les personnes ayant accouché à l'hôpital, Canada sans le Québec, de mars "
+            "2015 à février 2023."
+        ),
+        url_en=_PHT_DATA + "covid_phi_fig5.csv",
+        frequency="periodic",
+        dashboard_en=_PHT,
+        dashboard_fr=_PHT_FR,
+        notes_en=_PHT_NOTE_EN,
+        notes_fr=_PHT_NOTE_FR,
+    ),
+    Dataset(
+        id="perinatal_infant_outcomes",
+        topic="perinatal",
+        title_en="Preterm birth, stillbirth, NICU admission and size for gestational age",
+        title_fr="Prématurité, mortinaissance, admission en UNSI et poids selon l'âge gestationnel",
+        description_en=(
+            "Rates per 100 births of preterm birth, stillbirth, NICU admission, and small and "
+            "large for gestational age, Canada excluding Quebec, March 2015 to February 2023."
+        ),
+        description_fr=(
+            "Taux pour 100 naissances de naissance prématurée, de mortinaissance, d'admission en "
+            "unité néonatale de soins intensifs et de bébés petits ou grands pour l'âge "
+            "gestationnel, Canada sans le Québec, de mars 2015 à février 2023."
+        ),
+        url_en=_PHT_DATA + "covid_phi_fig6.csv",
+        frequency="periodic",
+        dashboard_en=_PHT,
+        dashboard_fr=_PHT_FR,
+        notes_en=_PHT_NOTE_EN,
+        notes_fr=_PHT_NOTE_FR,
+    ),
+    # Injuries --------------------------------------------------------------
+    Dataset(
+        id="cold_injury_deaths",
+        topic="injury",
+        title_en="Cold-related deaths per 1,000,000 population, Canada, yearly",
+        title_fr="Décès liés au froid pour 1 000 000 d'habitants, Canada, par année",
+        description_en=(
+            "Observed rate of deaths from exposure to excessive natural cold (ICD-10 X31: "
+            "hypothermia, frostbite) per 1,000,000 population, Canada, 2011 to 2023, from "
+            "Statistics Canada vital statistics."
+        ),
+        description_fr=(
+            "Taux observé de décès dus à l'exposition à un froid naturel excessif (CIM-10 X31 : "
+            "hypothermie, gelures) pour 1 000 000 d'habitants, Canada, 2011 à 2023, selon la "
+            "statistique de l'état civil de Statistique Canada."
+        ),
+        url_en=_COLD_DATA + "deaths.csv",
+        frequency="periodic",
+        dashboard_en=_COLD,
+        dashboard_fr=_COLD_FR,
+        date_columns=("Year",),
+        notes_en="Calendar years; the page's average annual percent change is not in the file.",
+        notes_fr="Années civiles; la variation annuelle moyenne de la page n'est pas dans le fichier.",
+    ),
+    Dataset(
+        id="cold_injury_hospitalizations",
+        topic="injury",
+        title_en="Cold-related injury hospitalizations per 1,000,000 population, yearly",
+        title_fr="Hospitalisations pour blessures liées au froid pour 1 000 000 d'habitants",
+        description_en=(
+            "Observed hospitalization rate for cold-related injuries (ICD-10 X31) per 1,000,000 "
+            "population, Canada excluding Quebec, fiscal years 2011 to 2023, from CIHI's "
+            "Discharge Abstract Database."
+        ),
+        description_fr=(
+            "Taux observé d'hospitalisations pour blessures liées au froid (CIM-10 X31) pour "
+            "1 000 000 d'habitants, Canada sans le Québec, exercices 2011 à 2023, selon la Base "
+            "de données sur les congés des patients de l'ICIS."
+        ),
+        url_en=_COLD_DATA + "hospitalizations.csv",
+        frequency="periodic",
+        dashboard_en=_COLD,
+        dashboard_fr=_COLD_FR,
+        date_columns=("Year",),
+        notes_en="Year is the fiscal year starting in April (2011 is 2011-12).",
+        notes_fr="Year est l'exercice commençant en avril (2011 désigne 2011-2012).",
+    ),
+    Dataset(
+        id="cold_injury_ed_visits",
+        topic="injury",
+        title_en="Cold-related injury emergency department visits per 1,000,000 population",
+        title_fr="Visites aux urgences pour blessures liées au froid pour 1 000 000 d'habitants",
+        description_en=(
+            "Observed emergency department visit rate for cold-related injuries (ICD-10 X31) per "
+            "1,000,000 population in Alberta, Ontario and Yukon combined, fiscal years 2011 to "
+            "2023, from CIHI's National Ambulatory Care Reporting System."
+        ),
+        description_fr=(
+            "Taux observé de visites aux urgences pour blessures liées au froid (CIM-10 X31) pour "
+            "1 000 000 d'habitants en Alberta, en Ontario et au Yukon réunis, exercices 2011 à "
+            "2023, selon le Système national d'information sur les soins ambulatoires de l'ICIS."
+        ),
+        url_en=_COLD_DATA + "ed-visits.csv",
+        frequency="periodic",
+        dashboard_en=_COLD,
+        dashboard_fr=_COLD_FR,
+        date_columns=("Year",),
+        notes_en="Alberta, Ontario and Yukon only; Year is the fiscal year starting in April.",
+        notes_fr="Alberta, Ontario et Yukon seulement; Year est l'exercice commençant en avril.",
+    ),
+    # Post-traumatic stress disorder (workers' compensation claims) ---------
+    Dataset(
+        id="ptsd_lost_time_claims_by_gender",
+        topic="health_status",
+        title_en="Workers' compensation lost time claims by gender, 2012 to 2022",
+        title_fr="Demandes d'indemnisation avec perte de temps par genre, 2012 à 2022",
+        description_en=(
+            "Yearly count of accepted lost time claims for all injuries and diseases by gender of "
+            "the worker (female, male, unknown, total), from the Association of Workers' "
+            "Compensation Boards of Canada, shown with PHAC's PTSD analysis."
+        ),
+        description_fr=(
+            "Nombre annuel de demandes d'indemnisation acceptées avec perte de temps pour toutes "
+            "les blessures et maladies, selon le genre du travailleur (femmes, hommes, inconnu, "
+            "total), selon l'Association des commissions des accidents du travail du Canada."
+        ),
+        url_en=_PTSD_DATA + "gender.csv",
+        frequency="periodic",
+        dashboard_en=_PTSD,
+        dashboard_fr=_PTSD_FR,
+        date_columns=("year",),
+        notes_en="All lost time claims, not only PTSD; genre holds the French labels.",
+        notes_fr="Toutes les demandes, pas seulement le TSPT; la colonne genre est en français.",
+    ),
+    Dataset(
+        id="ptsd_lost_time_claims_mental_illness",
+        topic="health_status",
+        title_en="PTSD and other mental illness lost time claims, 2012 to 2022",
+        title_fr="Demandes d'indemnisation pour TSPT et autres maladies mentales, 2012 à 2022",
+        description_en=(
+            "Yearly number of accepted lost time claims for post-traumatic stress disorder and "
+            "for other mental illness, and mental illness claims as a percent of all lost time "
+            "claims, workers' compensation boards (AWCBC)."
+        ),
+        description_fr=(
+            "Nombre annuel de demandes d'indemnisation acceptées avec perte de temps pour trouble "
+            "de stress post-traumatique et pour d'autres maladies mentales, et part des maladies "
+            "mentales dans l'ensemble des demandes (ACATC)."
+        ),
+        url_en=_PTSD_DATA + "type.csv",
+        frequency="periodic",
+        dashboard_en=_PTSD,
+        dashboard_fr=_PTSD_FR,
+        date_columns=("year",),
+        notes_en=(
+            "Counts are in number-lost-time-claims; the 'Mental illness claims (%)' rows hold the "
+            "percent in percent-lost-time-claims."
+        ),
+        notes_fr=(
+            "Les nombres sont dans number-lost-time-claims; les lignes « Mental illness claims "
+            "(%) » portent le pourcentage dans percent-lost-time-claims."
+        ),
+    ),
+    Dataset(
+        id="ptsd_lost_time_claims_by_age_gender",
+        topic="health_status",
+        title_en="PTSD lost time claims by gender and age group, 2012 to 2022",
+        title_fr="Demandes d'indemnisation pour TSPT par genre et groupe d'âge, 2012 à 2022",
+        description_en=(
+            "Yearly number of accepted PTSD-related lost time claims by gender and age group of "
+            "the worker (15-24 to 65 and older), workers' compensation boards (AWCBC)."
+        ),
+        description_fr=(
+            "Nombre annuel de demandes d'indemnisation acceptées avec perte de temps liées au "
+            "TSPT selon le genre et le groupe d'âge du travailleur (15-24 ans à 65 ans et plus), "
+            "commissions des accidents du travail (ACATC)."
+        ),
+        url_en=_PTSD_DATA + "age-group-and-gender.csv",
+        frequency="periodic",
+        dashboard_en=_PTSD,
+        dashboard_fr=_PTSD_FR,
+        date_columns=("year",),
+        notes_en="Group labels use an en dash ('Female: 15–24 years'); a few counts carry spaces.",
+        notes_fr="Les libellés utilisent un tiret demi-cadratin (« Femmes : 15–24 ans »).",
+    ),
+    Dataset(
+        id="ptsd_lost_time_claims_by_occupation",
+        topic="health_status",
+        title_en="Share of PTSD lost time claims by occupation group, 2012 to 2022",
+        title_fr="Répartition des demandes d'indemnisation pour TSPT par groupe de professions",
+        description_en=(
+            "Yearly distribution (%) of accepted PTSD-related lost time claims across ten "
+            "broad occupation groups (health, education and social services, trades and others), "
+            "workers' compensation boards (AWCBC)."
+        ),
+        description_fr=(
+            "Répartition annuelle (%) des demandes d'indemnisation acceptées avec perte de temps "
+            "liées au TSPT entre dix grands groupes de professions (santé, enseignement et "
+            "services sociaux, métiers et autres), commissions des accidents du travail (ACATC)."
+        ),
+        url_en=_PTSD_DATA + "occupations.csv",
+        frequency="periodic",
+        dashboard_en=_PTSD,
+        dashboard_fr=_PTSD_FR,
+        date_columns=("year",),
+        notes_en="Claims with occupation not coded or not stated are excluded.",
+        notes_fr="Les demandes sans profession codée ou déclarée sont exclues.",
+    ),
+    # Antimicrobial resistance (CARSS report figures) -----------------------
+    Dataset(
+        id="amr_mrsa_bloodstream_incidence",
+        topic="antimicrobial_resistance",
+        title_en="MRSA bloodstream infection rates per 10,000 patient-days, CNISP hospitals",
+        title_fr="Taux de bactériémies à SARM pour 10 000 jours-patients, hôpitaux du PCSIN",
+        description_en=(
+            "Yearly incidence of overall, healthcare-associated and community-associated "
+            "methicillin-resistant Staphylococcus aureus (MRSA) bloodstream infections per "
+            "10,000 patient-days in CNISP sentinel hospitals, 2018 to 2022."
+        ),
+        description_fr=(
+            "Incidence annuelle des bactériémies à Staphylococcus aureus résistant à la "
+            "méthicilline (SARM), dans l'ensemble, associées aux soins et d'origine "
+            "communautaire, pour 10 000 jours-patients dans les hôpitaux du PCSIN, 2018 à 2022."
+        ),
+        url_en=_CARSS_DATA + "14-staphylococcus-aureus-fig-2.csv",
+        frequency="periodic",
+        dashboard_en=_CARSS,
+        dashboard_fr=_CARSS_FR,
+        date_columns=("YEAR",),
+        notes_en=_CARSS_NOTE_EN,
+        notes_fr=_CARSS_NOTE_FR,
+    ),
+    Dataset(
+        id="amr_mrsa_resistance",
+        topic="antimicrobial_resistance",
+        title_en="MRSA bloodstream isolates resistant to each antimicrobial, percent",
+        title_fr="Isolats de bactériémies à SARM résistants à chaque antimicrobien, en %",
+        description_en=(
+            "Percent of MRSA bloodstream infection isolates resistant to erythromycin, "
+            "clindamycin, ciprofloxacin, tetracycline, TMP-SMX and others, CNISP, 2018 to 2022."
+        ),
+        description_fr=(
+            "Pourcentage des isolats de bactériémies à SARM résistants à l'érythromycine, à la "
+            "clindamycine, à la ciprofloxacine, à la tétracycline, au TMP-SMX et autres, PCSIN, "
+            "2018 à 2022."
+        ),
+        url_en=_CARSS_DATA + "14-staphylococcus-aureus-fig-4.csv",
+        frequency="periodic",
+        dashboard_en=_CARSS,
+        dashboard_fr=_CARSS_FR,
+        date_columns=("YEAR",),
+        notes_en=_CARSS_NOTE_EN,
+        notes_fr=_CARSS_NOTE_FR,
+    ),
+    Dataset(
+        id="amr_vre_bloodstream_incidence",
+        topic="antimicrobial_resistance",
+        title_en="Vancomycin-resistant enterococci (VRE) bloodstream infection rates",
+        title_fr="Taux de bactériémies à entérocoques résistants à la vancomycine (ERV)",
+        description_en=(
+            "Yearly VRE bloodstream infection rates per 10,000 patient-days, overall and "
+            "healthcare-associated in adult, pediatric and mixed hospitals, CNISP, 2018 to 2022."
+        ),
+        description_fr=(
+            "Taux annuels de bactériémies à ERV pour 10 000 jours-patients, dans l'ensemble et "
+            "associées aux soins dans les hôpitaux pour adultes, pédiatriques et mixtes, PCSIN, "
+            "2018 à 2022."
+        ),
+        url_en=_CARSS_DATA + "10-enterococci-fig-1.csv",
+        frequency="periodic",
+        dashboard_en=_CARSS,
+        dashboard_fr=_CARSS_FR,
+        date_columns=("YEAR",),
+        notes_en=_CARSS_NOTE_EN,
+        notes_fr=_CARSS_NOTE_FR,
+    ),
+    Dataset(
+        id="amr_cpe_incidence",
+        topic="antimicrobial_resistance",
+        title_en="Carbapenemase-producing Enterobacterales (CPE) infection rates",
+        title_fr="Taux d'infections à entérobactéries productrices de carbapénémases (EPC)",
+        description_en=(
+            "Yearly incidence of healthcare-associated carbapenemase-producing Enterobacterales "
+            "infections per 10,000 patient-days, CNISP hospitals, 2018 to 2022."
+        ),
+        description_fr=(
+            "Incidence annuelle des infections associées aux soins à entérobactéries productrices "
+            "de carbapénémases pour 10 000 jours-patients, hôpitaux du PCSIN, 2018 à 2022."
+        ),
+        url_en=_CARSS_DATA + "09-enterobacterales-fig-3.csv",
+        frequency="periodic",
+        dashboard_en=_CARSS,
+        dashboard_fr=_CARSS_FR,
+        date_columns=("YEAR",),
+        notes_en="From the CARSS report's figures; English only, no French label column.",
+        notes_fr="Figures du rapport du SCSRA; fichier en anglais, sans colonne de libellés.",
+    ),
+    Dataset(
+        id="amr_urine_ecoli_klebsiella",
+        topic="antimicrobial_resistance",
+        title_en="E. coli and K. pneumoniae urine isolates not susceptible to each antimicrobial",
+        title_fr="Isolats urinaires d'E. coli et de K. pneumoniae non sensibles, par antimicrobien",
+        description_en=(
+            "Percent non-susceptible of E. coli and K. pneumoniae complex urine isolates to "
+            "ampicillin, ciprofloxacin, TMP-SMX, ceftazidime, carbapenems and others, AMRNet "
+            "laboratory data, 2020 to 2022."
+        ),
+        description_fr=(
+            "Pourcentage d'isolats urinaires d'E. coli et du complexe K. pneumoniae non sensibles "
+            "à l'ampicilline, à la ciprofloxacine, au TMP-SMX, à la ceftazidime, aux carbapénèmes "
+            "et autres, données de laboratoire du réseau AMRNet, 2020 à 2022."
+        ),
+        url_en=_CARSS_DATA + "09-enterobacterales-fig-1.csv",
+        frequency="periodic",
+        dashboard_en=_CARSS,
+        dashboard_fr=_CARSS_FR,
+        date_columns=("YEAR",),
+        notes_en=_CARSS_NOTE_EN,
+        notes_fr=_CARSS_NOTE_FR,
+    ),
+    Dataset(
+        id="amr_c_difficile_incidence",
+        topic="antimicrobial_resistance",
+        title_en="Clostridioides difficile infection rates, healthcare and community associated",
+        title_fr="Taux d'infections à Clostridioides difficile associées aux soins et communautaires",
+        description_en=(
+            "Yearly incidence of healthcare-associated C. difficile infection per 10,000 "
+            "patient-days and community-associated infection per 1,000 patient admissions, CNISP "
+            "hospitals, 2018 to 2022."
+        ),
+        description_fr=(
+            "Incidence annuelle des infections à C. difficile associées aux soins pour 10 000 "
+            "jours-patients et d'origine communautaire pour 1 000 admissions, hôpitaux du PCSIN, "
+            "2018 à 2022."
+        ),
+        url_en=_CARSS_DATA + "08-clostridioides-difficile-fig-1.csv",
+        frequency="periodic",
+        dashboard_en=_CARSS,
+        dashboard_fr=_CARSS_FR,
+        date_columns=("YEAR",),
+        notes_en="The two CDI_TYPE rows use different denominators, named in the label.",
+        notes_fr="Les deux valeurs de CDI_TYPE ont des dénominateurs différents (voir libellé).",
+    ),
+    Dataset(
+        id="amr_gonorrhoea_resistance",
+        topic="antimicrobial_resistance",
+        title_en="Antimicrobial resistance in Neisseria gonorrhoeae, percent of isolates",
+        title_fr="Résistance aux antimicrobiens de Neisseria gonorrhoeae, % des isolats",
+        description_en=(
+            "Percent of gonorrhoea isolates resistant to azithromycin, ciprofloxacin, penicillin "
+            "and tetracycline, with decreased susceptibility to cefixime and ceftriaxone, and "
+            "multidrug- or extensively drug-resistant, GASP-Canada, 2018 to 2022."
+        ),
+        description_fr=(
+            "Pourcentage des isolats de gonorrhée résistants à l'azithromycine, à la "
+            "ciprofloxacine, à la pénicilline et à la tétracycline, à sensibilité réduite à la "
+            "céfixime et à la ceftriaxone, et multirésistants ou ultrarésistants, PSAG-Canada, "
+            "2018 à 2022."
+        ),
+        url_en=_CARSS_DATA + "12-neisseria-gonorrhoeae-fig-2.csv",
+        frequency="periodic",
+        dashboard_en=_CARSS,
+        dashboard_fr=_CARSS_FR,
+        date_columns=("YEAR",),
+        notes_en=_CARSS_NOTE_EN,
+        notes_fr=_CARSS_NOTE_FR,
+    ),
+    Dataset(
+        id="amr_tuberculosis_drug_resistance",
+        topic="antimicrobial_resistance",
+        title_en="Drug-resistant tuberculosis: mono-, poly-, MDR and XDR, percent of isolates",
+        title_fr="Tuberculose pharmacorésistante : mono, poly, TB-MR et TB-UR, % des isolats",
+        description_en=(
+            "Percent of Mycobacterium tuberculosis isolates that are mono-resistant, "
+            "poly-resistant, multidrug-resistant (MDR-TB) or extensively drug-resistant "
+            "(XDR-TB), Canadian Tuberculosis Laboratory Surveillance System, 2018 to 2022."
+        ),
+        description_fr=(
+            "Pourcentage des isolats de Mycobacterium tuberculosis mono-résistants, "
+            "poly-résistants, multirésistants (TB-MR) ou ultrarésistants (TB-UR), Système "
+            "canadien de surveillance en laboratoire de la tuberculose, 2018 à 2022."
+        ),
+        url_en=_CARSS_DATA + "11-mycobacterium-tuberculosis-fig-3.csv",
+        frequency="periodic",
+        dashboard_en=_CARSS,
+        dashboard_fr=_CARSS_FR,
+        date_columns=("YEAR",),
+        notes_en=_CARSS_NOTE_EN,
+        notes_fr=_CARSS_NOTE_FR,
+    ),
+    Dataset(
+        id="amr_pneumococcal_resistance",
+        topic="antimicrobial_resistance",
+        title_en="Antimicrobial resistance in invasive Streptococcus pneumoniae, percent",
+        title_fr="Résistance aux antimicrobiens de Streptococcus pneumoniae invasif, en %",
+        description_en=(
+            "Percent of invasive Streptococcus pneumoniae isolates resistant to penicillin, "
+            "ceftriaxone, clarithromycin, clindamycin, doxycycline, levofloxacin, TMP-SMX and "
+            "chloramphenicol, all serotypes, eSTREP, 2018 to 2022."
+        ),
+        description_fr=(
+            "Pourcentage des isolats invasifs de Streptococcus pneumoniae résistants à la "
+            "pénicilline, à la ceftriaxone, à la clarithromycine, à la clindamycine, à la "
+            "doxycycline, à la lévofloxacine, au TMP-SMX et au chloramphénicol, tous sérotypes, "
+            "eSTREP, 2018 à 2022."
+        ),
+        url_en=_CARSS_DATA + "15-streptococcus-pneumoniae-fig-2.csv",
+        frequency="periodic",
+        dashboard_en=_CARSS,
+        dashboard_fr=_CARSS_FR,
+        date_columns=("YEAR",),
+        notes_en=_CARSS_NOTE_EN,
+        notes_fr=_CARSS_NOTE_FR,
     ),
 )
 
