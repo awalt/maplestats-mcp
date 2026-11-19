@@ -66,6 +66,10 @@ FILE_VERSION = 1
 # Durations kept per tool for its percentiles: recent enough to show a slow
 # upstream today, and at most a few hundred kilobytes for every tool together.
 LATENCY_SAMPLES = 500
+# Tools listed in /stats' `top_failing_tools`. The counters are already bounded
+# (registered tool names plus "other", codes from ERROR_CODES); this keeps the ranking
+# short enough to read, and every tool's codes stay in `by_error`.
+TOP_FAILING = 20
 
 # What the file holds: counting since, calls by (tool, ok), calls by day, failures by
 # (tool, code), calls by (client label, ok), and calls by day and client label.
@@ -441,6 +445,7 @@ class UsageStats:
             "by_day": _by_day(self.days),
             "by_tool": dict(ordered),
             "by_error": _by_error(self.errors, order=[name for name, _ in ordered]),
+            "top_failing_tools": _top_failing(per_tool, self.errors),
             "by_client": by_client,
             "by_day_client": _by_day_client(self.client_days),
             "latency_ms": latency,
@@ -516,6 +521,40 @@ def _by_error(
         out.setdefault(name, {})[code] = count
     names = order if order is not None else sorted(out)
     return {name: out[name] for name in names if name in out}
+
+
+def _top_failing(
+    per_tool: dict[str, dict[str, int]], errors: Counter[tuple[str, str]]
+) -> list[dict[str, Any]]:
+    """The TOP_FAILING tools with the most failures, each with its error rate and codes.
+
+    What MapleStats could not answer, most often first. A tool's failures counted
+    before codes were kept (an older file) show under "uncoded", as in `error_codes`.
+    """
+    codes: dict[str, Counter[str]] = {}
+    for (name, code), count in errors.items():
+        codes.setdefault(name, Counter())[code] += count
+    failing = sorted(
+        ((name, counts) for name, counts in per_tool.items() if counts["error"]),
+        key=lambda item: (-item[1]["error"], item[0]),
+    )[:TOP_FAILING]
+    out: list[dict[str, Any]] = []
+    for name, counts in failing:
+        calls = counts["ok"] + counts["error"]
+        by_code = codes.get(name, Counter())
+        tool_codes = dict(sorted(by_code.items(), key=lambda item: (-item[1], item[0])))
+        if counts["error"] > sum(by_code.values()):
+            tool_codes["uncoded"] = counts["error"] - sum(by_code.values())
+        out.append(
+            {
+                "tool": name,
+                "calls": calls,
+                "errors": counts["error"],
+                "error_rate": round(counts["error"] / calls, 3),
+                "codes": tool_codes,
+            }
+        )
+    return out
 
 
 def _by_day(days: dict[str, Counter[bool]]) -> dict[str, dict[str, int]]:
