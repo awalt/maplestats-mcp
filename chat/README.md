@@ -63,6 +63,22 @@ status, sent before any stream starts. The Anthropic backend streams the model c
 finished message exactly as before. The `openai` backend reports each tool call but
 not the text. `POST /api/chat` stays for scripts and tests.
 
+## When StatCan refuses automated requests
+
+Since November 2026 Statistics Canada answers some automated requests with a check only
+a person in a browser can pass (the MCP server never tries to get past it). The server's
+public `/stats` lists the StatCan path groups that answered with it in the last 15 minutes
+(`upstreams.challenged_paths`). While it lists any, the page shows a short notice in English
+and French: StatCan's data service is temporarily refusing automated requests, so some
+answers may be unavailable or come from other sources.
+
+The page asks `GET /api/status` on load and every minute; it answers
+`{"upstream_blocked": true|false}`. The chat service reads `/stats` (the MCP server's origin,
+or `CHAT_MCP_STATS_URL`) at most once a minute, for at most 3 seconds and 2 MB, and a failed
+read means no notice: the question routes never call it, so a slow or dead data server cannot
+hold an answer up. The notice shows only once the MCP server reports `challenged_paths`; an
+older server has no such field and the page stays as it was.
+
 ## Choose the model
 
 Set three environment variables. Nothing else changes.

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import re
 
+from maplestats_mcp.shared.breaker import BREAKER
 from maplestats_mcp.shared.errors import UpstreamError, UpstreamUnavailable
 
 # Exit status for a run that was cut short by an outage: not a failure of ours, but not a
 # pass either (sysexits.h's EX_TEMPFAIL). smoke.yml retries a non-zero run once.
 SKIPPED_EXIT = 75
 _skipped: list[str] = []
+# The upstream hosts the skipped outages came from, for scripts/check_skipped_hosts.py.
+_skipped_hosts: set[str] = set()
 
 
 def is_upstream_outage(exc: BaseException) -> bool:
@@ -23,6 +26,46 @@ def is_upstream_outage(exc: BaseException) -> bool:
     return isinstance(exc, UpstreamError) and re.search(r"HTTP 5\d\d", str(exc)) is not None
 
 
+def failing_hosts(exc: BaseException) -> list[str]:
+    """The upstream hosts behind an outage, so the weekly run can tell one down source from a
+    whole host that went dark (StatCan's www150 answered every automated client with a
+    Cloudflare challenge on 2026-11-17 and eleven scripts skipped without a word of alarm).
+
+    The host an httpx error or a typed error names, from the error and its causes; failing
+    that, every host this process's circuit breaker counted an error for (timeouts, 5xx and
+    challenges all count there, even when the breaker did not open).
+    """
+    hosts: set[str] = set()
+    seen: list[BaseException] = []
+    item: BaseException | None = exc
+    while item is not None and item not in seen and len(seen) < 8:
+        seen.append(item)
+        try:
+            request = getattr(item, "request", None)
+        except RuntimeError:  # an httpx error raised without its request
+            request = None
+        host = request.url.host if request is not None else getattr(item, "host", "")
+        if isinstance(host, str) and host:
+            hosts.add(host)
+        item = item.__cause__ or item.__context__
+    if hosts:
+        return sorted(hosts)
+    counted = BREAKER.snapshot()["hosts"]
+    return sorted(host for host, entry in counted.items() if sum(entry["errors"].values()) > 0)
+
+
+def report_skipped_hosts(script: str, exc: BaseException | None = None) -> None:
+    """Print `SKIPHOST <host> <script>` for each host this run's skips came from.
+
+    smoke.yml greps these lines from the log into the job's skip file; the `skipped hosts`
+    job counts the scripts per host (scripts/check_skipped_hosts.py). `exc` is an outage
+    that ended the run outside skip_outage.
+    """
+    hosts = set(_skipped_hosts) | (set(failing_hosts(exc)) if exc is not None else set())
+    for host in sorted(hosts):
+        print(f"SKIPHOST {host} {script}")
+
+
 def skip_outage(source: str, exc: BaseException, *, rest_runs: bool = False) -> None:
     """Report an outage that stopped a smoke run, or raise anything else again.
 
@@ -32,6 +75,7 @@ def skip_outage(source: str, exc: BaseException, *, rest_runs: bool = False) -> 
     if not is_upstream_outage(exc):
         raise exc
     _skipped.append(source)
+    _skipped_hosts.update(failing_hosts(exc))
     rest = "the other checks still run" if rest_runs else "the remaining checks did not run"
     print(f"SKIP: {source} unavailable ({exc}); {rest}")
 
