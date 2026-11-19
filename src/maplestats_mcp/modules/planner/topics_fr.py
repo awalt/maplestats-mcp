@@ -260,6 +260,16 @@ FR: dict[str, str] = {
         "(chômage, chômage des jeunes, taux d'activité, taux d'emploi, heures travaillées, "
         "gains et salaire minimum en dollars PPA, part du revenu du travail)"
     ),
+    "find the IMF dataset id (query by words; IMF figures, not StatCan's)": (
+        "trouver l'identifiant du jeu de données du FMI (query par mots ; chiffres du FMI, "
+        "non de StatCan)"
+    ),
+    "Canada's series in that dataset, newest value of each": (
+        "les séries du Canada dans ce jeu de données, avec la dernière valeur de chacune"
+    ),
+    "IMF observations for one series key (last_n or start_period)": (
+        "observations du FMI pour une clé de série (last_n ou start_period)"
+    ),
     "Australia's figure from the ABS by indicator (cpi_inflation, "
     "trimmed_mean_inflation, unemployment_rate, gdp_quarterly_growth, ...), with "
     "the Canadian table to pair with": (

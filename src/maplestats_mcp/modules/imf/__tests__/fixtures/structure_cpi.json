@@ -1,0 +1,646 @@
+{
+ "data": {
+  "dataflows": [
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=IMF.STA:CPI(5.0.0)",
+      "type": "dataflow",
+      "rel": "self"
+     }
+    ],
+    "annotations": [],
+    "id": "CPI",
+    "name": "Consumer Price Index (CPI)",
+    "names": {
+     "en": "Consumer Price Index (CPI)"
+    },
+    "description": "The Consumer Price Index (CPI) dataset includes the national consumer price indexes by economy. In addition to the all items, headline index, detailed indexes by Division (e.g. Food and Non-alcoholic beverages, Clothing, etc.), their associated weights, and contributions to national annual inflation are published where available. In addition to the national CPIs, the CPI dataset includes the Harmonised Indices of Consumer Prices (HICPs) compiled by Eurostat for Europe. Consumer price indexes measure the relative changes over time in the prices of goods and services purchased by households, which households use directly, or indirectly, to satisfy their own needs and wants.",
+    "descriptions": {
+     "en": "The Consumer Price Index (CPI) dataset includes the national consumer price indexes by economy. In addition to the all items, headline index, detailed indexes by Division (e.g. Food and Non-alcoholic beverages, Clothing, etc.), their associated weights, and contributions to national annual inflation are published where available. In addition to the national CPIs, the CPI dataset includes the Harmonised Indices of Consumer Prices (HICPs) compiled by Eurostat for Europe. Consumer price indexes measure the relative changes over time in the prices of goods and services purchased by households, which households use directly, or indirectly, to satisfy their own needs and wants."
+    },
+    "version": "5.0.0",
+    "isFinal": true,
+    "agencyID": "IMF.STA",
+    "structure": "urn:sdmx:org.sdmx.infomodel.datastructure.DataStructure=IMF.STA:DSD_CPI(5.0.0)"
+   }
+  ],
+  "dataStructures": [
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.datastructure.DataStructure=IMF.STA:DSD_CPI(5.0.0)",
+      "type": "datastructure",
+      "rel": "self"
+     }
+    ],
+    "annotations": [
+     {
+      "id": "origin"
+     },
+     {
+      "id": "isFinal"
+     },
+     {
+      "id": "lastUpdatedAt"
+     }
+    ],
+    "id": "DSD_CPI",
+    "name": "Consumer Price Index (CPI)",
+    "names": {
+     "en": "Consumer Price Index (CPI)"
+    },
+    "version": "5.0.0",
+    "isFinal": true,
+    "agencyID": "IMF.STA",
+    "dataStructureComponents": {
+     "dimensionList": {
+      "id": "DimensionDescriptor",
+      "dimensions": [
+       {
+        "id": "COUNTRY",
+        "conceptIdentity": "urn:sdmx:org.sdmx.infomodel.conceptscheme.Concept=IMF:CS_MASTER_DATA(1.0.0).COUNTRY",
+        "position": 0,
+        "type": "Dimension",
+        "conceptRoles": []
+       },
+       {
+        "id": "INDEX_TYPE",
+        "conceptIdentity": "urn:sdmx:org.sdmx.infomodel.conceptscheme.Concept=IMF:CS_MASTER_DOMAIN(1.0.0).INDEX_TYPE",
+        "position": 1,
+        "type": "Dimension",
+        "conceptRoles": []
+       },
+       {
+        "id": "COICOP_1999",
+        "conceptIdentity": "urn:sdmx:org.sdmx.infomodel.conceptscheme.Concept=IMF:CS_MASTER_DOMAIN(1.0.0).COICOP_1999",
+        "position": 2,
+        "type": "Dimension",
+        "conceptRoles": []
+       },
+       {
+        "id": "TYPE_OF_TRANSFORMATION",
+        "conceptIdentity": "urn:sdmx:org.sdmx.infomodel.conceptscheme.Concept=IMF.STA:CS_CPI(5.0.0).TYPE_OF_TRANSFORMATION",
+        "position": 3,
+        "type": "Dimension",
+        "conceptRoles": []
+       },
+       {
+        "id": "FREQUENCY",
+        "conceptIdentity": "urn:sdmx:org.sdmx.infomodel.conceptscheme.Concept=IMF:CS_MASTER_SYSTEM(1.0.2).FREQ",
+        "position": 4,
+        "type": "Dimension",
+        "conceptRoles": [
+         "urn:sdmx:org.sdmx.infomodel.conceptscheme.Concept=SDMX:SDMX_CONCEPT_ROLES(1.0).FREQ"
+        ]
+       }
+      ],
+      "timeDimensions": [
+       {
+        "id": "TIME_PERIOD",
+        "conceptIdentity": "urn:sdmx:org.sdmx.infomodel.conceptscheme.Concept=IMF:CS_MASTER_SYSTEM(1.0.2).TIME_PERIOD",
+        "localRepresentation": {
+         "textFormat": {
+          "textType": "ObservationalTimePeriod"
+         }
+        },
+        "position": 5,
+        "type": "TimeDimension"
+       }
+      ]
+     }
+    }
+   }
+  ],
+  "conceptSchemes": [
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.conceptscheme.ConceptScheme=IMF:CS_MASTER_DOMAIN(1.0.0)",
+      "type": "conceptscheme",
+      "rel": "self"
+     }
+    ],
+    "annotations": [
+     {
+      "id": "origin"
+     },
+     {
+      "id": "isFinal"
+     },
+     {
+      "id": "lastUpdatedAt"
+     }
+    ],
+    "id": "CS_MASTER_DOMAIN",
+    "name": "Master Domain Concepts",
+    "names": {
+     "en": "Master Domain Concepts"
+    },
+    "description": "Standardized definitions for data elements specific to particular domains or subject areas. This includes concepts and attributes related to macroeconomics, finance, socio-demographics, and other specialized fields.",
+    "descriptions": {
+     "en": "Standardized definitions for data elements specific to particular domains or subject areas. This includes concepts and attributes related to macroeconomics, finance, socio-demographics, and other specialized fields."
+    },
+    "version": "1.0.0",
+    "isFinal": true,
+    "agencyID": "IMF",
+    "concepts": [
+     {
+      "id": "INDEX_TYPE",
+      "name": "Index type",
+      "names": {
+       "en": "Index type"
+      },
+      "description": "Type of index prices. ",
+      "descriptions": {
+       "en": "Type of index prices. "
+      },
+      "coreRepresentation": {
+       "enumeration": "urn:sdmx:org.sdmx.infomodel.codelist.Codelist=IMF:CL_INDEX_TYPE(2.6.0)"
+      }
+     },
+     {
+      "id": "COICOP_1999",
+      "name": "Expenditure Category",
+      "names": {
+       "en": "Expenditure Category"
+      },
+      "description": "The Classification of Individual Consumption According to Purpose (COICOP) 1999 is a standardized classification system developed by the United Nations Statistics Division to categorize household consumption expenditures by purpose. It includes 14 divisions, 47 groups, and 117 classes.",
+      "descriptions": {
+       "en": "The Classification of Individual Consumption According to Purpose (COICOP) 1999 is a standardized classification system developed by the United Nations Statistics Division to categorize household consumption expenditures by purpose. It includes 14 divisions, 47 groups, and 117 classes."
+      },
+      "coreRepresentation": {
+       "enumeration": "urn:sdmx:org.sdmx.infomodel.codelist.Codelist=IMF:CL_COICOP_1999(1.1.1)"
+      }
+     }
+    ],
+    "isPartial": false
+   },
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.conceptscheme.ConceptScheme=IMF:CS_MASTER_SYSTEM(1.0.2)",
+      "type": "conceptscheme",
+      "rel": "self"
+     }
+    ],
+    "annotations": [
+     {
+      "id": "dataEngineSettings"
+     },
+     {
+      "id": "origin"
+     },
+     {
+      "id": "isFinal"
+     },
+     {
+      "id": "lastUpdatedAt"
+     }
+    ],
+    "id": "CS_MASTER_SYSTEM",
+    "name": "CS_MASTER_SYSTEM",
+    "names": {
+     "en": "CS_MASTER_SYSTEM"
+    },
+    "version": "1.0.2",
+    "isFinal": true,
+    "agencyID": "IMF",
+    "concepts": [
+     {
+      "id": "FREQ",
+      "name": "Frequency",
+      "names": {
+       "en": "Frequency",
+       "ar": "معدل التواتر",
+       "es": "Frecuencia",
+       "fr": "Fréquence",
+       "ja": "頻度",
+       "pt": "Frequência",
+       "ru": "Периодичность",
+       "zh": "频率"
+      },
+      "coreRepresentation": {
+       "enumeration": "urn:sdmx:org.sdmx.infomodel.codelist.Codelist=IMF:CL_FREQ(1.2.0)"
+      }
+     }
+    ],
+    "isPartial": false
+   },
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.conceptscheme.ConceptScheme=IMF:CS_MASTER_DATA(1.0.0)",
+      "type": "conceptscheme",
+      "rel": "self"
+     }
+    ],
+    "annotations": [
+     {
+      "id": "origin"
+     },
+     {
+      "id": "isFinal"
+     },
+     {
+      "id": "lastUpdatedAt"
+     }
+    ],
+    "id": "CS_MASTER_DATA",
+    "name": "Master Data Concepts",
+    "names": {
+     "en": "Master Data Concepts"
+    },
+    "description": "Standardized concepts and definitions for describing data elements across datasets, covering cross-cutting data attributes such as temporal information, country, unit of measure, transformation. ",
+    "descriptions": {
+     "en": "Standardized concepts and definitions for describing data elements across datasets, covering cross-cutting data attributes such as temporal information, country, unit of measure, transformation. "
+    },
+    "version": "1.0.0",
+    "isFinal": true,
+    "agencyID": "IMF",
+    "concepts": [
+     {
+      "annotations": [
+       {
+        "id": "indexed",
+        "type": "INDEX_CONCEPTS"
+       }
+      ],
+      "id": "COUNTRY",
+      "name": "Country",
+      "names": {
+       "en": "Country"
+      },
+      "description": "The country or region for which the data or statistics in a resource are collected or reported.",
+      "descriptions": {
+       "en": "The country or region for which the data or statistics in a resource are collected or reported."
+      },
+      "coreRepresentation": {
+       "enumeration": "urn:sdmx:org.sdmx.infomodel.codelist.Codelist=IMF:CL_COUNTRY(1.6.0)"
+      }
+     }
+    ],
+    "isPartial": false
+   },
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.conceptscheme.ConceptScheme=IMF.STA:CS_CPI(5.0.0)",
+      "type": "conceptscheme",
+      "rel": "self"
+     }
+    ],
+    "annotations": [
+     {
+      "id": "origin"
+     },
+     {
+      "id": "isFinal"
+     },
+     {
+      "id": "lastUpdatedAt"
+     }
+    ],
+    "id": "CS_CPI",
+    "name": "Consumer Price Index (CPI)",
+    "names": {
+     "en": "Consumer Price Index (CPI)"
+    },
+    "version": "5.0.0",
+    "isFinal": true,
+    "agencyID": "IMF.STA",
+    "concepts": [
+     {
+      "id": "TYPE_OF_TRANSFORMATION",
+      "name": "Type of Transformation",
+      "names": {
+       "en": "Type of Transformation"
+      },
+      "description": "Represents the specific calculations or computations applied to source data, along with the standard unit used to express the resulting new data elements or indicators. ",
+      "descriptions": {
+       "en": "Represents the specific calculations or computations applied to source data, along with the standard unit used to express the resulting new data elements or indicators. "
+      },
+      "coreRepresentation": {
+       "enumeration": "urn:sdmx:org.sdmx.infomodel.codelist.Codelist=IMF.STA:CL_CPI_TYPE_OF_TRANSFORMATION(5.0.0)"
+      }
+     }
+    ],
+    "isPartial": false
+   }
+  ],
+  "codelists": [
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.codelist.Codelist=IMF:CL_INDEX_TYPE(2.6.0)",
+      "type": "codelist",
+      "rel": "self"
+     }
+    ],
+    "annotations": [
+     {
+      "id": "origin"
+     },
+     {
+      "id": "isFinal"
+     },
+     {
+      "id": "lastUpdatedAt"
+     }
+    ],
+    "id": "CL_INDEX_TYPE",
+    "name": "Index type",
+    "names": {
+     "en": "Index type"
+    },
+    "description": "This codelist represents different types of price indices and related measures.",
+    "descriptions": {
+     "en": "This codelist represents different types of price indices and related measures."
+    },
+    "version": "2.6.0",
+    "isFinal": true,
+    "agencyID": "IMF",
+    "isPartial": false,
+    "codes": [
+     {
+      "id": "CPI",
+      "name": "Consumer price index (CPI)",
+      "names": {
+       "en": "Consumer price index (CPI)"
+      },
+      "description": "The Consumer Price Index (CPI) is an index of the prices of consumption goods and services, as compared to a certain reference period.",
+      "descriptions": {
+       "en": "The Consumer Price Index (CPI) is an index of the prices of consumption goods and services, as compared to a certain reference period."
+      }
+     }
+    ]
+   },
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.codelist.Codelist=IMF:CL_FREQ(1.2.0)",
+      "type": "codelist",
+      "rel": "self"
+     }
+    ],
+    "annotations": [
+     {
+      "id": "origin"
+     },
+     {
+      "id": "isFinal"
+     },
+     {
+      "id": "lastUpdatedAt"
+     }
+    ],
+    "id": "CL_FREQ",
+    "name": "Frequency",
+    "names": {
+     "en": "Frequency"
+    },
+    "description": "This code list provides a set of values indicating the \"frequency\" of the data (e.g. weekly, monthly, quarterly). The concept “frequency” may refer to various stages in the production process, e.g. data collection or data dissemination. For example, a time series could be disseminated at annual frequency but the underlying data are compiled monthly. The code list is applicable for all different uses of \"frequency\". This code list was formally adopted on 4 December 2013. More information about and supporting material for this code list and SDMX code lists in general (e.g. list of generic codes for expressing general concepts like \"Total\", \"Unknown\", etc.; syntaxes for the creation of further codes; general guidelines for the creation of SDMX code lists) can be found at this address: https://sdmx.org/?page_id=4345.",
+    "descriptions": {
+     "en": "This code list provides a set of values indicating the \"frequency\" of the data (e.g. weekly, monthly, quarterly). The concept “frequency” may refer to various stages in the production process, e.g. data collection or data dissemination. For example, a time series could be disseminated at annual frequency but the underlying data are compiled monthly. The code list is applicable for all different uses of \"frequency\". This code list was formally adopted on 4 December 2013. More information about and supporting material for this code list and SDMX code lists in general (e.g. list of generic codes for expressing general concepts like \"Total\", \"Unknown\", etc.; syntaxes for the creation of further codes; general guidelines for the creation of SDMX code lists) can be found at this address: https://sdmx.org/?page_id=4345."
+    },
+    "version": "1.2.0",
+    "isFinal": true,
+    "agencyID": "IMF",
+    "isPartial": false,
+    "codes": [
+     {
+      "id": "A",
+      "name": "Annual",
+      "names": {
+       "en": "Annual",
+       "fr": "Annuel"
+      },
+      "description": "To be used for data collected or disseminated every year.",
+      "descriptions": {
+       "en": "To be used for data collected or disseminated every year.",
+       "fr": "À utiliser pour les données recueillies ou diffusées chaque année."
+      }
+     },
+     {
+      "id": "M",
+      "name": "Monthly",
+      "names": {
+       "en": "Monthly",
+       "fr": "Mensuel"
+      },
+      "description": "To be used for data collected or disseminated every month.",
+      "descriptions": {
+       "en": "To be used for data collected or disseminated every month.",
+       "fr": "À utiliser pour les données recueillies ou diffusées chaque mois."
+      }
+     },
+     {
+      "id": "Q",
+      "name": "Quarterly",
+      "names": {
+       "en": "Quarterly",
+       "fr": "Trimestriel"
+      },
+      "description": "To be used for data collected or disseminated every quarter.",
+      "descriptions": {
+       "en": "To be used for data collected or disseminated every quarter.",
+       "fr": "À utiliser pour les données recueillies ou diffusées chaque trimestre."
+      }
+     }
+    ]
+   },
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.codelist.Codelist=IMF:CL_COICOP_1999(1.1.1)",
+      "type": "codelist",
+      "rel": "self"
+     }
+    ],
+    "annotations": [
+     {
+      "id": "origin"
+     },
+     {
+      "id": "isFinal"
+     },
+     {
+      "id": "lastUpdatedAt"
+     }
+    ],
+    "id": "CL_COICOP_1999",
+    "name": "COICOP 1999",
+    "names": {
+     "en": "COICOP 1999"
+    },
+    "description": "This codelist represents a standardized classification system developed by the United Nations Statistics Division to categorize household consumption expenditures by purpose. It includes 14 divisions, 47 groups, and 117 classes.",
+    "descriptions": {
+     "en": "This codelist represents a standardized classification system developed by the United Nations Statistics Division to categorize household consumption expenditures by purpose. It includes 14 divisions, 47 groups, and 117 classes."
+    },
+    "version": "1.1.1",
+    "isFinal": true,
+    "agencyID": "IMF",
+    "isPartial": false,
+    "codes": [
+     {
+      "id": "_T",
+      "name": "All Items",
+      "names": {
+       "en": "All Items"
+      },
+      "description": "All items in the context of the consumer price index indicates that the index includes prices for all items included in the consumer price index basket.  This includes prices related to food, beverages, clothing, housing, health, transport, communications, recreation, education, restaurants and hotels and other miscellanoues goods and services.",
+      "descriptions": {
+       "en": "All items in the context of the consumer price index indicates that the index includes prices for all items included in the consumer price index basket.  This includes prices related to food, beverages, clothing, housing, health, transport, communications, recreation, education, restaurants and hotels and other miscellanoues goods and services."
+      }
+     },
+     {
+      "id": "CP01",
+      "name": "Food and non-alcoholic beverages",
+      "names": {
+       "en": "Food and non-alcoholic beverages"
+      },
+      "description": "Food and non-alcoholic beverages consumer price index is produced using prices related to food items and non-alcoholic beverages such as fresh produce, packaged foods, and beverages excluding alcoholic drinks, aggregated by their respective consumer expenditure weights.",
+      "descriptions": {
+       "en": "Food and non-alcoholic beverages consumer price index is produced using prices related to food items and non-alcoholic beverages such as fresh produce, packaged foods, and beverages excluding alcoholic drinks, aggregated by their respective consumer expenditure weights."
+      }
+     },
+     {
+      "id": "CP04",
+      "name": "Housing, water, electricity, gas and other fuels",
+      "names": {
+       "en": "Housing, water, electricity, gas and other fuels"
+      },
+      "description": "Housing, water, electricity, gas and other fuels consumer price index is produced using prices related to items such as housing-related services, including rent or mortgage payments, utilities such as water, electricity, gas, and other fuels, aggregated by their respective consumer expenditure weights.",
+      "descriptions": {
+       "en": "Housing, water, electricity, gas and other fuels consumer price index is produced using prices related to items such as housing-related services, including rent or mortgage payments, utilities such as water, electricity, gas, and other fuels, aggregated by their respective consumer expenditure weights."
+      }
+     }
+    ]
+   },
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.codelist.Codelist=IMF.STA:CL_CPI_TYPE_OF_TRANSFORMATION(5.0.0)",
+      "type": "codelist",
+      "rel": "self"
+     }
+    ],
+    "annotations": [
+     {
+      "id": "origin"
+     },
+     {
+      "id": "isFinal"
+     },
+     {
+      "id": "lastUpdatedAt"
+     }
+    ],
+    "id": "CL_CPI_TYPE_OF_TRANSFORMATION",
+    "name": "Consumer Price Index (CPI) Type of Transformation",
+    "names": {
+     "en": "Consumer Price Index (CPI) Type of Transformation"
+    },
+    "version": "5.0.0",
+    "isFinal": true,
+    "agencyID": "IMF.STA",
+    "isPartial": false,
+    "codes": [
+     {
+      "id": "IX",
+      "name": "Index",
+      "names": {
+       "en": "Index"
+      },
+      "description": "A statistical measure that expresses the relative change in a variable in the current period compared to the index reference period.",
+      "descriptions": {
+       "en": "A statistical measure that expresses the relative change in a variable in the current period compared to the index reference period."
+      }
+     },
+     {
+      "id": "POP_PCH_PA_PT",
+      "name": "Period average, Period-over-period percent change",
+      "names": {
+       "en": "Period average, Period-over-period percent change"
+      },
+      "description": "Average percentage change of the data series over a defined period. A ratio expressed as a fraction of 100.",
+      "descriptions": {
+       "en": "Average percentage change of the data series over a defined period. A ratio expressed as a fraction of 100."
+      }
+     }
+    ]
+   },
+   {
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.codelist.Codelist=IMF:CL_COUNTRY(1.6.0)",
+      "type": "codelist",
+      "rel": "self"
+     }
+    ],
+    "annotations": [
+     {
+      "id": "origin"
+     },
+     {
+      "id": "isFinal"
+     },
+     {
+      "id": "lastUpdatedAt"
+     }
+    ],
+    "id": "CL_COUNTRY",
+    "name": "Country",
+    "names": {
+     "en": "Country"
+    },
+    "description": "This codelist identifies the geographical, economic, or aggregate entities for which statistical data is collected and shared. It includes countries, territories (not necessarily recognized as states under international law), economic entities, and UN and IMF country groups used for statistical calculations.",
+    "descriptions": {
+     "en": "This codelist identifies the geographical, economic, or aggregate entities for which statistical data is collected and shared. It includes countries, territories (not necessarily recognized as states under international law), economic entities, and UN and IMF country groups used for statistical calculations."
+    },
+    "version": "1.6.0",
+    "isFinal": true,
+    "agencyID": "IMF",
+    "isPartial": false,
+    "codes": [
+     {
+      "id": "CAN",
+      "name": "Canada",
+      "names": {
+       "en": "Canada",
+       "fr": "Canada"
+      }
+     },
+     {
+      "id": "GBR",
+      "name": "United Kingdom",
+      "names": {
+       "en": "United Kingdom",
+       "fr": "Royaume-Uni"
+      }
+     },
+     {
+      "id": "USA",
+      "name": "United States",
+      "names": {
+       "en": "United States",
+       "fr": "États-Unis"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ "meta": {
+  "schema": "https://github.com/sdmx-twg/sdmx-json/blob/v1.0/structure-message/tools/schemas/1.0/sdmx-json-structure-schema.json",
+  "id": "IDREF4874",
+  "test": false,
+  "prepared": "2026-11-19T04:14:55.323811407Z",
+  "contentLanguages": [
+   "en"
+  ],
+  "sender": {
+   "id": "IMF"
+  }
+ }
+}
