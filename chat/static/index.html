@@ -115,6 +115,13 @@
     background: var(--accent); color: #fff; cursor: pointer;
   }
   .send:disabled { opacity: .5; cursor: wait; }
+  .notice {
+    margin: 0 0 14px; padding: 8px 12px; border: 1px solid var(--line);
+    border-left: 3px solid var(--c4); border-radius: 6px; background: var(--soft);
+    font-size: .85rem;
+  }
+  .notice[hidden] { display: none; }
+  .notice p { margin: 2px 0; }
   .note { max-width: 860px; margin: 6px auto 0; color: var(--muted); font-size: .8rem; }
 </style>
 <!-- Page views, as on the website. The path is fixed so the ?q= question a link
@@ -131,6 +138,13 @@
   <p class="sub">Ask about Canadian open data. Claude Haiku, a small AI model, looks the
     answer up live through the MapleStats MCP server. Under each answer: a chart and a
     table of the data the server returned, and its sources.</p>
+  <div class="notice" id="upstream-notice" role="status" hidden>
+    <p>StatCan's data service is temporarily refusing automated requests; some answers may
+      be unavailable or come from other sources.</p>
+    <p lang="fr">Le service de données de Statistique Canada refuse temporairement les
+      requêtes automatisées&nbsp;; certaines réponses peuvent être indisponibles ou provenir
+      d'autres sources.</p>
+  </div>
   <details class="disclaimer" open>
     <summary>Before you ask</summary>
     <ul>
@@ -572,6 +586,21 @@
     try { showTurn(turn); return true; } catch (e) { return false; }
   });
   save();
+
+  // 6. Upstream notice ----
+  // The chat service says whether the data server has seen StatCan refuse automated
+  // requests lately (it reads that once a minute). A failed check leaves the notice as it
+  // was, and a question never waits for it.
+  const notice = document.getElementById("upstream-notice");
+  async function checkUpstream() {
+    try {
+      const res = await fetch("api/status", { cache: "no-store" });
+      const data = res.ok ? await res.json() : {};
+      notice.hidden = data.upstream_blocked !== true;
+    } catch (e) { /* the notice stays as it was */ }
+  }
+  checkUpstream();
+  setInterval(checkUpstream, 60000);
 
   // The website's example questions link here as ?q=...; ask it on arrival.
   // Every question is a billed model call, so only a link from the website itself

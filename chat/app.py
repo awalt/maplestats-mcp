@@ -23,6 +23,7 @@ import logging
 import os
 import re
 import time
+import urllib.request
 from collections import deque
 from collections.abc import AsyncIterator, Callable, Mapping
 from datetime import UTC, datetime
@@ -949,6 +950,92 @@ async def stats(request: Request) -> JSONResponse:
     )
 
 
+# 4. Upstream notice ----
+
+# The MCP server's public /stats lists the StatCan path groups that answered with StatCan's
+# bot check lately (upstreams.challenged_paths: a Cloudflare check only a person in a browser
+# can pass, which the server never tries to get past). While it lists any, the page shows a
+# short notice. The page polls /api/status; this reads /stats at most once a minute and never
+# lets a slow or missing answer hold anything up: a failed read means no notice, and the chat
+# routes above never call it.
+
+
+def stats_url(mcp_url: str) -> str:
+    """The /stats address of the MCP server that `mcp_url` (its /mcp endpoint) belongs to."""
+    return urlunsplit(urlsplit(mcp_url)._replace(path="/stats", query="", fragment=""))
+
+
+MCP_STATS_URL = os.environ.get("CHAT_MCP_STATS_URL") or stats_url(MCP_URL)
+STATUS_TTL_SECONDS = 60.0
+STATUS_TIMEOUT_SECONDS = 3.0
+# /stats is a few hundred KB at most; a longer answer is not read.
+STATUS_MAX_BYTES = 2_000_000
+_clock = time.monotonic
+_status: dict[str, Any] = {"at": None, "blocked": False}
+_status_lock = asyncio.Lock()
+
+
+def read_stats() -> Any:
+    """GET the MCP server's /stats and parse it. Blocking: run it in a thread. Raises on any failure."""
+    if not MCP_STATS_URL.startswith(("https://", "http://")):
+        raise ValueError("CHAT_MCP_STATS_URL must be an http(s) URL")
+    request = urllib.request.Request(
+        MCP_STATS_URL, headers={"user-agent": "maplestats-chat"}
+    )
+    # The URL is this deployment's own setting, never the visitor's.
+    with urllib.request.urlopen(request, timeout=STATUS_TIMEOUT_SECONDS) as response:
+        body = response.read(STATUS_MAX_BYTES + 1)
+    if len(body) > STATUS_MAX_BYTES:
+        raise ValueError("the stats answer is too large")
+    return json.loads(body)
+
+
+async def fetch_upstreams() -> dict[str, Any] | None:
+    """The `upstreams` part of the MCP server's /stats, or None when it has none."""
+    stats = await asyncio.to_thread(read_stats)
+    upstreams = stats.get("upstreams") if isinstance(stats, dict) else None
+    return upstreams if isinstance(upstreams, dict) else None
+
+
+def statcan_blocked(upstreams: Any) -> bool:
+    """Whether /stats lists a StatCan path that answered with the bot check lately."""
+    paths = upstreams.get("challenged_paths") if isinstance(upstreams, dict) else None
+    return isinstance(paths, list) and len(paths) > 0
+
+
+async def upstream_blocked() -> bool:
+    """The notice's state, read from /stats at most every STATUS_TTL_SECONDS; False on failure."""
+
+    def fresh() -> bool:
+        return (
+            _status["at"] is not None and _clock() - _status["at"] < STATUS_TTL_SECONDS
+        )
+
+    if fresh():
+        return bool(_status["blocked"])
+    async with _status_lock:
+        # Another request may have read it while this one waited for the lock.
+        if fresh():
+            return bool(_status["blocked"])
+        try:
+            blocked = statcan_blocked(await fetch_upstreams())
+        except Exception as error:  # noqa: BLE001 - a notice must never become an error
+            logger.info(
+                "The MCP server's status was not read (%s)", type(error).__name__
+            )
+            blocked = False
+        _status.update(at=_clock(), blocked=blocked)
+        return blocked
+
+
+async def api_status(request: Request) -> JSONResponse:
+    """What the page's notice asks: has the data server seen StatCan refuse automated requests?"""
+    return JSONResponse(
+        {"upstream_blocked": await upstream_blocked()},
+        headers={"cache-control": "no-store"},
+    )
+
+
 async def _save_periodically() -> None:
     while True:
         await asyncio.sleep(usage.SAVE_SECONDS)
@@ -1069,6 +1156,7 @@ app = Starlette(
         Route("/health", health),
         Route("/api/chat", chat, methods=["POST"]),
         Route("/api/chat/stream", chat_stream, methods=["POST"]),
+        Route("/api/status", api_status),
         *([Route("/stats", stats)] if USAGE_STATS else []),
     ],
     middleware=[

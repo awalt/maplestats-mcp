@@ -72,6 +72,9 @@ jobs:
           skipped() {
             echo "::warning::${{ matrix.script }} SKIPPED: an upstream source was unavailable"
             { echo "### SKIPPED: \`${{ matrix.script }}\`"; echo '```'; grep -E "^SKIP" smoke.log | head -n 20; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            # The hosts behind the outage (SKIPHOST lines), for the skipped-hosts job below.
+            mkdir -p skipped
+            grep -E "^SKIPHOST " smoke.log | awk '{print $2}' | sort -u > "skipped/${{ matrix.script }}.txt" || true
             exit 0
           }
           run && exit 0 || status=$?
@@ -82,6 +85,14 @@ jobs:
           [ "$status" -eq 75 ] && skipped
           exit "$status"
         shell: bash -o pipefail {0}
+      - name: Keep the hosts this script skipped for
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: smoke-skips-${{ matrix.script }}
+          path: skipped/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Summarize failure
         if: failure()
         run: |
@@ -132,12 +143,70 @@ jobs:
             echo "Rebuild the key that drifted, read the diff, and re-grade the runs it affects."
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # A skip never fails a run by itself, so one source that is down all day stays a warning.
+  # But a host that took many scripts down (StatCan's www150 answered every automated client
+  # with a Cloudflare challenge on 2026-11-17 and a dozen scripts skipped without an alarm), or
+  # the same host two runs in a row, is not one source's bad day: this job fails, and the alert
+  # job below names the host and its scripts in the smoke-failure issue.
+  # scripts/check_skipped_hosts.py has the thresholds.
+  skipped-hosts:
+    name: skipped hosts
+    needs: smoke
+    if: ${{ always() && needs.smoke.result != 'cancelled' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        continue-on-error: true
+        with:
+          pattern: smoke-skips-*
+          path: skipped
+          merge-multiple: true
+      # The latest earlier run that kept its skipped hosts (the first runs after this job
+      # was added have none, so nothing counts as a repeat then).
+      - name: Fetch the previous run's skipped hosts
+        run: |
+          mkdir -p previous
+          for id in $(gh run list --workflow smoke.yml --status completed --limit 5 \
+            --json databaseId --jq '.[].databaseId'); do
+            gh run download "$id" --name smoke-skipped-hosts --dir previous 2>/dev/null && break
+          done
+          ls previous
+      - name: Count the scripts skipped for each host
+        run: |
+          python3 scripts/check_skipped_hosts.py --skips skipped \
+            --previous previous/skipped-hosts.json --out report | tee -a "$GITHUB_STEP_SUMMARY"
+        shell: bash -o pipefail {0}
+      - name: Keep this run's skipped hosts for the next run
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: smoke-skipped-hosts
+          path: report/skipped-hosts.json
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Keep the report for the alert
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: smoke-skip-report
+          path: report/skip-report.md
+          if-no-files-found: ignore
+          retention-days: 7
+
   # Opens one issue per breakage instead of relying on GitHub's default
   # email, which only reaches whoever last edited the cron line. Later
   # failing runs comment on the open issue rather than opening new ones.
   alert:
-    needs: [smoke, answer-keys]
-    if: ${{ always() && (needs.smoke.result == 'failure' || needs.answer-keys.result == 'failure') }}
+    needs: [smoke, answer-keys, skipped-hosts]
+    if: ${{ always() && (needs.smoke.result == 'failure' || needs.answer-keys.result == 'failure' || needs.skipped-hosts.result == 'failure') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -148,19 +217,36 @@ jobs:
       GH_REPO: ${{ github.repository }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        continue-on-error: true
+        with:
+          name: smoke-skip-report
+          path: report
       - name: Open or update the smoke-failure issue
         run: |
-          # Failed matrix jobs are named after their script.
+          # Failed matrix jobs are named after their script; the skipped-hosts job is not one.
           failed=$(gh api --paginate "repos/$GH_REPO/actions/runs/${{ github.run_id }}/jobs" \
-            --jq '.jobs[] | select(.conclusion == "failure") | .name' | sort -u)
-          body=$(printf 'Live smoke run failed: %s\n\nFailing scripts:\n%s\n\nEach job summary shows the last 40 log lines.\n' \
-            "$RUN_URL" "$(echo "$failed" | sed 's/^/- `/; s/$/`/')")
+            --jq '.jobs[] | select(.conclusion == "failure" and .name != "skipped hosts") | .name' | sort -u)
+          body=$(printf 'Live smoke run failed: %s\n' "$RUN_URL")
+          title="Live smoke tests failing ($(date -u +%Y-%m-%d))"
+          if [ -n "$failed" ]; then
+            body+=$(printf '\nFailing scripts:\n%s\n\nEach job summary shows the last 40 log lines.\n' \
+              "$(echo "$failed" | sed 's/^/- `/; s/$/`/')")
+          fi
+          # Failed only because of the skipped-hosts job: no script failed, a host went dark.
+          skips=$(gh api "repos/$GH_REPO/actions/runs/${{ github.run_id }}/jobs" \
+            --jq '[.jobs[] | select(.conclusion == "failure" and .name == "skipped hosts")] | length')
+          if [ "$skips" -gt 0 ] && [ -f report/skip-report.md ]; then
+            body+=$(printf '\n%s\n' "$(cat report/skip-report.md)")
+            if [ -z "$failed" ]; then
+              title="Live smoke tests: an upstream host took scripts down ($(date -u +%Y-%m-%d))"
+            fi
+          fi
           gh label create smoke-failure --color B60205 \
             --description "Scheduled live smoke test found a broken upstream" 2>/dev/null || true
           issue=$(gh issue list --label smoke-failure --state open --limit 1 --json number --jq '.[0].number // empty')
           if [ -n "$issue" ]; then
             gh issue comment "$issue" --body "$body"
           else
-            gh issue create --label smoke-failure \
-              --title "Live smoke tests failing ($(date -u +%Y-%m-%d))" --body "$body"
+            gh issue create --label smoke-failure --title "$title" --body "$body"
           fi
