@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from urllib.parse import urlsplit
 
 import httpx
 
 from maplestats_mcp.modules.statcan.access import constants
 from maplestats_mcp.modules.statcan.access.schemas import AccessReport, EndpointStatus
 from maplestats_mcp.modules.statcan.lang import say
+from maplestats_mcp.shared import path_health
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import CloudflareChallenge, TooLarge
@@ -66,6 +68,18 @@ async def _check(
     )
 
 
+def feed_path_health(endpoints: list[EndpointStatus]) -> None:
+    """Tell shared/path_health what a fresh check found, so plan_query and search_tools mark
+    the tools on a blocked path. Only a report just made: a cached one would renew its age."""
+    for endpoint in endpoints:
+        url = urlsplit(endpoint.url)
+        host, path = url.hostname or "", url.path
+        if endpoint.status == "blocked":
+            path_health.record_challenge(host, path)
+        elif endpoint.status == "answers":
+            path_health.record_answer(host, path)
+
+
 async def check_all(lang: str = "en") -> list[EndpointStatus]:
     """Every endpoint's status now, a few requests at a time."""
     gate = asyncio.Semaphore(constants.CONCURRENCY)
@@ -80,7 +94,9 @@ async def check_all(lang: str = "en") -> list[EndpointStatus]:
 
 async def check_access(lang: str = "en") -> AccessReport:
     async def fetch() -> list[EndpointStatus]:
-        return await check_all(lang)
+        checked = await check_all(lang)
+        feed_path_health(checked)
+        return checked
 
     endpoints, was_cached = await cached_fetch(
         f"statcan-access:{lang}", constants.CACHE_TTL_SECONDS, fetch

@@ -16,7 +16,7 @@ os.environ.setdefault("MAPLE_TRANSPORT", "stdio")
 # set the folder to their own tmp_path).
 os.environ.setdefault("MAPLE_CENSUS_CACHE_DIR", "off")
 
-from maplestats_mcp.shared import cache, file_download
+from maplestats_mcp.shared import cache, file_download, path_health
 from maplestats_mcp.shared.breaker import BREAKER
 from maplestats_mcp.shared.rate_limiter import TokenBucket
 
@@ -115,8 +115,13 @@ def _empty_census_values() -> None:
 
 @pytest.fixture(autouse=True)
 def _closed_breakers() -> None:
-    """Breaker state is process-wide; a test must not inherit another test's open host."""
+    """Breaker state is process-wide; a test must not inherit another test's open host.
+
+    The same for the StatCan paths shared/path_health.py has seen answer with the bot check,
+    which plan_query and search_tools read.
+    """
     BREAKER.reset()
+    path_health.reset()
 
 
 @pytest.fixture(autouse=True)

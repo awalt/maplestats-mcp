@@ -21,14 +21,16 @@ class StepOut(BaseModel):
 
 
 class BlockedStep(StepOut):
-    """A step whose tool needs a host that is blocking automated clients right now.
+    """A step whose tool has no other route while its StatCan path answers with the bot check.
 
-    A Cloudflare challenge (StatCan's www150, from 2026-11-17) takes down every tool on that
-    host. The step is kept, listed after the steps that work, with `blocked: true`, a short
-    note as its purpose, and no `call`: do not call it. Only a blocked step has the field,
-    so a plan with nothing blocked is exactly what it was before (the fields are declared
-    `SerializeAsAny[StepOut]` below so the subclass's field is written; the schema stays
-    StepOut's).
+    StatCan answers scripts on some paths with a Cloudflare check only a person in a browser
+    can pass (SDMX, the CIMT trade API, the catalogue pages; WDS still answers). When this
+    server has met that check on the tool's path in the last 15 minutes (shared/path_health.py),
+    the step is kept, listed after the steps that work, with `blocked: true`, a short note as
+    its purpose, and no `call`: do not call it, use the working route listed before it. Only a
+    blocked step has the field, so a plan with nothing blocked is exactly what it always was
+    (the step lists are declared `SerializeAsAny[StepOut]` below so the subclass's field is
+    written; the schema stays StepOut's).
     """
 
     blocked: Literal[True] = True

@@ -317,6 +317,14 @@ it, `wds_get_full_table_download` returns a Python script that rebuilds a table
 through it, and a result whose refresh is blocked comes back from the last good
 copy, labelled with its date. `statcan_check_access` says which services answer
 now; details in [docs/findings/statcan-captcha-2026-11.md](docs/findings/statcan-captcha-2026-11.md).
+`plan_query` and `search_tools` use what the server saw: a tool with no other
+route on a path that answered with the check in the last 15 minutes (the CIMT
+tools, and the StatCan reference and PUMF catalogue tools) is marked
+`blocked: true`, listed after the ones that work, and `plan_query` puts the
+working route first (the same data through WDS, labelled). They send no request
+and probe nothing: the paths are noted from real calls and from
+`statcan_check_access`, and forgotten after 15 minutes or when the path answers.
+Nothing is marked while no path has been seen blocked.
 
 Not covered: CAPP's Statistics Handbook, Petrinex and Payments Canada were
 not built, because their terms or download hosts do not permit automated
