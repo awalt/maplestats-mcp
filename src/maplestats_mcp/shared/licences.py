@@ -347,6 +347,9 @@ SOURCE_LICENCES: dict[str, str] = {
     # CRTC Communications Market Reports workbooks (telecom_prices), open.canada.ca.
     "crtc-cmr": OGL_CANADA,
     "cra-charities": OGL_CANADA,
+    # CRA T1 and FSA tax statistics on open.canada.ca: license_id ca-ogl-lgo on
+    # every edition read (package_show, 2026-11-19).
+    "cra-tax-stats": OGL_CANADA,
     "cwfis": OGL_CANADA,
     "cwfis-sitrep": OGL_CANADA,
     "earthquakes-canada": OGL_CANADA,

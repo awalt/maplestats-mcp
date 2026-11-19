@@ -825,6 +825,8 @@ Sources, by tool-name prefix:
   ircc_backlog_ (backlog percentages, actual and projected),
   jobbank_ (Job Bank wages by occupation and region, ESDC),
   cra_digital_economy_registry_, cra_charities_ (registered charities, directors),
+  cra_tax_stats_ (T1 income tax statistics by year, province, income class, age;
+  by postal FSA),
   gc_infobase_ (federal spending, FTEs), disclosure_ (proactive disclosure:
   contracts over $10,000, grants and contributions, ministers' and senior
   officials' travel and hospitality; search and totals),

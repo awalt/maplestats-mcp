@@ -3428,6 +3428,19 @@ TAXATION = Topic(
             ),
         ),
         PlanStep(
+            "cra_tax_stats_get_t1_series",
+            "a T1 table line item over tax years 2018-2024; by FSA: cra_tax_stats_get_fsa_table",
+            (
+                "t1 final",
+                "tax filer",
+                "tax filers",
+                "income tax statistics",
+                "forward sortation",
+                "statistiques finales t1",
+                "region de tri",
+            ),
+        ),
+        PlanStep(
             "cra_charities_search",
             "find a registered charity by name, city or business number, then "
             "cra_charities_get_charity or cra_charities_get_directors",

@@ -1440,6 +1440,9 @@ FR: dict[str, str] = {
         "statistiques de l'ARC : portal='federal', fq='organization:cra-arc', query='T1 final "
         "statistics' (désormais intitulées Individual Income Tax Return Statistics)"
     ),
+    "a T1 table line item over tax years 2018-2024; by FSA: cra_tax_stats_get_fsa_table": (
+        "un poste (item) d'une table T1 sur 2018-2024; par RTA : cra_tax_stats_get_fsa_table"
+    ),
     "find a registered charity by name, city or business number, then "
     "cra_charities_get_charity or cra_charities_get_directors": (
         "trouver un organisme de bienfaisance enregistré par nom, ville ou numéro "

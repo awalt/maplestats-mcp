@@ -467,6 +467,14 @@ SOURCES: dict[str, Source] = {
         "ARC : économie numérique",
         domain="business",
     ),
+    "cra_tax_stats": Source(
+        "CRA individual income tax statistics",
+        "Statistiques de l'impôt des particuliers de l'ARC",
+        "national",
+        "CRA tax statistics",
+        "ARC : statistiques fiscales",
+        domain="statistics",
+    ),
     "crea": Source(
         "The Canadian Real Estate Association: MLS® Home Price Index links",
         "L'Association canadienne de l'immeuble : liens vers l'IPP MLS®",
