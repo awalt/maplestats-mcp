@@ -21,7 +21,7 @@
   (`DSD_NAMAIN1@DF_QNA_EXPENDITURE_GROWTH_OECD`, key
   `Q.Y.CAN.S1.S1.B1GQ._Z._Z._Z.PC.L.G1.T0102`), the 13-dimension layout the
   dataflow has; a shorter key for `DF_QNA` answered 404 in the research that
-  prompted this. The OECD's SDMX API answered a Cloudflare bot challenge on
-  2026-11-17, so the key was taken from DBnomics' copy of the dataflow and has not
-  been run against the OECD; the OECD tools stay unavailable until the OECD lifts
-  the challenge (MapleStats does not try to pass it).
+  prompted this. The OECD's SDMX API answered a Cloudflare bot challenge from
+  2026-11-17 for about a day (MapleStats does not try to pass one) and was back by
+  2026-11-19, with Canada's October unemployment rate at 6.7; the key was taken from
+  DBnomics' copy of the dataflow and has not been run against the OECD yet.

@@ -32,15 +32,21 @@ Status on 2026-11-17: at about 21:27 UTC sdmx.oecd.org answered two requests, th
 dataflow list and one data query that the same address had served as SDMX-CSV
 about twenty minutes earlier, with Cloudflare's managed challenge (HTTP 403,
 `Cf-Mitigated: challenge`, a "Just a moment..." page). This client does not try
-to pass it, so every call here fails with the typed Cloudflare error until the
-OECD lifts it; it is recorded as blocked in docs/ROADMAP.md. The quarterly GDP
+to pass it, so every call here failed with the typed Cloudflare error while it
+lasted. The challenge was gone by 2026-11-19 04:53 UTC, when the same data query
+answered HTTP 200 as SDMX-CSV again (Canada's seasonally adjusted unemployment
+rate, DF_IALFS_UNE_M: 6.7 for 2026-10 and 6.5 for 2026-09; Statistics Canada's
+Labour Force Survey has 6.7 for October). It lasted somewhere between a few hours
+and a day, and an address can be challenged again. The quarterly GDP
 example in `oecd_get_data` (dataflow DSD_NAMAIN1@DF_QNA_EXPENDITURE_GROWTH_OECD,
 13 dimensions: FREQ.ADJUSTMENT.REF_AREA.SECTOR.COUNTERPART_SECTOR.TRANSACTION.
 INSTR_ASSET.ACTIVITY.EXPENDITURE.UNIT_MEASURE.PRICE_BASE.TRANSFORMATION.
 TABLE_IDENTIFIER) was therefore read from DBnomics' copy of that dataflow, not
 from the OECD: its Canada series Q.Y.CAN.S1.S1.B1GQ._Z._Z._Z.PC.L.G1.T0102 (real
 GDP, quarter on quarter, calendar and seasonally adjusted) ended at 2026-Q1 in the
-copy indexed on 2026-06-16. The key was not run against sdmx.oecd.org.
+copy indexed on 2026-06-16. The key has still not been run against sdmx.oecd.org
+(the request budget was spent when the OECD came back), so scripts/smoke_test_oecd.py
+is its first run.
 
 Limits: the API best-practices page (2026-03-18) allows 60 data downloads an
 hour, after which requests are blocked for a while; this client spends at
