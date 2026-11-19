@@ -53,6 +53,7 @@ from mcp.types import Icon, ToolAnnotations
 from maplestats_mcp import __version__, config, gis_profile
 from maplestats_mcp.catalogue import (
     EXTRA_FILES,
+    FRED_TOOLS,
     MODULES_ROOT,
     PROFILE_SWITCHES,
     TOOL_FILES,
@@ -65,7 +66,7 @@ from maplestats_mcp.catalogue import (
     read_catalogue,
     tool_enabled,
 )
-from maplestats_mcp.shared import search, semantic
+from maplestats_mcp.shared import path_health, search, semantic
 from maplestats_mcp.shared.argument_aliases import apply_aliases
 from maplestats_mcp.shared.breaker import render_status
 from maplestats_mcp.shared.dereference import CachedDereferenceMiddleware
@@ -455,9 +456,17 @@ class AnnotatedBM25SearchTransform(BM25SearchTransform):
         scores = search.apply_boosts(scores, boosts)
         # The catalog is deduplicated by name; resolve the current version's schema.
         by_name = {t.name: t for t in tools}
-        return [
+        top = [
             by_name[self._indexed[i].name] for i in search.top_indices(scores, self._max_results)
         ]
+        # StatCan's bot check met a path lately (shared/path_health.py): the same tools, the
+        # ones that cannot answer behind the ones that can (search_tools marks them and names
+        # the working route), so the set and the number of results are what they were.
+        challenged = path_health.challenged_now()
+        if not challenged:
+            return top
+        stuck = [t for t in top if path_health.dependency_blocking(t.name, challenged)]
+        return [*(t for t in top if t not in stuck), *stuck]
 
     def _make_search_tool(self) -> Tool:
         transform = self
@@ -491,7 +500,8 @@ class AnnotatedBM25SearchTransform(BM25SearchTransform):
                 )
             serializer = transform._full_serializer if detail == "full" else transform._serializer
             rendered = serializer(results)
-            return await rendered if inspect.isawaitable(rendered) else rendered
+            rendered = await rendered if inspect.isawaitable(rendered) else rendered
+            return path_health.mark_results(rendered, path_health.challenged_now())
 
         tool = Tool.from_function(
             fn=search_tools,
@@ -540,6 +550,15 @@ class AnnotatedBM25SearchTransform(BM25SearchTransform):
                 # A name MAPLE_GIS has hidden is an unknown name, as for any other caller;
                 # the other switches are limits, and say so.
                 switch = TOOL_SWITCHES.get(name)
+                if name in FRED_TOOLS and switch is not None and not switch():
+                    raise InvalidInput(
+                        f"{name} needs a FRED API key, and this server has none. The key is "
+                        "free and the server's operator creates it at FRED "
+                        "(https://fred.stlouisfed.org/docs/api/api_key.html), then sets it as "
+                        "FRED_API_KEY in the server's environment and restarts the server. "
+                        "MapleStats never ships, asks for or stores a key. For Canadian "
+                        "series use the wds_, boc_, oecd_ or ilo_ tools meanwhile."
+                    )
                 if switch is not None and not switch() and name not in PROFILE_SWITCHES:
                     raise InvalidInput(
                         f"{name} is switched off on this server (it runs code or files "

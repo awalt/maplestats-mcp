@@ -13,7 +13,7 @@ from functools import cache
 
 from maplestats_mcp import config, gis_profile
 from maplestats_mcp.catalogue import tool_enabled
-from maplestats_mcp.modules.planner import calls, cues
+from maplestats_mcp.modules.planner import blocked, calls, cues
 from maplestats_mcp.modules.planner.places import (
     CITIES,
     CITY_PROVINCES,
@@ -512,4 +512,8 @@ def plan(question: str, lang: str = "en") -> QueryPlan:
         ),
     )
     planned = _add_fitness_notes(_french(result) if french else result, lang)
+    # Last, once the French is chosen: a step on a StatCan path that answered with its bot
+    # check lately is marked and moved behind the working route (blocked.py); a no-op while no
+    # path is known to be challenged.
+    planned = blocked.mark_blocked(planned, french)
     return planned if config.get_gis_enabled() else _without_hidden_names(planned)

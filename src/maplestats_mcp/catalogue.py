@@ -55,6 +55,12 @@ _LISTED_FIELDS = {
     "timeout",
 }
 
+# The FRED tools: offered only on a server whose operator set FRED_API_KEY (a free key the
+# operator creates at FRED). server.py's call_tool says how to set it when one is called.
+FRED_TOOLS: frozenset[str] = frozenset(
+    {"fred_search_series", "fred_get_series", "fred_get_release_dates"}
+)
+
 # Tools a setting can switch off. The first two a module defines only when its setting
 # allows it; the PURE geospatial class (gis_profile.py) is always defined and hidden here,
 # while MAPLE_GIS is off. The catalogue is built with every switch on and lists a tool only
@@ -63,8 +69,16 @@ TOOL_SWITCHES: dict[str, Callable[[], bool]] = {
     "statcan_pumf_tabulate": config.get_pumf_tabulate_enabled,
     "wds_query_series": config.get_query_series_enabled,
     **dict.fromkeys(gis_profile.PURE_GIS_TOOLS, config.get_gis_enabled),
+    **dict.fromkeys(FRED_TOOLS, config.get_fred_enabled),
 }
-_SWITCH_ENV = {"MAPLE_PUMF_TABULATE": "1", "MAPLE_QUERY_SERIES": "1", "MAPLE_GIS": "1"}
+# FRED_API_KEY is set to a placeholder only while the catalogue is built, so that the
+# three `fred_` tools are listed; the placeholder is never sent anywhere.
+_SWITCH_ENV = {
+    "MAPLE_PUMF_TABULATE": "1",
+    "MAPLE_QUERY_SERIES": "1",
+    "MAPLE_GIS": "1",
+    "FRED_API_KEY": "catalogue-build-placeholder",
+}
 
 # Switches that are a profile, not a limit: while one is off its tool reads as an unknown
 # name, where the others say they are switched off on this server (server.py's call_tool).
