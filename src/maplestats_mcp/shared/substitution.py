@@ -1,14 +1,15 @@
 """When a source is blocked, a labelled answer from another official source.
 
-Since 2026-11-17 Statistics Canada's www150.statcan.gc.ca answers every automated
-client with a Cloudflare managed challenge, so every tool on that host fails and the
-shared breaker (shared/breaker.py) opens. MapleStats does not try to pass the challenge.
-A tool whose own host is paused or challenged may instead answer from a different
-official source that serves the same figures, in this order: another Statistics Canada
-service (the CCEI and shared SDMX spaces on api.statcan.gc.ca), then another publisher
-that re-serves the same values (the Bank of Canada's Valet API, the Alberta Economic
-Dashboard). The healthy path is untouched: this module is reached only from an `except`
-on CircuitOpen or CloudflareChallenge, and only while MAPLE_STATCAN_FALLBACK is on.
+Statistics Canada puts parts of www150.statcan.gc.ca behind a Cloudflare managed
+challenge that only a person in a browser can pass (shared/challenge_notes.py says which
+paths). MapleStats does not try to pass it. When the Web Data Service itself is
+challenged, and no last good copy of the answer is held (shared/cache.py serves that
+first), a WDS tool may answer from a different official source that serves the same
+figures, in this order: another Statistics Canada service (the CCEI and shared SDMX
+spaces on api.statcan.gc.ca), then another publisher that re-serves the same values (the
+Bank of Canada's Valet API, the Alberta Economic Dashboard). StatCan stays the priority:
+this module is reached only from an `except` on CloudflareChallenge, never before
+StatCan has answered or been challenged, and only while MAPLE_STATCAN_FALLBACK is on.
 
 A substituted result is never silent. It keeps the tool's own output model, names the
 host that answered in `provenance.source` and `url`, sets `provenance.substituted_for`
@@ -19,16 +20,16 @@ the call's language saying which source answered, why, and the newest period it 
 from __future__ import annotations
 
 from maplestats_mcp import config
-from maplestats_mcp.shared.breaker import CircuitOpen
 from maplestats_mcp.shared.errors import CloudflareChallenge, UpstreamUnavailable
 from maplestats_mcp.shared.i18n import french_spacing, normalize_lang
 from maplestats_mcp.shared.models import Provenance
 from maplestats_mcp.shared.usage import STATS
 
-# What starts a fallback: the host's breaker is open, or it answered with the Cloudflare
-# challenge. Any other failure (a timeout, a 5xx, a rejected argument) is the tool's own
-# to report: a substitute would hide a problem the caller can fix or retry.
-TRIGGERS: tuple[type[UpstreamUnavailable], ...] = (CircuitOpen, CloudflareChallenge)
+# What starts a fallback: the Web Data Service answered with the Cloudflare challenge. Any
+# other failure (a timeout, a 5xx, an open breaker, a rejected argument) is the tool's own
+# to report: a substitute would hide a problem the caller can fix or retry, and an open
+# breaker only says a host failed, not that StatCan is challenging it.
+TRIGGERS: tuple[type[UpstreamUnavailable], ...] = (CloudflareChallenge,)
 
 
 def enabled() -> bool:
@@ -36,7 +37,7 @@ def enabled() -> bool:
 
 
 def is_blocked(exc: BaseException) -> bool:
-    """True for an error that means "this host is paused or challenged"."""
+    """True for an error that means "this host answered with the bot challenge"."""
     return enabled() and isinstance(exc, TRIGGERS)
 
 

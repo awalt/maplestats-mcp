@@ -35,6 +35,7 @@ WWW150 = "www150.statcan.gc.ca"
 ANY_WDS = re.compile(r"https://www150\.statcan\.gc\.ca/.*")
 CCEI = space_constants.SPACES["ccei"].base_url
 LIST_URL = f"{CCEI}/dataflow/all/all/latest"
+SHARED_LIST_URL = f"{space_constants.SPACES['stcshared'].base_url}/dataflow/all/all/latest"
 STRUCT_URL = f"{CCEI}/dataflow/CA1.CCEI/DF_36100434/2.0?references=all"
 INDEX_URL = f"{CCEI}/data/CA1.CCEI,DF_36100434,2.0/all?lastNObservations=1"
 GDP_KEY = "M.CA.S.C-2017._T"
@@ -69,7 +70,7 @@ def _block(httpx_mock, cloudflare_challenge) -> None:
 
 def _open_breaker() -> None:
     for _ in range(config.get_breaker_failures()):
-        BREAKER.record_failure(WWW150, "cloudflare")
+        BREAKER.record_failure(WWW150, "server_error")
 
 
 # ------------------------------------------------------------------ CCEI mocks
@@ -94,6 +95,19 @@ FLOWS = {
             _flow("CA1.CCEI", "DF_17100009", "2.0", "Population estimates, quarterly"),
         ]
     }
+}
+
+
+def _lists(httpx_mock) -> None:
+    """The flow lists of both spaces: CCEI first, then the shared space for a table not in it."""
+    httpx_mock.add_response(url=LIST_URL, json=FLOWS, is_reusable=True, is_optional=True)
+    httpx_mock.add_response(
+        url=SHARED_LIST_URL, json=SHARED_FLOWS, is_reusable=True, is_optional=True
+    )
+
+
+SHARED_FLOWS = {
+    "data": {"dataflows": [_flow("CA1.QOL", "DF_11100090", "1.0", "Poverty and low income")]}
 }
 
 
@@ -229,7 +243,7 @@ GDP_CSV = _csv(
 
 
 def _ccei(httpx_mock, *, data_csv: str = GDP_CSV, key: str = GDP_KEY, n: int = 3) -> None:
-    httpx_mock.add_response(url=LIST_URL, json=FLOWS, is_reusable=True, is_optional=True)
+    _lists(httpx_mock)
     httpx_mock.add_response(url=INDEX_URL, text=INDEX_CSV, is_reusable=True, is_optional=True)
     httpx_mock.add_response(url=STRUCT_URL, json=GDP_STRUCTURE, is_reusable=True, is_optional=True)
     httpx_mock.add_response(
@@ -331,7 +345,7 @@ def _alberta(httpx_mock, *, rows: list[dict] | None = None) -> None:
 
 def _others(httpx_mock) -> None:
     """What a call reaching Valet and the Alberta dashboard also asks CCEI and Valet for."""
-    httpx_mock.add_response(url=LIST_URL, json=FLOWS, is_reusable=True, is_optional=True)
+    _lists(httpx_mock)
     httpx_mock.add_response(
         url=f"{VALET}/groups/CPI_MONTHLY/json",
         json=_valet_group(),
@@ -390,26 +404,35 @@ async def test_cloudflare_challenge_answers_from_ccei_and_says_so(httpx_mock, cl
     assert STATS.fallbacks == {"ccei": 1}
 
 
-async def test_open_breaker_answers_without_sending_a_wds_request(httpx_mock):
+async def test_an_open_breaker_alone_is_not_a_challenge(httpx_mock):
+    # The breaker opens on timeouts and 5xx answers, not on a challenge: StatCan has not
+    # said it is challenging the Web Data Service, so no substitute is read, even though
+    # ones would answer.
     _open_breaker()
     _ccei(httpx_mock)
-    result = await _fn(tools.wds_get_data_from_vectors)(vector_ids=[65201210], latest_n=3)
-    assert result.provenance.substituted_for == "wds"
-    assert "paused after repeated failures" in result.provenance.caveats[0]
-    assert [r.url.host for r in httpx_mock.get_requests()] == ["api.statcan.gc.ca"] * len(
-        httpx_mock.get_requests()
+    calls = (
+        lambda: _fn(tools.wds_get_data_from_vectors)(vector_ids=[65201210], latest_n=3),
+        lambda: _fn(tools.wds_get_data_from_cube_coord)(product_id=36100434, coordinate="1.1.1.1"),
+        lambda: _fn(tools.wds_get_series_info)(vector_id=65201210),
+        lambda: _fn(tools.wds_get_cube_metadata)(product_id=36100434),
     )
+    for call in calls:
+        with pytest.raises(CircuitOpen) as caught:
+            await call()
+        assert "Fix:" not in str(caught.value)
+    assert httpx_mock.get_requests() == []
+    assert STATS.fallbacks == {}
 
 
-async def test_french_call_gets_french_caveat_and_labels(httpx_mock):
-    _open_breaker()
+async def test_french_call_gets_french_caveat_and_labels(httpx_mock, cloudflare_challenge):
+    _block(httpx_mock, cloudflare_challenge)
     _ccei(httpx_mock)
     result = await _fn(tools.wds_get_data_from_vectors)(
         vector_ids=[65201210], latest_n=3, lang="fr"
     )
     caveat = result.provenance.caveats[0].replace(" ", " ")
     assert "Le Service de données Web de Statistique Canada" in caveat
-    assert "suspendu après des échecs répétés" in caveat
+    assert "bloqué par un défi anti-robot Cloudflare" in caveat
     assert "l'espace SDMX du CCIE de Statistique Canada (api.statcan.gc.ca)" in caveat
     assert "Période la plus récente : 2026-08-01" in caveat
     assert result.provenance.substituted_for == "wds" and result.provenance.lang == "fr"
@@ -421,8 +444,8 @@ async def test_french_call_gets_french_caveat_and_labels(httpx_mock):
     assert result.series[0].observations[2].status == "à utiliser avec prudence"
 
 
-async def test_substituted_cube_coord_and_series_info(httpx_mock):
-    _open_breaker()
+async def test_substituted_cube_coord_and_series_info(httpx_mock, cloudflare_challenge):
+    _block(httpx_mock, cloudflare_challenge)
     _ccei(httpx_mock, n=2)
     one = await _fn(tools.wds_get_data_from_cube_coord)(
         product_id="36-10-0434-01", coordinate="1.1.1.1", latest_n=2
@@ -447,9 +470,9 @@ async def test_substituted_cube_coord_and_series_info(httpx_mock):
 # ------------------------------------------------------------------ the other routes
 
 
-async def test_cpi_vector_comes_from_valet_oldest_first(httpx_mock):
-    _open_breaker()
-    httpx_mock.add_response(url=LIST_URL, json=FLOWS, is_reusable=True)
+async def test_cpi_vector_comes_from_valet_oldest_first(httpx_mock, cloudflare_challenge):
+    _block(httpx_mock, cloudflare_challenge)
+    _lists(httpx_mock)
     _valet(httpx_mock)
     result = await _fn(tools.wds_get_data_from_vectors)(vector_ids=[41690973], latest_n=3)
     series = result.series[0]
@@ -468,8 +491,10 @@ async def test_cpi_vector_comes_from_valet_oldest_first(httpx_mock):
     assert STATS.fallbacks == {"boc": 1}
 
 
-async def test_valet_vector_without_a_known_table_is_served_with_the_gap_stated(httpx_mock):
-    _open_breaker()
+async def test_valet_vector_without_a_known_table_is_served_with_the_gap_stated(
+    httpx_mock, cloudflare_challenge
+):
+    _block(httpx_mock, cloudflare_challenge)
     _valet(httpx_mock)
     result = await _fn(tools.wds_get_data_from_vectors)(vector_ids=[41690914], latest_n=3)
     series = result.series[0]
@@ -479,9 +504,11 @@ async def test_valet_vector_without_a_known_table_is_served_with_the_gap_stated(
     assert series.observations[-1].value == 170.3
 
 
-async def test_valet_cpi_by_coordinate_in_french_uses_the_french_host(httpx_mock):
-    _open_breaker()
-    httpx_mock.add_response(url=LIST_URL, json=FLOWS, is_reusable=True, is_optional=True)
+async def test_valet_cpi_by_coordinate_in_french_uses_the_french_host(
+    httpx_mock, cloudflare_challenge
+):
+    _block(httpx_mock, cloudflare_challenge)
+    _others(httpx_mock)
     _valet(httpx_mock, host=VALET_FR, n=2)
     result = await _fn(tools.wds_get_data_from_cube_coord)(
         product_id=18100004, coordinate="2.2", latest_n=2, lang="fr"
@@ -491,8 +518,10 @@ async def test_valet_cpi_by_coordinate_in_french_uses_the_french_host(httpx_mock
     assert "l'API Valet de la Banque du Canada" in result.provenance.caveats[0]
 
 
-async def test_lfs_vector_comes_from_the_alberta_dashboard_with_filters(httpx_mock):
-    _open_breaker()
+async def test_lfs_vector_comes_from_the_alberta_dashboard_with_filters(
+    httpx_mock, cloudflare_challenge
+):
+    _block(httpx_mock, cloudflare_challenge)
     _others(httpx_mock)
     _alberta(httpx_mock)
     result = await _fn(tools.wds_get_data_from_vectors)(vector_ids=[2062815], latest_n=3)
@@ -514,8 +543,11 @@ async def test_lfs_vector_comes_from_the_alberta_dashboard_with_filters(httpx_mo
     assert STATS.fallbacks == {"ab_economic": 1}
 
 
-async def test_several_coordinates_come_back_as_series_with_the_rest_in_failed(httpx_mock):
-    _open_breaker()
+async def test_several_coordinates_come_back_as_series_with_the_rest_in_failed(
+    httpx_mock, cloudflare_challenge
+):
+    _block(httpx_mock, cloudflare_challenge)
+    _others(httpx_mock)
     _alberta(httpx_mock)
     result = await _fn(tools.wds_get_data_from_cube_coord)(
         product_id=14100287,
@@ -532,9 +564,9 @@ async def test_several_coordinates_come_back_as_series_with_the_rest_in_failed(h
     assert "1 coordinate(s) returned no data" in (result.provenance.limits or "")
 
 
-async def test_ccei_comes_before_valet_and_alberta(httpx_mock):
+async def test_ccei_comes_before_valet_and_alberta(httpx_mock, cloudflare_challenge):
     # Vectors from three routes in one call keep their own sources; CCEI is tried first.
-    _open_breaker()
+    _block(httpx_mock, cloudflare_challenge)
     _ccei(httpx_mock, n=2)
     _valet(httpx_mock, n=2)
     _alberta(httpx_mock)
@@ -552,10 +584,12 @@ async def test_ccei_comes_before_valet_and_alberta(httpx_mock):
     assert STATS.fallbacks == {"ccei": 1, "boc": 1, "ab_economic": 1}
 
 
-async def test_a_vector_learned_from_wds_is_routed_when_wds_is_blocked(httpx_mock):
+async def test_a_vector_learned_from_wds_is_routed_when_wds_is_blocked(
+    httpx_mock, cloudflare_challenge
+):
     # 65201731 is in no seed: the process learned its table while WDS answered.
     fallback_book.learn(36100434, "1.1.1.1.4.0.0.0.0.0", 65201731)
-    _open_breaker()
+    _block(httpx_mock, cloudflare_challenge)
     _ccei(
         httpx_mock,
         key="M.CA.S.C-2017.621",
@@ -573,14 +607,16 @@ async def test_a_vector_learned_from_wds_is_routed_when_wds_is_blocked(httpx_moc
 # ------------------------------------------------------------------ nothing to substitute
 
 
-async def test_unplaced_vector_raises_its_own_error_with_what_works(httpx_mock):
-    _open_breaker()
-    httpx_mock.add_response(url=LIST_URL, json=FLOWS, is_reusable=True, is_optional=True)
+async def test_unplaced_vector_raises_its_own_error_with_what_works(
+    httpx_mock, cloudflare_challenge
+):
+    _block(httpx_mock, cloudflare_challenge)
+    _lists(httpx_mock)
     _valet(httpx_mock)
-    with pytest.raises(CircuitOpen) as caught:
+    with pytest.raises(CloudflareChallenge) as caught:
         await _fn(tools.wds_get_data_from_vectors)(vector_ids=[12345678], latest_n=3)
     text = str(caught.value)
-    assert "failed 5 times in a row" in text  # the original message, unchanged
+    assert "Cloudflare bot challenge" in text  # the original message, unchanged
     assert "Fix: " in text and "no other source MapleStats reads carries this vector" in text
     assert "plan_query" in text
     assert STATS.fallbacks == {}
@@ -603,9 +639,11 @@ async def test_unmapped_coordinate_of_a_table_names_the_copies_that_exist(
     )
 
 
-async def test_alberta_copies_are_named_for_a_table_with_no_decoder(httpx_mock):
-    _open_breaker()
-    httpx_mock.add_response(url=LIST_URL, json=FLOWS, is_reusable=True, is_optional=True)
+async def test_alberta_copies_are_named_for_a_table_with_no_decoder(
+    httpx_mock, cloudflare_challenge
+):
+    _block(httpx_mock, cloudflare_challenge)
+    _lists(httpx_mock)
     _alberta(httpx_mock)
     with pytest.raises(UpstreamUnavailable, match="UnemploymentRates_14100287"):
         await _fn(tools.wds_get_data_from_cube_coord)(
@@ -613,11 +651,13 @@ async def test_alberta_copies_are_named_for_a_table_with_no_decoder(httpx_mock):
         )
 
 
-async def test_cube_metadata_says_plainly_it_cannot_and_names_the_copy(httpx_mock):
-    _open_breaker()
-    httpx_mock.add_response(url=LIST_URL, json=FLOWS, is_reusable=True, is_optional=True)
+async def test_cube_metadata_says_plainly_it_cannot_and_names_the_copy(
+    httpx_mock, cloudflare_challenge
+):
+    _block(httpx_mock, cloudflare_challenge)
+    _lists(httpx_mock)
     _alberta(httpx_mock)
-    with pytest.raises(CircuitOpen) as caught:
+    with pytest.raises(CloudflareChallenge) as caught:
         await _fn(tools.wds_get_cube_metadata)(product_id=36100434)
     text = str(caught.value)
     assert "member ids a coordinate is built from) is carried by no other source" in text
@@ -625,26 +665,26 @@ async def test_cube_metadata_says_plainly_it_cannot_and_names_the_copy(httpx_moc
     assert "Solution" not in text
 
 
-async def test_cube_metadata_in_french_gets_a_french_fix(httpx_mock):
-    _open_breaker()
-    httpx_mock.add_response(url=LIST_URL, json=FLOWS, is_reusable=True, is_optional=True)
+async def test_cube_metadata_in_french_gets_a_french_fix(httpx_mock, cloudflare_challenge):
+    _block(httpx_mock, cloudflare_challenge)
+    _lists(httpx_mock)
     _alberta(httpx_mock)
-    with pytest.raises(CircuitOpen) as caught:
+    with pytest.raises(CloudflareChallenge) as caught:
         await _fn(tools.wds_get_cube_metadata)(product_id=17100009, lang="fr")
     text = str(caught.value).replace(" ", " ")
     assert "Solution : Les métadonnées de tableau du SDW" in text
     assert "DF_17100009" in text
 
 
-async def test_a_transform_is_not_substituted(httpx_mock):
-    _open_breaker()
-    httpx_mock.add_response(url=LIST_URL, json=FLOWS, is_reusable=True, is_optional=True)
+async def test_a_transform_is_not_substituted(httpx_mock, cloudflare_challenge):
+    _block(httpx_mock, cloudflare_challenge)
+    _lists(httpx_mock)
     _alberta(httpx_mock)
-    with pytest.raises(CircuitOpen, match="published levels only"):
+    with pytest.raises(CloudflareChallenge, match="published levels only"):
         await _fn(tools.wds_get_data_from_vectors)(
             vector_ids=[41690973], latest_n=3, transform="yoy_pct_change"
         )
-    with pytest.raises(CircuitOpen, match="published levels only"):
+    with pytest.raises(CloudflareChallenge, match="published levels only"):
         await _fn(tools.wds_get_data_from_cube_coord)(
             product_id=18100004, coordinate="2.2", latest_n=3, frequency="annual"
         )
@@ -665,19 +705,23 @@ async def test_a_substitute_that_is_down_too_is_reported(httpx_mock, cloudflare_
 
 
 @pytest.mark.parametrize("value", ["0", "off", "false", "no"])
-async def test_switch_off_leaves_the_original_error(httpx_mock, monkeypatch, value):
+async def test_switch_off_leaves_the_original_error(
+    httpx_mock, monkeypatch, value, cloudflare_challenge
+):
     monkeypatch.setenv("MAPLE_STATCAN_FALLBACK", value)
-    _open_breaker()
+    _block(httpx_mock, cloudflare_challenge)
     for call in (
         _fn(tools.wds_get_data_from_vectors)(vector_ids=[65201210], latest_n=3),
         _fn(tools.wds_get_data_from_cube_coord)(product_id=36100434, coordinate="1.1.1.1"),
         _fn(tools.wds_get_series_info)(vector_id=65201210),
         _fn(tools.wds_get_cube_metadata)(product_id=36100434),
     ):
-        with pytest.raises(CircuitOpen) as caught:
+        with pytest.raises(CloudflareChallenge) as caught:
             await call
         assert "Fix:" not in str(caught.value)
-    assert httpx_mock.get_requests() == []  # nothing was read from any substitute
+    # Only www150 was asked, and nothing was read from any substitute.
+    assert {r.url.host for r in httpx_mock.get_requests()} <= {WWW150}
+    assert STATS.fallbacks == {}
 
 
 async def test_switch_off_with_a_cloudflare_challenge(
@@ -718,32 +762,35 @@ async def test_a_server_error_is_not_a_block(httpx_mock):
     )
     with pytest.raises(UpstreamUnavailable) as caught:
         await _fn(tools.wds_get_data_from_vectors)(vector_ids=[65201210], latest_n=3)
-    assert not isinstance(caught.value, (CircuitOpen, CloudflareChallenge))
+    assert not isinstance(caught.value, CloudflareChallenge)
     assert STATS.fallbacks == {}
     assert {r.url.host for r in httpx_mock.get_requests()} == {WWW150}
 
 
-async def test_bad_input_is_refused_before_any_substitute_is_tried(httpx_mock):
-    _open_breaker()
+async def test_bad_input_is_refused_before_any_substitute_is_tried(
+    httpx_mock, cloudflare_challenge
+):
+    _block(httpx_mock, cloudflare_challenge)
     with pytest.raises(InvalidInput):
         await _fn(tools.wds_get_data_from_vectors)(vector_ids=[0], latest_n=3)
     with pytest.raises(InvalidInput):
         await _fn(tools.wds_get_data_from_cube_coord)(product_id=36100434, coordinate="a.b")
     with pytest.raises(InvalidInput):
         await _fn(tools.wds_get_data_from_vectors)(vector_ids=[65201210], latest_n=0)
-    assert httpx_mock.get_requests() == []
+    # WDS was asked (the call's own prefetch), and nothing was read from a substitute.
+    assert {r.url.host for r in httpx_mock.get_requests()} <= {WWW150}
 
 
 # ------------------------------------------------------------------ caps
 
 
-async def test_a_long_ccei_history_keeps_its_row_cap_and_says_so(httpx_mock):
+async def test_a_long_ccei_history_keeps_its_row_cap_and_says_so(httpx_mock, cloudflare_challenge):
     # 600 monthly rows come back; the CCEI client keeps the newest 500 per series.
     rows = [
         _row("_T", f"{1980 + i // 12}-{i % 12 + 1:02d}", str(1000 + i), "65201210")
         for i in range(600)
     ]
-    _open_breaker()
+    _block(httpx_mock, cloudflare_challenge)
     _ccei(httpx_mock, data_csv=_csv(*rows), n=600)
     result = await _fn(tools.wds_get_data_from_vectors)(vector_ids=[65201210], latest_n=600)
     assert len(result.series[0].observations) == space_constants.MAX_ROWS == 500
@@ -751,7 +798,9 @@ async def test_a_long_ccei_history_keeps_its_row_cap_and_says_so(httpx_mock):
     assert "newest 500 rows kept per series" in (result.provenance.limits or "")
 
 
-async def test_a_long_alberta_history_is_cut_to_latest_n_and_noted(httpx_mock):
+async def test_a_long_alberta_history_is_cut_to_latest_n_and_noted(
+    httpx_mock, cloudflare_challenge
+):
     rows = [
         {
             "Date": f"{1980 + i // 12}-{i % 12 + 1:02d}-01T00:00:00",
@@ -760,7 +809,8 @@ async def test_a_long_alberta_history_is_cut_to_latest_n_and_noted(httpx_mock):
         }
         for i in range(610)
     ]
-    _open_breaker()
+    _block(httpx_mock, cloudflare_challenge)
+    _others(httpx_mock)
     _alberta(httpx_mock, rows=rows)
     result = await _fn(tools.wds_get_data_from_vectors)(vector_ids=[2062815], latest_n=12)
     assert len(result.series[0].observations) == 12
@@ -768,8 +818,11 @@ async def test_a_long_alberta_history_is_cut_to_latest_n_and_noted(httpx_mock):
     assert "most recent 12 of 610 matching rows" in (result.provenance.limits or "")
 
 
-async def test_the_fallback_answers_at_most_twenty_series_and_says_which_it_left(httpx_mock):
-    _open_breaker()
+async def test_the_fallback_answers_at_most_twenty_series_and_says_which_it_left(
+    httpx_mock, cloudflare_challenge
+):
+    _block(httpx_mock, cloudflare_challenge)
+    _lists(httpx_mock)
     _valet(httpx_mock, n=1)
     asked = [41690973] + list(range(900_000, 900_024))
     result = await _fn(tools.wds_get_data_from_vectors)(vector_ids=asked, latest_n=1)
@@ -876,8 +929,8 @@ async def test_what_wds_serves_is_learned_for_a_later_block(httpx_mock):
     assert fallback_book.locate_coordinate(18100004, "14.2.0.0.0.0.0.0.0.0") == 41691783
 
 
-def test_only_a_paused_or_challenged_host_triggers_a_fallback():
-    assert substitution.is_blocked(CircuitOpen("x"))
+def test_only_the_challenge_triggers_a_fallback():
     assert substitution.is_blocked(CloudflareChallenge("x"))
+    assert not substitution.is_blocked(CircuitOpen("paused"))
     assert not substitution.is_blocked(UpstreamUnavailable("a timeout"))
     assert not substitution.is_blocked(InvalidInput("bad"))

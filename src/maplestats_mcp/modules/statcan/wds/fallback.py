@@ -1,7 +1,8 @@
 """WDS tools answered from another official source while www150.statcan.gc.ca is blocked.
 
-Reached only from an `except` on CircuitOpen or CloudflareChallenge in tools.py (see
-shared/substitution.py for the rule and the labelling), so the healthy path is untouched.
+Reached only from an `except` on CloudflareChallenge in tools.py (see
+shared/substitution.py for the rule and the labelling), so the healthy path is untouched,
+and only when no last good copy of the answer was served first (shared/cache.py).
 For each series asked for, the sources are tried in the owner's order:
 
 1. StatCan's own other services: the CCEI and shared SDMX spaces on api.statcan.gc.ca
@@ -44,7 +45,6 @@ from maplestats_mcp.modules.statcan.wds.schemas import (
     VectorDataSet,
 )
 from maplestats_mcp.shared import substitution
-from maplestats_mcp.shared.breaker import CircuitOpen
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import (
     InvalidInput,
@@ -70,9 +70,7 @@ ROUTES: tuple[tuple[str, Serve], ...] = (
 _SKIPPED = (UpstreamUnavailable, UpstreamError, NotFound, InvalidInput)
 
 
-def _reason(exc: BaseException, lang: str) -> str:
-    if isinstance(exc, CircuitOpen):
-        return say("paused after repeated failures", "suspendu après des échecs répétés", lang)
+def _reason(lang: str) -> str:
     return say(
         "blocked by a Cloudflare bot challenge",
         "bloqué par un défi anti-robot Cloudflare",
@@ -162,7 +160,7 @@ async def _serve_one(wanted: Wanted, latest_n: int, lang: str) -> tuple[Served |
 
 def _sentences(served: list[Served], exc: BaseException, lang: str) -> list[str]:
     """One caveat per source used: which source answered, why, the newest period."""
-    reason = _reason(exc, lang)
+    reason = _reason(lang)
     groups: OrderedDict[str, list[Served]] = OrderedDict()
     for item in served:
         groups.setdefault(item.label, []).append(item)
