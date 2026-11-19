@@ -8,6 +8,198 @@ each; `scripts/build_changelog.py` writes them in here at release time.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-19
+
+Three new publishers: the IMF (4 tools), FRED (3 tools, only when the operator
+sets `FRED_API_KEY`) and four City of Toronto tools for wards, councillors and
+neighbourhoods, plus `ckan_get_dataset_documents` for any CKAN portal. No tool
+or field was removed or renamed since 0.6.0. Statistics Canada's Cloudflare
+check is still in place for some services; `statcan_check_access` waits longer
+for the census API and reports each service's response time.
+
+### Added
+
+- `ckan_get_dataset_documents`: explains a CKAN dataset from the portal's own
+  records: its description, limitations, collection method and refresh rate,
+  the publisher's note on each DataStore column (read without rows, filtered
+  by `query`), and the pages and documentation files it points to. Those
+  documents are listed with their URL, not opened: the City of Toronto's
+  robots.txt disallows automated downloads of resource files and its
+  website's terms bar copying its pages without permission. The idea comes
+  from the CKAN MCP Server (ruchir321/ckan-mcp-server, 2025 Toronto Open Data
+  Awards honourable mention); nothing is copied from it.
+- `fred_` (3 tools, off unless `FRED_API_KEY` is set): the St. Louis Fed's FRED, a
+  publisher separate from Statistics Canada. `fred_search_series` finds a series id,
+  `fred_get_series` reads a series' observations and `fred_get_release_dates` lists its
+  release's dates, upcoming ones included. FRED needs a free API key that the server's
+  operator creates at FRED and sets as `FRED_API_KEY` (MapleStats never ships or asks for
+  one); without it the tools are hidden from `search_tools`, `plan_query` and `tools/list`
+  (like the `MAPLE_GIS=0` profile) and a call by name explains how to set the key. The key
+  is never logged, echoed, cached or recorded: errors name the endpoint, provenance carries
+  a placeholder and the request recorders are off for this module. FRED's notice is on every
+  result, and a series FRED marks Copyright (a third party owns it) is described but its
+  values are not returned. Written from FRED's documentation without a key, so it has not
+  met the live API yet; `scripts/smoke_test_fred.py` is the first run to make with a key.
+- `imf_` (4 tools): International Monetary Fund data (api.imf.org SDMX 2.1, no key), a
+  publisher separate from Statistics Canada whose figures are labelled as the IMF's in
+  every result. `imf_search_datasets` finds a dataset (consumer prices, exchange rates,
+  balance of payments, labour statistics, national accounts, trade by partner, World
+  Economic Outlook, commodity prices); `imf_describe_dataset` gives its key layout and
+  codes (French code names with `lang="fr"`); `imf_search_series` lists Canada's series
+  in it with the latest value of each; `imf_get_data` reads observations by SDMX key with
+  period filters, capped at 200 series and 10,000 rows. Checked live: Canada's CPI index
+  was 170.0 for September 2026 (the IMF runs about a month behind) and the October 2026
+  World Economic Outlook has real GDP growth of 1.12 per cent for 2026. The IMF's terms
+  allow copying with the IMF credited but ask for permission for commercial reuse, so each
+  result is flagged `commercial_use: not_allowed` and carries them. The planner offers the
+  tools after the StatCan steps for questions that name the IMF or the World Economic
+  Outlook.
+- `plan_query` and `search_tools` know which StatCan paths answered with the bot check lately. StatCan
+  checks some paths of `www150.statcan.gc.ca` and not others (WDS answers; SDMX, the CIMT trade API and the
+  catalogue pages do not), so the per-host circuit breaker cannot say which tools are down. A new
+  `shared/path_health.py` notes, per path group, when a challenge was last seen and whether the path has
+  answered since, from real calls and from a fresh `statcan_check_access` report, for 15 minutes (the
+  report's own cache time). While the CIMT path is challenged, a plan step for a `cimt_` tool is kept, listed
+  after the working steps, and marked `blocked: true` with a short note and no `call`, and the plan lists the
+  same data through WDS first (`wds_get_cube_metadata` on table 12-10-0011-01, labelled as that route); the
+  same for the `statcan_reference_` tools and `statcan_pumf_search` / `statcan_pumf_list_files` while the
+  catalogue pages are challenged (`wds_search_cubes`). `search_tools` lists such a tool last among the same
+  results, with `blocked: true` and a description that names the route. The `sdmx_` tools,
+  `statcan_daily_get_releases` and `wds_get_full_table_download` are not marked: each has a route of its own.
+  Nothing probes: no request is made for this. With no path seen blocked, both tools answer exactly as before
+  (checked byte for byte over the 129 benchmark questions); with the CIMT and catalogue paths blocked, a plan
+  is 4 characters shorter on average and a search answer 9 shorter.
+- `/stats` `upstreams` gains `challenged_paths`: the StatCan path groups (`cimt`, `pages`, `sdmx`, ...) that
+  answered with the bot check in the last 15 minutes and not since, `[]` while none has. The chat demo reads
+  it for its notice.
+- The weekly live smoke run now fails loudly when one upstream host took many scripts down. A script cut
+  short by an outage (exit 75) used to be a warning and `exit 0`, so a whole host going dark looked healthy:
+  when StatCan's `www150.statcan.gc.ca` began answering automated clients with a Cloudflare challenge on
+  2026-11-17, a dozen scripts skipped and the run stayed green. A skipped script now prints the host or hosts
+  behind its outage (`SKIPHOST <host> <script>`, read from the failing httpx error or, failing that, from
+  the circuit breaker's error counts), and a new `skipped hosts` job in `smoke.yml` runs
+  `scripts/check_skipped_hosts.py`: more than 3 scripts skipped for the same host in one run, or the same
+  host skipped in the previous run too (kept as the `smoke-skipped-hosts` artifact), fails the run, and the
+  alert job puts the host and its scripts in the smoke-failure issue. One script skipping for one host, once,
+  still never turns the run red.
+- The chat demo shows a short notice, in English and French, while the MCP server reports that StatCan
+  answered automated requests with its bot check in the last 15 minutes: "StatCan's data service is
+  temporarily refusing automated requests; some answers may be unavailable or come from other sources". The
+  page asks a new `GET /api/status` (`{"upstream_blocked": true|false}`) on load and every minute; the chat
+  service reads the MCP server's `/stats` `upstreams.challenged_paths` at most once a minute, ignores a
+  failed read, and never lets it hold up a question. The notice appears once the MCP server reports
+  `challenged_paths`.
+- Site: a City of Toronto page (`toronto.html`, English and French) that
+  follows one question through open.toronto.ca with recorded calls: finding
+  the RentSafeTO dataset, what its score columns mean in the City's own notes,
+  scores by ward, one neighbourhood beside the city, short-term rental
+  registrations by ward, and the portal's rules MapleStats keeps.
+- City of Toronto: four `toronto_` tools over open.toronto.ca DataStore tables.
+  `toronto_get_councillors` lists the mayor and the 25 ward councillors (or one
+  ward's) from Elected Officials' Contact Information, 2022-2026 term.
+  `toronto_get_ward_neighbourhoods` says which neighbourhoods (140 or 158 model)
+  overlap a ward and by how much, measured on the City Wards and Neighbourhoods
+  boundaries. `toronto_compare_neighbourhoods` reads one Neighbourhood Profiles
+  row for all 140 neighbourhoods, ranked, with an optional share of its parent
+  row (the renter share is "Renter" over households by tenure).
+  `toronto_get_ward_profile` answers a cross-table question in one call:
+  a ward's councillor, its RentSafeTO scores beside the city's with the lowest
+  buildings, and each overlapping neighbourhood's 2016 renter share, citing all
+  five tables and stating why wards, neighbourhoods and census years do not line
+  up. `plan_query` routes Toronto ward and councillor questions to these tools.
+  Worked example: `docs/examples/toronto/ward_profile.md`.
+- `wds_get_data_from_vectors`, `wds_get_data_from_cube_coord` and `wds_get_series_info`
+  answer from another official source when StatCan's Web Data Service answers with the
+  Cloudflare challenge and no last good copy of the answer is held. StatCan is always
+  asked first; nothing is read from a substitute before WDS has answered or been
+  challenged, and nothing tries to get past the challenge. In this order: StatCan's CCEI
+  and shared SDMX spaces on api.statcan.gc.ca (table `DF_<product id>`, series found by the
+  rows' VECTOR attribute), the Bank of Canada's Valet API for the CPI vectors it carries
+  under the same id (`V41690973`, `CPI_MONTHLY`), and the Alberta Economic Dashboard's copy
+  of a table (Labour Force Survey rates for Canada, Quebec, Ontario and Alberta, and the
+  all-items CPI), always with every column filter. A substitute result keeps the tool's own
+  output model and says in `provenance` where it came from: `source` and `url` name the
+  host that answered, the new `provenance.substituted_for` is `"wds"`, and the first
+  caveat gives, in English or French, which source answered, why, and the newest period.
+  It serves published levels only (a `transform` or `frequency` fails with that hint), at
+  most 20 series a call, within each source's own caps (the CCEI read's 500 newest rows per
+  series, the dashboard's 2,000-row and 200 KB limits, Valet's 200 KB budget; each says so in
+  `provenance.limits`). A vector whose table the process does not know (it learns them from
+  every WDS answer, and starts with a short list of checked ones) or a coordinate it cannot
+  match to a series is listed in `failed`; if nothing can be served the tool raises its own
+  error with a "Fix:" naming the CCEI flow and Alberta tables that do hold the table.
+  `wds_get_cube_metadata` cannot be substituted (no other source carries WDS member ids),
+  and its error says so. `MAPLE_STATCAN_FALLBACK=0` turns all of this off.
+- `/stats` counts the answers taken from a substitute, by source, under `fallbacks`.
+
+### Changed
+
+- A Cloudflare challenge is reported as a block, not an outage. Statistics Canada's
+  `www150.statcan.gc.ca` host answered automated clients with a managed challenge (HTTP 403,
+  `Cf-Mitigated: challenge`, a page titled "Vérification de sécurité / Security Check") from about
+  18:25 UTC on 2026-11-17, and the error of every blocked tool said to "retry once in a minute". The error
+  now says, in English and French, not to retry, that the host is challenging automated clients, and which
+  sources still answer: the census profile and the CCEI and shared SDMX spaces on `api.statcan.gc.ca`,
+  `geo.statcan.gc.ca`, the Bank of Canada, CMHC, the provincial modules and the OECD. The code stays
+  `upstream_unavailable`, and `CloudflareChallenge` is still an `UpstreamUnavailable`, so nothing that
+  catches it changes; it gains a `host` attribute. The generic hint for a challenge raised by any other
+  module no longer says to retry. A challenge still never pauses a host (StatCan's Web Data Service answers
+  on the host that challenges SDMX).
+- Site: the StatCan page says where StatCan's November 2026 captcha applies,
+  and counts StatCan public use microdata files from ODESI instead of the
+  blocked catalogue.
+- `statcan_check_access` waits up to 60 seconds for the 2021 Census Profile API
+  (20 for every other service) and reports `elapsed_seconds` and `timeout_seconds`
+  for each service. The API took 27.7 s on 2026-11-19, so the 20-second wait
+  reported a slow service as "no answer". The daily access check prints the
+  seconds too.
+- The `statcan_census_profile_` tools wait up to 45 seconds, instead of 30, for
+  the lists of geographies and characteristics. Slow answers of 23.5 and 27.7
+  seconds have been seen, close to the old limit.
+
+### Fixed
+
+- A source that answered with an accented character in a header value (DFO's
+  landings file sent an `é` on 2026-11-19) no longer fails with
+  `UnicodeEncodeError` in tools that read with a size cap. The answer's headers
+  are now copied as the bytes received.
+- `statcan_census_profile_get_data` stops retrying a slow census request when 30
+  seconds of the tool's time limit are left, and says StatCan's census API was
+  slow. Three 60-second attempts used to run past the default 120-second limit,
+  so the caller got the server's generic timeout instead.
+- The page check that runs when a 403 carries no `Cf-Mitigated` header now also recognises StatCan's own
+  challenge page by its title ("Security Check" or "Vérification de sécurité"), not only "Just a moment";
+  a challenge that arrived without the header used to surface as a plain 403 error.
+- `ilo_compare_countries` and `ilo_get_data`: ILOSTAT's SDMX API (sdmx.ilo.org)
+  answered every request with its IIS "403 - Forbidden: Access is denied" page
+  on 2026-11-17. Both tools now fall back to the ILO's rplumber data API
+  (rplumber.ilo.org), which served the same ILOSTAT tables, for the 13 preset
+  comparisons and the datasets behind them (checked live for every key layout:
+  sex and age, sex only, sex and currency, currency only, no breakdown). The
+  result says which API served it. After an SDMX failure the presets skip
+  sdmx.ilo.org for five minutes. `ilo_search_datasets` and `ilo_describe_dataset`
+  need the SDMX API and still answer "unavailable" while it is down, and say
+  where the comparisons are read from meanwhile.
+- `worldbank_get_canada_series`: the World Bank's v2 data endpoint held the
+  connection about 60 s and dropped it on 2026-11-17. Series are now read from
+  the World Bank's Data360 API (same WDI series, 0.7 to 1.4 s) first, paged 1,000
+  rows at a time as that API returns them, and from v2 when Data360 does not
+  answer or lacks the indicator. Country names are filled in (English and French)
+  since Data360 sends codes only. The catalogue, definitions and topics still come
+  from v2.
+- `oecd_get_data`: the docstring now carries a quarterly real GDP growth example
+  (`DSD_NAMAIN1@DF_QNA_EXPENDITURE_GROWTH_OECD`, key
+  `Q.Y.CAN.S1.S1.B1GQ._Z._Z._Z.PC.L.G1.T0102`), the 13-dimension layout the
+  dataflow has; a shorter key for `DF_QNA` answered 404 in the research that
+  prompted this. The OECD's SDMX API answered a Cloudflare bot challenge from
+  2026-11-17 for about a day (MapleStats does not try to pass one) and was back by
+  2026-11-19, with Canada's October unemployment rate at 6.7; the key was taken from
+  DBnomics' copy of the dataflow and has not been run against the OECD yet.
+- `ckan_` tools: a dataset whose licence names an open licence that CKAN does
+  not list (the Open Government Licence - Toronto, for one) is now marked
+  open. Toronto's portal sets `isopen` to false for its own licence, so every
+  Toronto dataset read as "not open" before.
+
 ## [0.6.0] - 2026-11-18
 
 Statistics Canada now answers some automated requests with a Cloudflare check
