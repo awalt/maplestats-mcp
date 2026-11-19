@@ -325,7 +325,7 @@ def test_v2_unasked_values_are_not_required(qid, text, outcome):
         (
             "C-24",
             (
-                "Don't multiply by 12: September's 248,896 is already a seasonally adjusted "
+                "Don't multiply by 12: September's 250,072 is already a seasonally adjusted "
                 "annual rate."
             ),
             "correct",

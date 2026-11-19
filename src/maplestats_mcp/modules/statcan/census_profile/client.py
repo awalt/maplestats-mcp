@@ -335,13 +335,29 @@ def _group_by_level(level: str | None, codes: list[str], lang: str) -> dict[str,
 
 async def _get_payload(url: str, api_lang: str, lang: str) -> Any:
     await _LIMITER.acquire()
+    budget = constants.data_budget_seconds()
     try:
-        return await api_get(
-            url,
-            params={"format": "jsondata"},
-            headers={"Accept-Language": api_lang},
-            timeout=60.0,
+        return await asyncio.wait_for(
+            api_get(
+                url,
+                params={"format": "jsondata"},
+                headers={"Accept-Language": api_lang},
+                timeout=constants.DATA_TIMEOUT_SECONDS,
+            ),
+            timeout=budget,
         )
+    except TimeoutError as exc:
+        raise UpstreamUnavailable(
+            say(
+                f"statcan_census_profile:get_data: StatCan's census API did not answer "
+                f"within {budget:.0f} s. One request usually takes 30 to 50 s, and a value "
+                "read once is kept, so asking again shortly often works.",
+                f"statcan_census_profile:get_data : l'API du recensement de StatCan n'a pas "
+                f"répondu en {budget:.0f} s. Une requête prend d'habitude de 30 à 50 s, et une "
+                "valeur lue est conservée : redemander sous peu fonctionne souvent.",
+                lang,
+            )
+        ) from exc
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         detail = exc.response.text[:200]

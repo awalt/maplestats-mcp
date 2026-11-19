@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from maplestats_mcp.modules.statcan.census_profile import client, constants
@@ -218,6 +220,26 @@ async def test_get_data_upstream_5xx_becomes_upstream_unavailable(httpx_mock):
         )
     with pytest.raises(UpstreamUnavailable):
         await client.get_data("canada_provinces_territories", ["2021A000235"], ["1"])
+
+
+async def test_get_data_stops_within_the_tool_budget(monkeypatch):
+    # Retried 60 s attempts would outlast the tool timeout; the module's own error comes first.
+    async def never_answers(*args, **kwargs):
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(client, "api_get", never_answers)
+    monkeypatch.setattr(constants, "data_budget_seconds", lambda: 0.05)
+    with pytest.raises(UpstreamUnavailable, match="did not answer within 0 s"):
+        await client.get_data("canada_provinces_territories", ["2021A000235"], ["1"])
+
+
+def test_the_data_budget_leaves_30_s_of_the_tool_timeout(monkeypatch):
+    monkeypatch.setenv("MAPLE_TOOL_TIMEOUT_SECONDS", "120")
+    assert constants.data_budget_seconds() == 90.0
+    monkeypatch.setenv("MAPLE_TOOL_TIMEOUT_SECONDS", "230")
+    assert constants.data_budget_seconds() == 200.0
+    monkeypatch.setenv("MAPLE_TOOL_TIMEOUT_SECONDS", "40")
+    assert constants.data_budget_seconds() == constants.DATA_TIMEOUT_SECONDS
 
 
 @pytest.mark.parametrize(
