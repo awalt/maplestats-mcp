@@ -46,6 +46,7 @@ from typing import Any
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 
 from maplestats_mcp import config
+from maplestats_mcp.shared import path_health
 from maplestats_mcp.shared.breaker import BREAKER
 from maplestats_mcp.shared.brief import estimated_tokens
 from maplestats_mcp.shared.error_hints import ERROR_CODES, error_code
@@ -570,8 +571,14 @@ if STATS.path is not None:
 
 
 def public_snapshot() -> dict[str, Any]:
-    """What /stats serves: the tool counts and latencies, then the upstream hosts' health."""
-    return {**STATS.snapshot(), "upstreams": BREAKER.snapshot()}
+    """What /stats serves: the tool counts and latencies, then the upstream hosts' health.
+
+    `upstreams.challenged_paths` lists the StatCan path groups ("cimt", "pages", ...) that
+    answered with its bot check in the last 15 minutes and not since (shared/path_health.py);
+    empty while none has. The chat demo reads it to show its notice.
+    """
+    upstreams = {**BREAKER.snapshot(), "challenged_paths": sorted(path_health.challenged_now())}
+    return {**STATS.snapshot(), "upstreams": upstreams}
 
 
 class UsageMiddleware(Middleware):

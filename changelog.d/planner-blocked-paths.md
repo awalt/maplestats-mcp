@@ -15,3 +15,6 @@
   Nothing probes: no request is made for this. With no path seen blocked, both tools answer exactly as before
   (checked byte for byte over the 129 benchmark questions); with the CIMT and catalogue paths blocked, a plan
   is 4 characters shorter on average and a search answer 9 shorter.
+- `/stats` `upstreams` gains `challenged_paths`: the StatCan path groups (`cimt`, `pages`, `sdmx`, ...) that
+  answered with the bot check in the last 15 minutes and not since, `[]` while none has. The chat demo reads
+  it for its notice.

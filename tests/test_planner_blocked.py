@@ -32,6 +32,7 @@ from maplestats_mcp.server import mcp
 from maplestats_mcp.shared import path_health
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.http import api_get
+from maplestats_mcp.shared.usage import public_snapshot
 from tests.discovery_benchmark.runner import load_queries
 
 WWW150 = "www150.statcan.gc.ca"
@@ -500,3 +501,15 @@ def test_the_dependencies_match_the_paths_the_tools_read():
     keys = {d.key: d for d in path_health.DEPENDENCIES}
     assert keys["cimt"].prefixes == ("cimt_",)
     assert "statcan_reference_" in keys["pages"].prefixes
+
+
+# 6. /stats ----
+
+
+def test_stats_lists_the_challenged_path_groups():
+    assert public_snapshot()["upstreams"]["challenged_paths"] == []
+    _challenge(PAGES_PATH, CIMT_PATH)
+    snapshot = public_snapshot()["upstreams"]
+    assert snapshot["challenged_paths"] == ["cimt", "pages"]
+    # What was there before is untouched.
+    assert set(snapshot) == {"breaker", "hosts", "challenged_paths"}
