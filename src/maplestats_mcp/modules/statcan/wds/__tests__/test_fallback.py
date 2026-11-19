@@ -32,6 +32,10 @@ from maplestats_mcp.shared.errors import (
 from maplestats_mcp.shared.usage import STATS
 
 WWW150 = "www150.statcan.gc.ca"
+# The lead of the fallback's own "Fix:". A challenge error carries a "Fix:" of its own
+# as well (shared/blocked_hosts.py: do not retry, and what still works), so "Fix:" alone
+# no longer says whether the fallback spoke.
+FALLBACK_FIX = "found no other source for this request"
 ANY_WDS = re.compile(r"https://www150\.statcan\.gc\.ca/.*")
 CCEI = space_constants.SPACES["ccei"].base_url
 LIST_URL = f"{CCEI}/dataflow/all/all/latest"
@@ -743,7 +747,7 @@ async def test_switch_off_leaves_the_original_error(
     ):
         with pytest.raises(CloudflareChallenge) as caught:
             await call
-        assert "Fix:" not in str(caught.value)
+        assert FALLBACK_FIX not in str(caught.value)
     # Only www150 was asked, and nothing was read from any substitute.
     assert {r.url.host for r in httpx_mock.get_requests()} <= {WWW150}
     assert STATS.fallbacks == {}
@@ -756,7 +760,7 @@ async def test_switch_off_with_a_cloudflare_challenge(
     _block(httpx_mock, cloudflare_challenge)
     with pytest.raises(CloudflareChallenge) as caught:
         await _fn(tools.wds_get_data_from_vectors)(vector_ids=[65201210], latest_n=3)
-    assert "Fix:" not in str(caught.value)
+    assert FALLBACK_FIX not in str(caught.value)
     assert {r.url.host for r in httpx_mock.get_requests()} == {WWW150}
 
 
