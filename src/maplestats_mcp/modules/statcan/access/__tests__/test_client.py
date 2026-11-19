@@ -43,3 +43,12 @@ async def test_the_report_is_in_french_on_request(answers):
     report = await client.check_access("fr")
     assert report.summary.startswith("6 services de StatCan sur 13 répondent")
     assert any(e.service == "Service REST SDMX" for e in report.endpoints)
+
+
+async def test_each_service_reports_its_time_and_wait(answers):
+    report = await client.check_access()
+    by_key = {e.key: e for e in report.endpoints}
+    assert all(e.elapsed_seconds is not None and e.elapsed_seconds >= 0 for e in report.endpoints)
+    # The Census Profile API answers in about 30 s (2026-11-19), so it alone waits longer.
+    assert by_key["census_profile_api"].timeout_seconds == constants.SLOW_TIMEOUT_SECONDS
+    assert by_key["sdmx"].timeout_seconds == constants.TIMEOUT_SECONDS
