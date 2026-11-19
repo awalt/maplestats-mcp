@@ -55,7 +55,7 @@ from maplestats_mcp.shared.errors import (
 from maplestats_mcp.shared.limits import join_limits
 from maplestats_mcp.shared.models import CommercialUse, Provenance
 
-SOURCE_NAME = "wds"
+REPLACED_SOURCE = "wds"
 MAX_SERIES = 20
 WDS_HOST = "www150.statcan.gc.ca"
 
@@ -217,7 +217,7 @@ def _provenance(
     )
     return substitution.mark(
         base,
-        replaces=SOURCE_NAME,
+        replaces=REPLACED_SOURCE,
         source="+".join(sources),
         url=" ".join(urls),
         sentences=_sentences(served, exc, lang),
