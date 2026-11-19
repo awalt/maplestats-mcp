@@ -17,6 +17,13 @@ from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
+
+@pytest.fixture(autouse=True)
+def _sdmx_is_up(monkeypatch):
+    """The SDMX cooldown is module state: start every test with it clear."""
+    monkeypatch.setattr(client, "_sdmx_down_until", 0.0)
+
+
 CATALOGUE = "https://sdmx.ilo.org/rest/dataflow/ILO/all/latest"
 STRUCTURE = re.compile(
     r"https://sdmx\.ilo\.org/rest/dataflow/ILO/DF_UNE_DEAP_SEX_AGE_RT/latest\?.*"
@@ -246,3 +253,170 @@ async def test_access_denied_page_is_unavailable_and_describe_falls_back(httpx_m
         await client.search_datasets("unemployment")
     result = await client.describe_dataset("DF_UNE_DEAP_SEX_AGE_RT")
     assert result.key_template == "REF_AREA.FREQ.MEASURE.SEX.AGE"
+
+
+# ------------------------------------------------------------ rplumber route
+# sdmx.ilo.org answered the IIS access-denied page to every request on 2026-11-17
+# while rplumber.ilo.org served the same ILOSTAT tables. rplumber_une_m.csv is
+# that answer as recorded (Canada, monthly, 2026M01 to 2026M09); rplumber_une_a.csv
+# is synthetic: the real columns, with United States values made up for the test.
+
+RPLUMBER = re.compile(r"https://rplumber\.ilo\.org/data/indicator/\?.*")
+SDMX_FLOW = "https://sdmx.ilo.org/rest/dataflow/ILO/DF_UNE_DEAP_SEX_AGE_RT/latest"
+
+
+def _sdmx_denied(httpx_mock):
+    for url in (CATALOGUE, SDMX_FLOW, STRUCTURE, DATA):
+        httpx_mock.add_response(
+            url=url, status_code=403, text=ACCESS_DENIED, is_reusable=True, is_optional=True
+        )
+
+
+def _rplumber_requests(httpx_mock):
+    return [r for r in httpx_mock.get_requests() if r.url.host == "rplumber.ilo.org"]
+
+
+async def test_compare_reads_rplumber_when_sdmx_is_denied(httpx_mock):
+    _sdmx_denied(httpx_mock)
+    httpx_mock.add_response(url=RPLUMBER, text=_text("rplumber_une_m.csv"))
+    result = await client.compare_countries("unemployment_rate", frequency="monthly", last_n=3)
+    request = _rplumber_requests(httpx_mock)[0]
+    # The `+` between codes is sent as written, as the API documents it, never as %2B.
+    query = request.url.query.decode()
+    assert "id=UNE_DEAP_SEX_AGE_RT_M" in query and "sex=SEX_T" in query
+    assert "classif1=AGE_YTHADULT_YGE15" in query and "type=both" in query
+    assert "timefrom=" in query and "ref_area=CAN" in query
+    canada = result.countries[0]
+    assert canada.area_code == "CAN" and canada.area_name == "Canada"
+    # Newest three months, oldest first, in SDMX period spelling.
+    assert [o.period for o in canada.observations] == ["2026-M07", "2026-M08", "2026-M09"]
+    assert canada.latest_period == "2026-M09" and canada.latest_value == pytest.approx(6.189)
+    assert canada.source == "LFS - Labour Force Survey" and canada.unit == "Percentage"
+    assert result.dataset == "DF_UNE_DEAP_SEX_AGE_RT"
+    assert result.csv_url.startswith("https://rplumber.ilo.org/data/indicator/")
+    assert result.provenance.url.startswith("https://rplumber.ilo.org/")
+    assert any("rplumber" in n for n in result.notes)
+    assert "rplumber" in (result.provenance.coverage or "")
+
+
+async def test_compare_joins_codes_with_a_plain_plus_and_ranks(httpx_mock):
+    _sdmx_denied(httpx_mock)
+    httpx_mock.add_response(url=RPLUMBER, text=_text("rplumber_une_a.csv"))
+    result = await client.compare_countries("unemployment_rate", compare_with=["US", "GBR"])
+    assert "ref_area=CAN+USA+GBR" in _rplumber_requests(httpx_mock)[0].url.query.decode()
+    assert [c.area_code for c in result.countries] == ["CAN", "USA"]
+    assert result.canada_rank == 1 and result.ranked_countries == 2
+    assert result.rank_period == "2025"
+    usa = result.countries[1]
+    assert any(o.status == "Break in series" for o in usa.observations)
+    # GBR has no rows in the answer: said, not hidden.
+    assert any("GBR" in n for n in result.notes)
+    assert any("status" in n for n in result.notes)
+
+
+async def test_compare_in_french_asks_for_french_labels(httpx_mock):
+    _sdmx_denied(httpx_mock)
+    httpx_mock.add_response(url=RPLUMBER, text=_text("rplumber_une_a.csv"))
+    result = await client.compare_countries("unemployment_rate", lang="fr")
+    assert "lang=fr" in _rplumber_requests(httpx_mock)[0].url.query.decode()
+    assert any("L'API SDMX d'ILOSTAT" in n for n in result.notes)
+
+
+async def test_second_compare_skips_sdmx_during_the_cooldown(httpx_mock):
+    _sdmx_denied(httpx_mock)
+    httpx_mock.add_response(url=RPLUMBER, text=_text("rplumber_une_a.csv"), is_reusable=True)
+    await client.compare_countries("unemployment_rate")
+    sdmx_before = len([r for r in httpx_mock.get_requests() if r.url.host == "sdmx.ilo.org"])
+    assert sdmx_before >= 1
+    await client.compare_countries("unemployment_rate", compare_with=["USA"])
+    sdmx_after = len([r for r in httpx_mock.get_requests() if r.url.host == "sdmx.ilo.org"])
+    assert sdmx_after == sdmx_before
+
+
+async def test_get_data_reads_a_preset_dataset_from_rplumber(httpx_mock):
+    _sdmx_denied(httpx_mock)
+    httpx_mock.add_response(url=RPLUMBER, text=_text("rplumber_une_a.csv"))
+    result = await client.get_data(
+        "DF_UNE_DEAP_SEX_AGE_RT",
+        "can+usa.a.une_deap_rt.sex_t.age_ythadult_yge15",
+        last_n=2,
+    )
+    assert result.key == "CAN+USA.A.UNE_DEAP_RT.SEX_T.AGE_YTHADULT_YGE15"
+    canada = next(s for s in result.series if s.ref_area == "CAN")
+    assert canada.key == "CAN.A.UNE_DEAP_RT.SEX_T.AGE_YTHADULT_YGE15"
+    assert canada.frequency == "Annual" and canada.observation_count == 2
+    rows = [r for r in result.rows if r.ref_area == "CAN"]
+    assert [(r.period, r.value) for r in rows] == [("2024", 6.4), ("2025", 6.819)]
+    assert result.dataset_name == "Unemployment rate by sex and age (%)"
+    assert any("rplumber" in n for n in result.notes)
+    assert result.csv_url.startswith("https://rplumber.ilo.org/")
+
+
+async def test_get_data_rplumber_checks_the_key_before_a_request(httpx_mock):
+    _sdmx_denied(httpx_mock)
+    with pytest.raises(InvalidInput, match="5 parts in the order REF_AREA.FREQ.MEASURE.SEX.AGE"):
+        await client.get_data("DF_UNE_DEAP_SEX_AGE_RT", "CAN.A")
+    with pytest.raises(InvalidInput, match="one frequency"):
+        await client.get_data("DF_UNE_DEAP_SEX_AGE_RT", "CAN..UNE_DEAP_RT.SEX_T.AGE_YTHADULT_YGE15")
+    with pytest.raises(InvalidInput, match="holds the measure UNE_DEAP_RT"):
+        await client.get_data(
+            "DF_UNE_DEAP_SEX_AGE_RT", "CAN.A.EMP_DEAP_RT.SEX_T.AGE_YTHADULT_YGE15"
+        )
+    with pytest.raises(InvalidInput, match="last_n or start_period"):
+        await client.get_data("DF_UNE_DEAP_SEX_AGE_RT", ".A.UNE_DEAP_RT.SEX_T.")
+    assert not _rplumber_requests(httpx_mock)
+
+
+async def test_get_data_for_another_dataset_stays_unavailable(httpx_mock):
+    from maplestats_mcp.shared.errors import UpstreamUnavailable
+
+    httpx_mock.add_response(url=CATALOGUE, status_code=403, text=ACCESS_DENIED, is_reusable=True)
+    httpx_mock.add_response(
+        url="https://sdmx.ilo.org/rest/dataflow/ILO/DF_EMP_TEMP_SEX_AGE_NB/latest",
+        status_code=403,
+        text=ACCESS_DENIED,
+    )
+    with pytest.raises(UpstreamUnavailable, match="rplumber"):
+        await client.get_data(
+            "DF_EMP_TEMP_SEX_AGE_NB", "CAN.A.EMP_TEMP_NB.SEX_T.AGE_AGGREGATE_TOTAL"
+        )
+    assert not _rplumber_requests(httpx_mock)
+
+
+async def test_rplumber_failure_is_unavailable(httpx_mock):
+    from maplestats_mcp.shared.errors import UpstreamUnavailable
+
+    _sdmx_denied(httpx_mock)
+    httpx_mock.add_response(url=RPLUMBER, status_code=503, text="Service Unavailable")
+    with pytest.raises(UpstreamUnavailable, match="rplumber API answered HTTP 503"):
+        await client.compare_countries("unemployment_rate")
+
+
+async def test_rplumber_without_canada_is_not_found(httpx_mock):
+    _sdmx_denied(httpx_mock)
+    header = _text("rplumber_une_a.csv").splitlines()[0]
+    httpx_mock.add_response(url=RPLUMBER, text=header + "\n")
+    with pytest.raises(NotFound, match="no unemployment_rate values for Canada"):
+        await client.compare_countries("unemployment_rate")
+
+
+def test_rplumber_helpers():
+    from maplestats_mcp.modules.ilo import rplumber
+
+    assert rplumber.sdmx_period("2026M09") == "2026-M09"
+    assert rplumber.sdmx_period("2025Q4") == "2025-Q4"
+    assert rplumber.sdmx_period("2025") == "2025"
+    assert rplumber.sdmx_period("last year") is None
+    assert rplumber.indicator_id("DF_UNE_DEAP_SEX_AGE_RT", "M") == "UNE_DEAP_SEX_AGE_RT_M"
+    # 24 monthly values need two years and a margin; a start period wins; none means all years.
+    assert rplumber.from_year(None, 24, "M", 2026) == 2021
+    assert rplumber.from_year("2020-03", 24, "M", 2026) == 2020
+    assert rplumber.from_year(None, None, "A", 2026) is None
+    found = rplumber.shape_for("DF_EAR_INEE_CUR_NB")
+    assert found is not None
+    shape, modelled = found
+    assert shape.kinds == ("area", "freq", "measure", "classif1")
+    assert shape.classif1 == "CUR_TYPE_PPP" and modelled is False
+    modelled_flow = rplumber.shape_for("DF_LAP_2GDP_NOC_RT")
+    assert modelled_flow is not None and modelled_flow[1] is True
+    assert rplumber.shape_for("DF_EMP_TEMP_SEX_AGE_NB") is None

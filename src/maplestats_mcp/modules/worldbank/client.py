@@ -24,6 +24,30 @@ Checked live on 2026-10-03 with the project's User-Agent:
 - The edge answered HTTP 502 (a Cloudflare "bad gateway" page) to most
   calls for several minutes after a burst; `api_get` retries 502 and the
   rate limit in constants.py keeps the pace low.
+
+Checked live on 2026-11-17 (plain requests, the project's User-Agent):
+
+- `/v2/country/CAN?format=json` answered in 0.9 s and the English catalogue
+  (`/v2/en/sources/2/indicators`, 1.5 MB, 1,498 indicators) in 19.5 s, but
+  `/v2/en/country/CAN/indicator/NY.GDP.MKTP.KD.ZG?...` held the connection
+  61 s and then dropped it ("Server disconnected"), and the review that day saw
+  the same data path time out at 30 s. No challenge, no status, no rate-limit
+  header: the v2 data backend was not answering.
+- Data360 (`GET https://data360api.worldbank.org/data360/data`, no key) answered
+  the same WDI series in 0.7 to 1.4 s: `DATABASE_ID=WB_WDI`,
+  `INDICATOR=WB_WDI_<code with underscores>`, `REF_AREA` codes joined by commas
+  (OED, the OECD members aggregate, included), `timePeriodFrom` and
+  `timePeriodTo` (years). The answer is `{"count": n, "value": [rows]}`: `count`
+  is every matching row, but a call returns at most 1,000 (`top=5000` was
+  ignored: 1,000 of 2,508 rows for the OECD members' population, in no useful
+  order), and `skip=1000` returned the next 1,000, so the reader pages. A row
+  has OBS_VALUE (a string), TIME_PERIOD (a year), REF_AREA, UNIT_MEASURE, SEX,
+  AGE and URBANISATION (`_T` for totals). It names no country and carries no
+  update date. Canada's GDP growth in 2020 was -5.038233 and the United States'
+  unemployment in 2024 (ILO modelled) 4.022.
+- So `get_canada_series` reads Data360 first and the v2 data endpoint when
+  Data360 does not answer, answers a shape this module does not know, or has no
+  rows for Canada. The catalogue (names, topics, definitions) still comes from v2.
 """
 
 from __future__ import annotations
@@ -422,6 +446,103 @@ async def get_indicator(indicator: str, lang: str = "en") -> IndicatorDetail:
 # --------------------------------------------------------------------- data
 
 
+def _data360_params(
+    code: str, codes: list[str], start_year: int | None, end_year: int | None
+) -> dict[str, Any]:
+    params: dict[str, Any] = {
+        "DATABASE_ID": constants.DATA360_DATABASE,
+        "INDICATOR": f"{constants.DATA360_DATABASE}_{code.replace('.', '_')}",
+        "REF_AREA": ",".join(codes),
+        "top": constants.DATA360_PAGE_ROWS,
+    }
+    if start_year is not None or end_year is not None:
+        params["timePeriodFrom"] = start_year or 1960
+        params["timePeriodTo"] = end_year or 2100
+    return params
+
+
+async def _data360_page(params: dict[str, Any], lang: str) -> tuple[list[Any], int]:
+    payload = await _get(constants.DATA360_URL, params, constants.DATA_TIMEOUT_SECONDS, lang)
+    values = payload.get("value") if isinstance(payload, dict) else None
+    count = payload.get("count") if isinstance(payload, dict) else None
+    if not isinstance(values, list) or not isinstance(count, int):
+        _raise(
+            UpstreamError,
+            "The World Bank Data360 API answered a shape this module does not know.",
+            "l'API Data360 de la Banque mondiale a répondu dans une forme inconnue.",
+            lang,
+        )
+    return values, count
+
+
+async def _data360_rows(params: dict[str, Any], lang: str) -> list[dict[str, Any]]:
+    """The series as v2-shaped rows (country code and name, year, value), so one
+    reader serves both APIs. Anything this module does not know how to read, or no
+    row for Canada, is an UpstreamError, which sends the caller to the v2 endpoint."""
+    values, count = await _data360_page(params, lang)
+    pages = -(-count // constants.DATA360_PAGE_ROWS)
+    if pages > constants.DATA360_MAX_PAGES:
+        _raise(
+            UpstreamError,
+            f"The World Bank Data360 API has {count} rows for this series, more than the "
+            f"{constants.DATA360_MAX_PAGES * constants.DATA360_PAGE_ROWS} this module reads.",
+            f"l'API Data360 de la Banque mondiale a {count} lignes pour cette série, plus que "
+            f"les {constants.DATA360_MAX_PAGES * constants.DATA360_PAGE_ROWS} que ce module lit.",
+            lang,
+        )
+    for page in range(1, pages):
+        more, _ = await _data360_page({**params, "skip": page * constants.DATA360_PAGE_ROWS}, lang)
+        values = [*values, *more]
+    if len(values) != count:
+        _raise(
+            UpstreamError,
+            f"The World Bank Data360 API sent {len(values)} of {count} rows.",
+            f"l'API Data360 de la Banque mondiale a envoyé {len(values)} lignes sur {count}.",
+            lang,
+        )
+    rows: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in values:
+        if not isinstance(item, dict):
+            continue
+        iso = str(item.get("REF_AREA") or "").upper()
+        year = str(item.get("TIME_PERIOD") or "")
+        raw = item.get("OBS_VALUE")
+        if not iso or not year.isdigit() or raw in (None, ""):
+            continue
+        try:
+            number = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if (iso, year) in seen:
+            # Two rows for one country and year are two breakdowns (by sex or by
+            # urban and rural), and which one v2's WDI row is cannot be told here.
+            _raise(
+                UpstreamError,
+                f"The World Bank Data360 API has several rows for {iso} in {year}.",
+                f"l'API Data360 de la Banque mondiale a plusieurs lignes pour {iso} en {year}.",
+                lang,
+            )
+        seen.add((iso, year))
+        names = constants.COUNTRY_NAMES.get(iso, (iso, iso))
+        rows.append(
+            {
+                "countryiso3code": iso,
+                "country": {"value": names[1] if lang == "fr" else names[0]},
+                "date": year,
+                "value": number,
+            }
+        )
+    if not any(r["countryiso3code"] == constants.CANADA for r in rows):
+        _raise(
+            UpstreamError,
+            "The World Bank Data360 API has no row for Canada.",
+            "l'API Data360 de la Banque mondiale n'a aucune ligne pour le Canada.",
+            lang,
+        )
+    return rows
+
+
 def _comparison_codes(compare_with: list[str] | None, lang: str = "en") -> list[str]:
     codes: list[str] = [constants.CANADA]
     allowed = set(constants.OECD_MEMBERS) | {constants.OECD_AGGREGATE}
@@ -510,7 +631,7 @@ async def get_canada_series(
     if start_year is not None or end_year is not None:
         params["date"] = f"{start_year or 1960}:{end_year or 2100}"
 
-    async def fetch() -> Any:
+    async def fetch_v2() -> tuple[list[dict[str, Any]], str | None, str]:
         payload = await _get(url, params, constants.DATA_TIMEOUT_SECONDS, lang)
         if _is_api_message(payload):
             message = _api_message_text(payload)
@@ -539,15 +660,25 @@ async def get_canada_series(
                 f"{code} : l'API a réparti la série sur {pages} pages.",
                 lang,
             )
-        return payload
+        v2_rows = [r for r in (payload[1] or []) if isinstance(r, dict)]
+        return v2_rows, header.get("lastupdated"), str(httpx.URL(url, params=params))
 
-    payload, cached = await cached_fetch(
+    async def fetch() -> tuple[list[dict[str, Any]], str | None, str]:
+        data360 = _data360_params(code, codes, start_year, end_year)
+        try:
+            return (
+                await _data360_rows(data360, lang),
+                None,
+                str(httpx.URL(constants.DATA360_URL, params=data360)),
+            )
+        except (UpstreamUnavailable, UpstreamError):
+            return await fetch_v2()
+
+    (rows, as_of, used_url), cached = await cached_fetch(
         f"worldbank:data:{lang}:{code}:{';'.join(codes)}:{params.get('date', '')}",
         constants.CACHE_TTL_DATA_SECONDS,
         fetch,
     )
-    header: dict[str, Any] = payload[0]
-    rows = [r for r in (payload[1] or []) if isinstance(r, dict)]
 
     by_country: dict[str, CountrySeries] = {}
     for r in rows:
@@ -622,7 +753,6 @@ async def get_canada_series(
         )
 
     rank, rank_year, ranked = _rank(countries)
-    as_of = header.get("lastupdated")
     return CanadaSeriesResult(
         indicator_id=code,
         indicator_name=str(row.get("name") or code),
@@ -633,7 +763,7 @@ async def get_canada_series(
         notes=notes,
         provenance=make_provenance(
             source=constants.SOURCE,
-            url=str(httpx.URL(url, params=params)),
+            url=used_url,
             cached=cached,
             schema_name="worldbank.CanadaSeriesResult",
             freshness=(
@@ -643,10 +773,22 @@ async def get_canada_series(
             )
             if as_of
             else _FRESHNESS[lang],
-            coverage=(
-                "Years without a value are left out."
-                if lang == "en"
-                else "Les années sans valeur sont omises."
+            coverage=_text(
+                "Years without a value are left out. "
+                + (
+                    "Read from the World Bank's Data360 API (database WB_WDI), which serves "
+                    "the same WDI series."
+                    if used_url.startswith(constants.DATA360_URL)
+                    else "Read from the World Bank Indicators API v2."
+                ),
+                "Les années sans valeur sont omises. "
+                + (
+                    "Lu dans l'API Data360 de la Banque mondiale (base WB_WDI), qui sert les "
+                    "mêmes séries WDI."
+                    if used_url.startswith(constants.DATA360_URL)
+                    else "Lu dans l'API Indicators v2 de la Banque mondiale."
+                ),
+                lang,
             ),
             licence=_licence(lang),
             lang=lang,

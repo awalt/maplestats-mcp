@@ -66,6 +66,17 @@ async def main() -> bool:
     print("OK: EO ->", [(s.key, s.unit, s.latest_period, s.latest_value) for s in eo.series])
     ok &= len(eo.series) == 2 and eo.rows[0].ref_area == "CAN" and eo.rows[0].frequency == "Annual"
 
+    # The quarterly GDP example in oecd_get_data's docstring: the dataflow and key come from
+    # DBnomics' copy of it (indexed 2026-06-16), because sdmx.oecd.org answered a Cloudflare
+    # challenge on 2026-11-17, so this is the first run of the key against the OECD itself.
+    qna = await client.get_data(
+        "DSD_NAMAIN1@DF_QNA_EXPENDITURE_GROWTH_OECD",
+        "Q.Y.CAN.S1.S1.B1GQ._Z._Z._Z.PC.L.G1.T0102",
+        last_n=2,
+    )
+    print("OK: quarterly GDP ->", [(s.key, s.latest_period, s.latest_value) for s in qna.series])
+    ok &= len(qna.series) == 1 and "-Q" in (qna.series[0].latest_period or "")
+
     revenue = await client.get_data(
         "OECD.CTP.TPS,DSD_REV_COMP_OECD@DF_RSOECD",
         "CAN.TAX_REV.S13.T_1100+T_5000._T.PT_B1GQ.A",

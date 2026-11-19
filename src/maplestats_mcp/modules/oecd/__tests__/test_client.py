@@ -287,3 +287,44 @@ def test_every_indicator_key_has_one_area_slot():
     for name, spec in constants.INDICATORS.items():
         assert spec.key.split(".").count("{area}") == 1, name
         assert spec.label_fr and spec.default_last_n > 0, name
+
+
+# ------------------------------------------------- quarterly GDP example (2026-11-17)
+# sdmx.oecd.org answered a Cloudflare challenge on 2026-11-17, so this dataflow's
+# dimension order and the Canada key come from DBnomics' copy of it (indexed
+# 2026-06-16), not from the OECD: the test checks that the documented example
+# is a well-formed key for those 13 dimensions, not that the OECD serves it.
+
+QNA_DIMENSIONS = [
+    ("FREQ", ["A", "Q"]),
+    ("ADJUSTMENT", ["N", "S", "Y"]),
+    ("REF_AREA", ["CAN", "USA", "GBR"]),
+    ("SECTOR", ["S1"]),
+    ("COUNTERPART_SECTOR", ["S1"]),
+    ("TRANSACTION", ["B1GQ", "P51G"]),
+    ("INSTR_ASSET", ["_Z"]),
+    ("ACTIVITY", ["_Z"]),
+    ("EXPENDITURE", ["_T", "_Z"]),
+    ("UNIT_MEASURE", ["PC"]),
+    ("PRICE_BASE", ["L", "V"]),
+    ("TRANSFORMATION", ["G1", "GY"]),
+    ("TABLE_IDENTIFIER", ["T0102"]),
+]
+
+
+def test_documented_quarterly_gdp_example_is_a_well_formed_key():
+    from maplestats_mcp.modules.oecd.tools import oecd_get_data
+
+    dimensions = [
+        {"id": dim, "name": dim, "codes": [[c, c] for c in codes], "constrained": True}
+        for dim, codes in QNA_DIMENSIONS
+    ]
+    flow = "DSD_NAMAIN1@DF_QNA_EXPENDITURE_GROWTH_OECD"
+    key = "Q.Y.CAN.S1.S1.B1GQ._Z._Z._Z.PC.L.G1.T0102"
+    # The docstring a client reads carries exactly this flow and key.
+    assert flow in (oecd_get_data.__doc__ or "") and key in (oecd_get_data.__doc__ or "")
+    assert client._check_key(key, dimensions, flow, "en") == key
+    assert client._max_series(key, dimensions) == 1
+    # The key the review guessed for DF_QNA has too few parts for this dataflow.
+    with pytest.raises(InvalidInput, match="13 parts"):
+        client._check_key("Q..USA+DEU.S1..B1GQ", dimensions, flow, "en")
