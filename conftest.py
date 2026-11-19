@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Iterator
 
 import pytest
 from tenacity import BaseRetrying, wait_none
@@ -114,13 +115,17 @@ def _empty_census_values() -> None:
 
 
 @pytest.fixture(autouse=True)
-def _closed_breakers() -> None:
+def _closed_breakers() -> Iterator[None]:
     """Breaker state is process-wide; a test must not inherit another test's open host.
 
     The same for the StatCan paths shared/path_health.py has seen answer with the bot check,
-    which plan_query and search_tools read.
+    which plan_query and search_tools read. It is also cleared after the test: a module-scoped
+    fixture (the discovery benchmark's) is built before the next test's own reset runs, and it
+    must not see the last test's challenged paths.
     """
     BREAKER.reset()
+    path_health.reset()
+    yield
     path_health.reset()
 
 

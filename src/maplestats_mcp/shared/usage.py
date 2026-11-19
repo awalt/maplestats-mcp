@@ -78,6 +78,11 @@ _Saved = tuple[
     dict[str, Counter[str]],
 ]
 
+# The sources a blocked StatCan tool can be answered from (shared/substitution.py): a
+# fixed list, so the counter never holds text from a request. An unknown name counts as
+# "other".
+FALLBACK_SOURCES = ("ccei", "stcshared", "boc", "ab_economic")
+
 # Header the maintainer's own clients send, with the secret MAPLE_INTERNAL_TOKEN holds.
 INTERNAL_HEADER = "x-maple-internal"
 # Query parameter a client can add to the endpoint URL to say what it is (see caller_label).
@@ -174,6 +179,9 @@ class UsageStats:
         # labels were kept have none; the snapshot reports them as "untracked".
         self.clients: Counter[tuple[str, bool]] = Counter()
         self.client_days: dict[str, Counter[str]] = {}
+        # Answers a tool gave from a substitute source because its own was blocked
+        # (shared/substitution.py), by source; in memory, like the latencies.
+        self.fallbacks: Counter[str] = Counter()
         self.durations: dict[str, deque[float]] = {}
         # Per tool: [results sized, characters in all of them, the largest]. The
         # size of what the client read, never its content.
@@ -210,6 +218,10 @@ class UsageStats:
     def _name(self, tool: str) -> str:
         name = tool if tool in self.tool_names else normalized_tool_name(tool)
         return name if name in self.tool_names else "other"
+
+    def record_fallback(self, source: str) -> None:
+        """Count one answer served from `source` in place of a blocked StatCan source."""
+        self.fallbacks[source if source in FALLBACK_SOURCES else CLIENT_OTHER] += 1
 
     def record_size(self, tool: str, chars: int) -> None:
         """Count one result of `chars` characters (the text the client read) for `tool`."""
@@ -416,8 +428,10 @@ class UsageStats:
                 "list such as claude-code or python-fastmcp, or internal for the "
                 "maintainer's own calls; never the name it sent or an address), "
                 "durations and result sizes (characters, "
-                "and tokens estimated at four characters each), and upstream host names with "
-                f"their error counts, only, in memory; {kept}. Where GoatCounter is "
+                "and tokens estimated at four characters each), upstream host names with "
+                "their error counts, and how many answers a blocked StatCan tool took from "
+                f"another official source (by source name), only, in memory; {kept}. Where "
+                "GoatCounter is "
                 "configured, each call's tool name and outcome are also counted there."
             ),
             "calls": total,
@@ -431,6 +445,7 @@ class UsageStats:
             "by_day_client": _by_day_client(self.client_days),
             "latency_ms": latency,
             "result_size": sizes,
+            "fallbacks": dict(self.fallbacks.most_common()),
         }
 
 
