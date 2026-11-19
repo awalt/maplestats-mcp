@@ -30,7 +30,7 @@ async def imf_search_datasets(query: str, limit: int = 10, lang: Lang = "en") ->
     """Search the IMF's datasets by keyword (World Economic Outlook, balance of payments).
 
     Use for: finding which International Monetary Fund dataset holds a
-    series for Canada or a peer, before listing its series. `query` is
+    series for a country, before listing its series. `query` is
     English (the IMF names datasets in English only). An IMF figure is not
     a Statistics Canada figure; use it for comparison or when the Canadian
     source is out.
@@ -51,8 +51,7 @@ async def imf_describe_dataset(dataset: str, lang: Lang = "en") -> DatasetStruct
     frequency, ...) and the codes in each, before calling imf_get_data;
     also how to cite the dataset. `dataset` is an id from
     imf_search_datasets (ER, BOP, WEO). The result gives a key template
-    and an example key for Canada. The IMF does not publish which codes
-    have data.
+    and an example key. The IMF does not publish which codes have data.
     Keywords: IMF, dataset structure, dimensions, code list, series key,
     SDMX key, data structure definition, country codes, metadata,
     International Monetary Fund.
@@ -71,19 +70,19 @@ async def imf_search_series(
     limit: int = 25,
     lang: Lang = "en",
 ) -> SeriesList:
-    """List Canada's series in an IMF dataset, with the latest value of each.
+    """List a country's series in an IMF dataset, with the newest value of each.
 
-    Use for: finding the series key for Canada (or another country code)
+    Use for: finding the series key for a country code (CAN by default)
     in an IMF dataset: every series with its labels, frequency, newest
     period and value. `query` keeps the series whose labels hold every
     word (English, or French with lang="fr"). Then pass the key to
     imf_get_data. IMF figures, not Statistics Canada's.
-    Keywords: IMF, series for Canada, country series, latest value,
+    Keywords: IMF, series for a country, country series, newest value,
     series key, International Monetary Fund, IMF API, SDMX series, IMF
-    data for Canada.
-    Mots-clés : FMI, séries du Canada, séries par pays, dernière valeur,
+    country data.
+    Mots-clés : FMI, séries d'un pays, séries par pays, dernière valeur,
     clé de série, Fonds monétaire international, API du FMI, séries SDMX,
-    données du FMI pour le Canada.
+    données du FMI par pays.
     """
     return await client.search_series(dataset, query=query, country=country, limit=limit, lang=lang)
 
@@ -99,7 +98,7 @@ async def imf_get_data(
 ) -> DataResult:
     """Get IMF observations by dataset and SDMX key, as tidy rows.
 
-    Use for: an IMF series for Canada or a peer, such as World Economic
+    Use for: an IMF series for a country, such as World Economic
     Outlook real GDP growth (WEO, `CAN.NGDP_RPCH.A`). `key` has one part
     per dimension in the order imf_describe_dataset gives, codes joined by
     `+`, an empty part for all; a short key is a prefix. Periods are SDMX
