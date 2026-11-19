@@ -1858,7 +1858,8 @@ async def main(modules: set[str], url: str | None = None) -> int:
         print("SKIP eps: EPS is reloading its data (its load-date table is empty)")
         DOWN_MODULES["eps"] = "EPS is reloading its data"
         skipped.append("eps")
-    if await _ourcommons_blocked_on_ci():
+    # A hosted run reaches ourcommons.ca from the host, not from this runner.
+    if not url and await _ourcommons_blocked_on_ci():
         print("SKIP ourcommons: ourcommons.ca answers HTTP 403 to this GitHub runner")
         DOWN_MODULES["ourcommons"] = "blocked on this runner (HTTP 403)"
     step_tools = {step.tool for step in STEPS}

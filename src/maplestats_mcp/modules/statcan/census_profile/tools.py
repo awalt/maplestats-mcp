@@ -36,7 +36,7 @@ Statistic = Literal["counts", "rate"]
 
 @tool
 async def statcan_census_profile_search_geography(
-    level: GeographyLevel,
+    level: GeographyLevel | None = None,
     query: str = "",
     limit: int = constants.GEOGRAPHY_SEARCH_LIMIT_DEFAULT,
     lang: Literal["en", "fr"] = "en",

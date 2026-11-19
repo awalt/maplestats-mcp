@@ -15,6 +15,13 @@ class TableInfo(BaseModel):
     statcan_pid: str | None = Field(
         default=None, description="StatCan table the series mirrors, when the name ends in one."
     )
+    internal: bool = Field(
+        default=False,
+        description=(
+            "The dashboard's own working table (an index or lookup table, a stale "
+            "'_stage' copy, a Defence_* project list), not a published series."
+        ),
+    )
 
 
 class TableList(BaseModel):

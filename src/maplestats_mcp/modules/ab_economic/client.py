@@ -46,6 +46,11 @@ _LIMITER = get_limiter(
 # 2026-11-15). Seven-digit endings (MultipleJobHolders_1410004) are truncated upstream
 # and could be either of two tables, so they are not read as one.
 _PID = re.compile(r"_(\d{8}|\d{10})(?:_(?:SQL|stage))?$", re.IGNORECASE)
+# The dashboard's own working tables, not published series (issue #265, list read
+# 2026-11-15): its index and lookup tables, "_stage" copies that stopped updating
+# and Defence_* project lists. "_SQL" names are left alone: some are the live copy
+# of a StatCan table (JobVacanciesQuaterly_14100398_SQL).
+_INTERNAL_NAMES = frozenset({"tableindex", "categories", "dimindicatorard", "heatmaptempdata"})
 # A newest row older than this many days is reported: REACM_EdmRent ended on
 # 2021-01-01 and nothing said so (live 2026-11-15, issue #262). Three years leaves
 # room for annual series published with a long lag.
@@ -54,6 +59,11 @@ _STALE_AFTER_DAYS = 3 * 365
 # columns such as "NAICS Description" (live 2026-10-03), which the API
 # accepts URL-encoded.
 _COLUMN = re.compile(r"^[A-Za-z_][A-Za-z0-9_ ]*$")
+
+
+def _internal(table: str) -> bool:
+    lower = table.lower()
+    return lower in _INTERNAL_NAMES or lower.startswith("defence_") or lower.endswith("_stage")
 
 
 def _raise_for(exc: httpx.HTTPStatusError, context: str, lang: str = "en") -> NoReturn:
@@ -126,8 +136,10 @@ async def list_tables(query: str | None = None, lang: str = "en") -> TableList:
     names, cached = await _table_names(lang)
     needle = (query or "").strip().lower()
     matches = [n for n in names if not needle or needle in n.lower() or needle == _pid(n)]
+    # Published tables first, the dashboard's working tables after them.
+    matches.sort(key=_internal)
     return TableList(
-        tables=[TableInfo(table=n, statcan_pid=_pid(n)) for n in matches],
+        tables=[TableInfo(table=n, statcan_pid=_pid(n), internal=_internal(n)) for n in matches],
         total_count=len(matches),
         query=query,
         provenance=make_provenance(

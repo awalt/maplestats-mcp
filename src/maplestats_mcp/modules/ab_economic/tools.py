@@ -65,9 +65,9 @@ async def ab_economic_list_tables(query: str | None = None, lang: Lang = "en") -
     query="Unemployment", "CPI", "AESO", "RigCount", "Exports", or a
     StatCan table number such as "14100287". Names ending in an 8-10
     digit number mirror that StatCan table with Alberta-focused cuts.
-    The list also holds the dashboard's own working tables (TableIndex,
-    "_stage" copies that stopped updating, Defence_* project lists);
-    prefer the table an indicator page names.
+    The dashboard's own working tables (TableIndex, "_stage" copies that
+    stopped updating, Defence_* project lists) come last with
+    internal=true; prefer a published table.
     Keywords: Alberta, economic data, tables, labour force, CPI,
     exports, energy, housing starts, population, rig count.
     Mots-clés : Alberta, données économiques, tableaux de données,

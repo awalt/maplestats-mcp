@@ -132,3 +132,33 @@ DGUID_PREFIX_TO_LEVEL = {
 # Confirmed live via CL_GENDER/CL_STATISTIC codelists.
 GENDER_TO_CODE = {"total": "1", "men": "2", "women": "3"}
 STATISTIC_TO_CODE = {"counts": "1", "rate": "4"}
+
+# Names that pick the provinces-and-territories level when search_geography is
+# called without one (issue #273: the first call failed for want of `level`).
+# English and French, accents folded, as the 2021 codelist spells them.
+PROVINCE_LEVEL_NAMES = frozenset(
+    {
+        "canada",
+        "newfoundland and labrador",
+        "terre-neuve-et-labrador",
+        "prince edward island",
+        "ile-du-prince-edouard",
+        "nova scotia",
+        "nouvelle-ecosse",
+        "new brunswick",
+        "nouveau-brunswick",
+        "quebec",
+        "ontario",
+        "manitoba",
+        "saskatchewan",
+        "alberta",
+        "british columbia",
+        "colombie-britannique",
+        "yukon",
+        "northwest territories",
+        "territoires du nord-ouest",
+        "nunavut",
+    }
+)
+# A forward sortation area: letter, digit, letter (T5J).
+FSA_PATTERN = r"^[A-Za-z]\d[A-Za-z]$"
