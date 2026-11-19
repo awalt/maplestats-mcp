@@ -35,7 +35,10 @@ async def plan_query(question: str, lang: Literal["en", "fr"] = "en") -> QueryPl
     caveats and guidance in French (a question written in French gets
     them in French too); tool and argument names stay as they are. Each
     step's `call` holds its first arguments: pass them to call_tool with the
-    step's tool, with no search_tools call first.
+    step's tool, with no search_tools call first. A step with `blocked: true`
+    sits on a StatCan path that answered with its bot check in the last 15
+    minutes: it is listed last and has no `call`; use the working route listed
+    before it.
     Keywords: plan, which data source, where to find, combine sources,
     cross-source, question, research, Canada data.
     Mots-clés : planifier, quelle source de données, où trouver, combiner
