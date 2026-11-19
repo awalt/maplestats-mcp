@@ -390,3 +390,17 @@ async def test_get_raw_with_a_cap_still_retries_a_503(httpx_mock):
 async def test_get_raw_without_a_cap_reads_the_whole_body_as_before(httpx_mock):
     httpx_mock.add_response(url="https://example.invalid/all", content=b"y" * 200_000)
     assert len((await get_raw("https://example.invalid/all")).content) == 200_000
+
+
+async def test_get_raw_with_a_cap_keeps_an_accented_header(httpx_mock):
+    # DFO answered with an 'é' in a header value (2026-11-19); copying the answer
+    # re-encoded the decoded text as ASCII and raised UnicodeEncodeError.
+    disposition = "attachment; filename=Débarquements.csv".encode("latin-1")
+    httpx_mock.add_response(
+        url="https://example.invalid/accent",
+        headers=[(b"content-disposition", disposition)],
+        content=b"ok",
+    )
+    response = await get_raw("https://example.invalid/accent", max_bytes=1000)
+    assert response.content == b"ok"
+    assert response.headers.raw[0] == (b"content-disposition", disposition)

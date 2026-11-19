@@ -480,11 +480,15 @@ _ERROR_BODY_MAX_BYTES = 64 * 1024
 
 def _copy_answer(response: httpx.Response, body: bytes) -> httpx.Response:
     """The same answer holding `body`: status, headers and request kept, and the
-    encoding headers dropped because aiter_bytes() already decoded what was read."""
+    encoding headers dropped because aiter_bytes() already decoded what was read.
+
+    The headers are copied as the raw bytes received: httpx decodes a value as
+    Latin-1 but encodes a str value as ASCII, so copying the decoded text raised
+    UnicodeEncodeError on an accented header value (DFO's 'é', 2026-11-19)."""
     headers = [
         (name, value)
-        for name, value in response.headers.multi_items()
-        if name.lower() not in ("content-encoding", "content-length", "transfer-encoding")
+        for name, value in response.headers.raw
+        if name.lower() not in (b"content-encoding", b"content-length", b"transfer-encoding")
     ]
     return httpx.Response(
         response.status_code, headers=headers, content=body, request=response.request
