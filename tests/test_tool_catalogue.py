@@ -23,6 +23,7 @@ from maplestats_mcp.catalogue import (
     TOOL_SWITCHES,
     build_catalogue,
     module_dirs,
+    module_hidden,
     read_catalogue,
 )
 
@@ -47,7 +48,11 @@ async def test_lazy_listing_equals_the_eager_one():
         eager.extend(await server.ModuleProvider(root=root)._list_tools())
     lazy = await server.mcp._list_tools()
     lazy_modules = [p for p in server.mcp.providers if isinstance(p, server.LazyModuleProvider)]
-    assert len(lazy_modules) == len(module_dirs())
+    # A module that is nothing but switched-off tools (`fred` while FRED_API_KEY is unset)
+    # is not registered at all.
+    catalogue = read_catalogue() or {}
+    registered = [d for d in module_dirs() if not module_hidden(catalogue[d.name])]
+    assert len(lazy_modules) == len(registered)
     assert _listing(lazy) == _listing(eager)
 
 

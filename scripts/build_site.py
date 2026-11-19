@@ -720,6 +720,15 @@ SOURCES: dict[str, Source] = {
         "ABS (Australie)",
         domain="statistics",
     ),
+    "fred": Source(
+        "FRED, St. Louis Fed (a separate publisher; offered only with the operator's own API key)",
+        "FRED, Fed de St. Louis (un éditeur distinct ; offert seulement avec la clé d'API de "
+        "l'exploitant)",
+        "international",
+        "FRED (St. Louis Fed)",
+        "FRED (Fed de St. Louis)",
+        domain="statistics",
+    ),
     "ons": Source(
         "UK Office for National Statistics (UK comparators)",
         "Office for National Statistics du Royaume-Uni (points de comparaison britanniques)",

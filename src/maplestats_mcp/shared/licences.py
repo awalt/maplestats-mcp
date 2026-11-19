@@ -327,6 +327,13 @@ SOURCE_LICENCES: dict[str, str] = {
         "Source: Office for National Statistics licensed under the Open Government Licence "
         "v3.0 (https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/)."
     ),
+    "fred": (
+        "Source: Federal Reserve Bank of St. Louis, FRED®. Use is bound by the FRED® "
+        "API Terms of Use (https://fred.stlouisfed.org/docs/api/terms_of_use.html): "
+        "show that the product is not endorsed or certified by the Federal Reserve Bank "
+        "of St. Louis; series FRED marks Copyright belong to third parties whose "
+        "permission is needed."
+    ),
     # Quebec
     "isq": ISQ_LICENCE,
     # Federal: open.canada.ca and departmental open-data services (OGL - Canada)
@@ -550,6 +557,14 @@ LICENCES_FR: dict[str, str] = {
     SOURCE_LICENCES["ons"]: (
         "Source : Office for National Statistics, sous licence Open Government Licence v3.0 "
         "(https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/)."
+    ),
+    SOURCE_LICENCES["fred"]: (
+        "Source : Federal Reserve Bank of St. Louis, FRED®. L'utilisation est soumise "
+        "aux conditions d'utilisation de l'API FRED® "
+        "(https://fred.stlouisfed.org/docs/api/terms_of_use.html) : indiquer que le "
+        "produit n'est ni approuvé ni certifié par la Federal Reserve Bank of St. Louis "
+        "; les séries que FRED marque Copyright appartiennent à des tiers dont "
+        "l'autorisation est requise."
     ),
     SOURCE_LICENCES["fed"]: (
         "Source : Conseil des gouverneurs de la Réserve fédérale. Domaine public ; citez le "
@@ -895,6 +910,9 @@ _SOURCE_COMMERCIAL_USE: dict[str, CommercialUse] = {
     "ilo": "allowed",
     # OGL v3: commercial and non-commercial reuse with the source acknowledged.
     "ons": "allowed",
+    # The FRED API terms say nothing on commercial use; third-party series need their
+    # owner's permission (read 2026-11-18).
+    "fred": "unknown",
     "cbsa-tariff": "not_allowed",
     "electricity": "varies",
     "dfo-iwls": "unknown",
