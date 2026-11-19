@@ -327,6 +327,14 @@ SOURCE_LICENCES: dict[str, str] = {
         "Source: Office for National Statistics licensed under the Open Government Licence "
         "v3.0 (https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/)."
     ),
+    "imf": (
+        "Source: International Monetary Fund. Data may be copied, published and "
+        "distributed with the IMF credited as the source and any material "
+        "transformation stated; commercial reuse needs the IMF's permission "
+        "(copyright@imf.org) and bulk download by automated technology is not allowed "
+        "without it (https://www.imf.org/en/About/copyright-and-terms, special terms "
+        "for statistical data)."
+    ),
     # Quebec
     "isq": ISQ_LICENCE,
     # Federal: open.canada.ca and departmental open-data services (OGL - Canada)
@@ -550,6 +558,15 @@ LICENCES_FR: dict[str, str] = {
     SOURCE_LICENCES["ons"]: (
         "Source : Office for National Statistics, sous licence Open Government Licence v3.0 "
         "(https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/)."
+    ),
+    SOURCE_LICENCES["imf"]: (
+        "Source : Fonds monétaire international. Les données peuvent être copiées, "
+        "publiées et distribuées en citant le FMI comme source et en indiquant toute "
+        "transformation importante ; la réutilisation commerciale exige l'autorisation "
+        "du FMI (copyright@imf.org) et le téléchargement en masse par des moyens "
+        "automatisés est interdit sans elle "
+        "(https://www.imf.org/en/About/copyright-and-terms, conditions particulières "
+        "pour les données statistiques)."
     ),
     SOURCE_LICENCES["fed"]: (
         "Source : Conseil des gouverneurs de la Réserve fédérale. Domaine public ; citez le "
@@ -895,6 +912,9 @@ _SOURCE_COMMERCIAL_USE: dict[str, CommercialUse] = {
     "ilo": "allowed",
     # OGL v3: commercial and non-commercial reuse with the source acknowledged.
     "ons": "allowed",
+    # Data may be copied and distributed with credit; "For any potential commercial
+    # reuse of IMF Data, email copyright@imf.org to request permission" (read 2026-11-18).
+    "imf": "not_allowed",
     "cbsa-tariff": "not_allowed",
     "electricity": "varies",
     "dfo-iwls": "unknown",

@@ -108,6 +108,9 @@ SIDE_TRIPS: dict[str, tuple[str, ...]] = {
     # A guide's or reference paper's own text answers a definition or a method question.
     "statcan_reference_": (),
     "boc_search_groups": (),
+    # The IMF is a separate publisher: its steps stay out of a plan unless the question names
+    # the IMF or the World Economic Outlook (the steps' own terms).
+    "imf_": (),
     "boc_get_group_observations": (),
     # An occupation, wage or classification lookup, a Toronto building-score or short-term
     # rental table: each names its cue words as the step's terms.
