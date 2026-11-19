@@ -9,6 +9,13 @@ one building, and DineSafe's "None" inside addresses. A small fake
 DataStore answers the client's requests from those rows, applying the
 `filters`, `q`, `fields`, `sort` and paging it sends, so paging and the
 per-column full-text query are exercised as the portal runs them.
+
+The council rows (the mayor's "District ID" is the text "None") were
+recorded on 2026-11-18. The ward and neighbourhood tables keep the live
+field lists but carry made-up square boundaries around the recorded
+buildings, so overlaps and building placement have known answers: ward 05
+is split evenly between "Annex (95)" (wholly inside) and "Regent Park (72)"
+(three fifths inside).
 """
 
 from __future__ import annotations
@@ -21,7 +28,7 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 
-from maplestats_mcp.modules.toronto import client, constants
+from maplestats_mcp.modules.toronto import client, constants, geometry
 from maplestats_mcp.shared import cache as cache_module
 from maplestats_mcp.shared.errors import InvalidInput, NotFound
 
@@ -231,3 +238,113 @@ async def test_paging_is_checked():
         await client.search_dinesafe(limit=0)
     with pytest.raises(InvalidInput, match="offset must be"):
         await client.get_apartment_evaluations(offset=-1)
+
+
+# --- Council, wards and neighbourhoods --------------------------------------
+
+
+async def test_councillors_whole_council_and_one_ward(datastore):
+    council = await client.get_councillors()
+    mayor = council.members[0]
+    assert mayor.role == "Mayor" and mayor.ward is None and mayor.name == "Olivia Chow"
+    assert council.term == "2022-2026"
+    one = await client.get_councillors(ward="Ward 5")
+    assert [m.ward for m in one.members] == ["05"]
+    assert one.members[0].ward_name == "York South-Weston"
+    assert "None" not in (one.members[0].office_address or "")
+    by_name = await client.get_councillors(ward="toronto centre")
+    assert by_name.members[0].ward == "13"
+    with pytest.raises(InvalidInput, match="unknown ward"):
+        await client.get_councillors(ward="Etobicoke")
+
+
+def test_geometry_area_overlap_and_holes():
+    square = geometry.parse(
+        {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]}
+    )
+    holed = geometry.parse(
+        {
+            "type": "MultiPolygon",
+            "coordinates": [
+                [
+                    [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]],
+                    [[0.25, 0.25], [0.75, 0.25], [0.75, 0.75], [0.25, 0.75], [0.25, 0.25]],
+                ]
+            ],
+        }
+    )
+    assert square is not None and holed is not None
+    step = 0.001
+    assert abs(geometry.area_km2(holed, step) / geometry.area_km2(square, step) - 0.75) < 0.01
+    assert not holed.contains(0.5, 0.5) and holed.contains(0.1, 0.1)
+    assert abs(geometry.overlap_km2(square, holed, step) - geometry.area_km2(holed, step)) < 1
+    assert geometry.parse("not json") is None
+    assert geometry.parse({"type": "Point", "coordinates": [0, 0]}) is None
+
+
+async def test_ward_neighbourhoods_shares(datastore):
+    result = await client.get_ward_neighbourhoods("5")
+    shares = {n.number: (n.share_of_ward, n.share_of_neighbourhood) for n in result.neighbourhoods}
+    assert shares == {"95": (0.5, 1.0), "72": (0.5, 0.6)}
+    annex = next(n for n in result.neighbourhoods if n.number == "95")
+    assert annex.neighbourhood == "Annex"
+    assert 15 < result.ward_area_km2 < 25
+    assert [s.resource_id for s in result.sources] == [
+        constants.WARD_RESOURCE,
+        constants.NEIGHBOURHOOD_RESOURCES[140],
+    ]
+    newer = await client.get_ward_neighbourhoods("York South-Weston", neighbourhood_model=158)
+    assert [n.number for n in newer.neighbourhoods] == ["174"]
+    assert newer.neighbourhoods[0].share_of_ward == 0.5
+    with pytest.raises(InvalidInput, match="neighbourhood_model"):
+        await client.get_ward_neighbourhoods("5", neighbourhood_model=44)
+    with pytest.raises(InvalidInput, match="min_overlap"):
+        await client.get_ward_neighbourhoods("5", min_overlap=1.5)
+
+
+async def test_compare_neighbourhoods_divide_by_parent(datastore, small_pages):
+    result = await client.compare_neighbourhoods("renter", divide_by_parent=True)
+    assert result.characteristic == "Renter"
+    assert (result.parent_characteristic or "").startswith("Total - Private households by tenure")
+    assert result.row_id == 1630
+    regent = next(v for v in result.neighbourhoods if v.neighbourhood == "Regent Park")
+    assert regent.number == "72" and regent.value_number == 3700
+    assert regent.share == round(3700 / 4955, 4)
+    assert result.neighbourhoods[0].neighbourhood == "Regent Park"
+    assert result.city.share == round(525835 / 1112930, 4)
+    plain = await client.compare_neighbourhoods("Population, 2016", sort="value_asc")
+    assert plain.neighbourhoods[0].value_number == 10803 and plain.city.share is None
+
+
+async def test_compare_neighbourhoods_errors(datastore):
+    with pytest.raises(NotFound, match="Labels containing it"):
+        await client.compare_neighbourhoods("Rent")
+    with pytest.raises(InvalidInput, match="top-level row"):
+        await client.compare_neighbourhoods("Population, 2016", divide_by_parent=True)
+    with pytest.raises(InvalidInput, match="sort must be"):
+        await client.compare_neighbourhoods("Renter", sort="share")
+
+
+async def test_ward_housing_profile_combines_sources(datastore):
+    result = await client.get_ward_profile("5", lowest=1)
+    assert result.ward == "05" and result.councillor is not None
+    assert result.councillor.ward_name == "York South-Weston"
+    assert result.scores.ward.buildings == 2
+    assert [e.score for e in result.scores.lowest] == [63.0]
+    assert result.scores.city.buildings == 5
+    by_number = {n.number: n for n in result.neighbourhoods}
+    # The building at score 63 sits in the Annex square, the one at 92 in Regent Park's.
+    assert by_number["95"].buildings_evaluated == 1 and by_number["95"].mean_score == 63.0
+    assert by_number["72"].mean_score == 92.0
+    assert by_number["72"].renter_share == round(3700 / 4955, 4)
+    assert by_number["72"].share_of_neighbourhood == 0.6
+    assert result.city_renter_share == round(525835 / 1112930, 4)
+    assert len(result.sources) == 5 and len(result.caveats) == 4
+    assert "do not nest" in result.caveats[0]
+
+
+async def test_ward_housing_profile_french_caveats(datastore):
+    result = await client.get_ward_profile("20", lang="fr")
+    assert "ne s'emboîtent pas" in result.caveats[0]
+    assert [n.number for n in result.neighbourhoods] == ["17"]
+    assert result.neighbourhoods[0].buildings_evaluated == 1

@@ -16,6 +16,7 @@ import math
 import re
 import statistics
 import unicodedata
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -24,18 +25,28 @@ import httpx
 from maplestats_mcp.modules.ckan import client as ckan_client
 from maplestats_mcp.modules.ckan.constants import PORTALS
 from maplestats_mcp.modules.toronto import constants as c
+from maplestats_mcp.modules.toronto import geometry
 from maplestats_mcp.modules.toronto.schemas import (
     ApartmentEvaluation,
     ApartmentEvaluations,
     ApartmentScoreSummary,
+    Councillor,
+    CouncilRoster,
     CountGroup,
     DatasetSource,
     Inspection,
     InspectionSearch,
+    NeighbourhoodComparison,
     NeighbourhoodProfile,
+    NeighbourhoodValue,
     ProfileRow,
     ScoreGroup,
     ShortTermRentalSummary,
+    WardHousingProfile,
+    WardNeighbourhood,
+    WardNeighbourhoodHousing,
+    WardNeighbourhoods,
+    WardScores,
 )
 from maplestats_mcp.shared.envelope import make_provenance, raise_localized
 from maplestats_mcp.shared.errors import InvalidInput, NotFound
@@ -424,7 +435,11 @@ async def _evaluations(lang: str, latest_only: bool) -> tuple[list[ApartmentEval
 
 def _ward_key(ward: str, evaluations: list[ApartmentEvaluation], lang: str) -> str:
     """'5', '05', 'Ward 5' or a ward name -> the table's two-digit ward number."""
-    wards = {e.ward: e.ward_name for e in evaluations if e.ward}
+    return _match_ward(ward, {e.ward: e.ward_name for e in evaluations if e.ward}, lang)
+
+
+def _match_ward(ward: str, wards: dict[str, str | None], lang: str) -> str:
+    """'5', '05', 'Ward 5' or a ward name -> the two-digit key of `wards` (number -> name)."""
     digits = re.sub(r"\D", "", ward)
     if digits and _fold(ward).removeprefix("ward") == digits:
         key = digits.zfill(2)
@@ -758,5 +773,556 @@ async def search_dinesafe(
             "au 2026-11-08) ; les plus anciennes sont dans un fichier ZIP historique non lu "
             "ici. establishment et address correspondent à des mots entiers du nom et de "
             "l'adresse.",
+        ),
+    )
+
+
+# --- Council, wards and neighbourhood boundaries ----------------------------
+
+
+def _published(value: Any) -> str | None:
+    """A text cell, with the literal 'None' the council table writes for an empty one."""
+    text = _text(value)
+    return None if text is None or text == "None" else text
+
+
+def _member(row: dict[str, Any]) -> Councillor:
+    district = _published(row.get("District ID"))
+    address = ", ".join(
+        part
+        for key in ("Address line 1", "Address line 2", "Locality", "Postal code")
+        if (part := _published(row.get(key)))
+    )
+    first, last = _published(row.get("First name")), _published(row.get("Last name"))
+    return Councillor(
+        role=_published(row.get("Primary role")) or "",
+        ward=district.zfill(2) if district and district.isdigit() else None,
+        ward_name=_published(row.get("District name")),
+        name=" ".join(part for part in (first, last) if part),
+        email=_published(row.get("Email")),
+        phone=_published(row.get("Phone")),
+        office_address=address or None,
+        website=_published(row.get("Website")),
+    )
+
+
+async def _council(lang: str) -> tuple[list[Councillor], bool]:
+    rows, cached = await _all_rows(c.COUNCIL_RESOURCE, c.COUNCIL_FIELDS, lang)
+    return [_member(row) for row in rows], cached
+
+
+async def get_councillors(ward: str | None = None, lang: str = "en") -> CouncilRoster:
+    members, cached = await _council(lang)
+    if ward:
+        wards = {m.ward: m.ward_name for m in members if m.ward}
+        key = _match_ward(ward, wards, lang)
+        members = [m for m in members if m.ward == key]
+    params = {
+        "resource_id": c.COUNCIL_RESOURCE,
+        "fields": ",".join(c.COUNCIL_FIELDS),
+        "sort": "_id",
+        "limit": c.PAGE_ROWS,
+    }
+    return CouncilRoster(
+        term=c.COUNCIL_TERM,
+        ward_filter=ward,
+        members=members,
+        source=_source(c.COUNCIL_DATASET, c.COUNCIL_RESOURCE, lang),
+        provenance=_provenance(
+            params,
+            cached,
+            "CouncilRoster",
+            lang,
+            f"Members of Toronto City Council for the {c.COUNCIL_TERM} term as the City last "
+            "published them (refreshed as available): a by-election or a vacancy can take time "
+            "to show, and toronto.ca's members of council page is the current list. Office "
+            "contacts only.",
+            f"Membres du conseil municipal de Toronto pour le mandat {c.COUNCIL_TERM}, tels que "
+            "la Ville les a publiés en dernier (mis à jour au besoin) : une élection partielle "
+            "ou un siège vacant peut tarder à paraître, et la page des membres du conseil sur "
+            "toronto.ca fait foi. Coordonnées de bureau seulement.",
+        ),
+    )
+
+
+async def _wards(lang: str) -> tuple[dict[str, tuple[str, geometry.Shape]], bool]:
+    """Ward number ('01'..'25') -> (name, boundary)."""
+    rows, cached = await _all_rows(c.WARD_RESOURCE, c.WARD_FIELDS, lang)
+    wards: dict[str, tuple[str, geometry.Shape]] = {}
+    for row in rows:
+        code, shape = _text(row.get("AREA_SHORT_CODE")), geometry.parse(row.get("geometry"))
+        if code and code.isdigit() and shape is not None:
+            wards[code.zfill(2)] = (_text(row.get("AREA_NAME")) or code, shape)
+    return wards, cached
+
+
+@dataclass(frozen=True)
+class _Area:
+    number: str
+    name: str
+    classification: str | None
+    shape: geometry.Shape
+
+
+async def _neighbourhoods(model: int, lang: str) -> tuple[list[_Area], bool]:
+    rows, cached = await _all_rows(c.NEIGHBOURHOOD_RESOURCES[model], c.NEIGHBOURHOOD_FIELDS, lang)
+    areas = []
+    for row in rows:
+        code, shape = _text(row.get("AREA_SHORT_CODE")), geometry.parse(row.get("geometry"))
+        if not code or not code.isdigit() or shape is None:
+            continue
+        # The 140 model's names end in their number: "Brookhaven-Amesbury (30)".
+        name = re.sub(r"\s*\(\d+\)\s*$", "", _text(row.get("AREA_NAME")) or code)
+        areas.append(_Area(str(int(code)), name, _text(row.get("CLASSIFICATION")), shape))
+    return areas, cached
+
+
+def _check_model(model: int, lang: str) -> None:
+    if model not in c.NEIGHBOURHOOD_RESOURCES:
+        raise_localized(
+            InvalidInput,
+            f"neighbourhood_model must be 140 or 158, got {model!r}.",
+            f"neighbourhood_model doit être 140 ou 158 (reçu : {model!r}).",
+            lang,
+        )
+
+
+def _check_overlap(min_overlap: float, lang: str) -> None:
+    if not 0 <= min_overlap < 1:
+        raise_localized(
+            InvalidInput,
+            f"min_overlap must be at least 0 and below 1, got {min_overlap}.",
+            f"min_overlap doit être d'au moins 0 et inférieur à 1 (reçu : {min_overlap}).",
+            lang,
+        )
+
+
+def _overlaps(
+    ward_shape: geometry.Shape, areas: list[_Area], min_overlap: float
+) -> tuple[float, list[tuple[_Area, WardNeighbourhood]]]:
+    """The ward's area, and each neighbourhood holding at least `min_overlap` of it."""
+    step = c.SCANLINE_DEGREES
+    ward_area = geometry.area_km2(ward_shape, step)
+    found: list[tuple[_Area, WardNeighbourhood]] = []
+    for area in areas:
+        shared = geometry.overlap_km2(ward_shape, area.shape, step)
+        if ward_area <= 0 or shared <= 0 or shared / ward_area < min_overlap:
+            continue
+        own = geometry.area_km2(area.shape, step)
+        found.append(
+            (
+                area,
+                WardNeighbourhood(
+                    number=area.number,
+                    neighbourhood=area.name,
+                    classification=area.classification,
+                    overlap_km2=round(shared, 2),
+                    share_of_ward=round(shared / ward_area, 3),
+                    share_of_neighbourhood=round(min(shared / own, 1.0), 3) if own else 0.0,
+                ),
+            )
+        )
+    found.sort(key=lambda pair: -pair[1].share_of_ward)
+    return ward_area, found
+
+
+async def get_ward_neighbourhoods(
+    ward: str, neighbourhood_model: int = 140, min_overlap: float = 0.01, lang: str = "en"
+) -> WardNeighbourhoods:
+    _check_model(neighbourhood_model, lang)
+    _check_overlap(min_overlap, lang)
+    wards, wards_cached = await _wards(lang)
+    key = _match_ward(ward, {k: name for k, (name, _) in wards.items()}, lang)
+    ward_name, ward_shape = wards[key]
+    areas, areas_cached = await _neighbourhoods(neighbourhood_model, lang)
+    ward_area, found = _overlaps(ward_shape, areas, min_overlap)
+    params = {
+        "resource_id": c.NEIGHBOURHOOD_RESOURCES[neighbourhood_model],
+        "fields": ",".join(c.NEIGHBOURHOOD_FIELDS),
+        "sort": "_id",
+        "limit": c.PAGE_ROWS,
+    }
+    return WardNeighbourhoods(
+        ward=key,
+        ward_name=ward_name,
+        neighbourhood_model=140 if neighbourhood_model == 140 else 158,
+        ward_area_km2=round(ward_area, 2),
+        min_overlap=min_overlap,
+        neighbourhoods=[n for _, n in found],
+        sources=[
+            _source(c.WARD_DATASET, c.WARD_RESOURCE, lang),
+            _source(c.NEIGHBOURHOOD_DATASET, c.NEIGHBOURHOOD_RESOURCES[neighbourhood_model], lang),
+        ],
+        provenance=_provenance(
+            params,
+            wards_cached and areas_cached,
+            "WardNeighbourhoods",
+            lang,
+            "Wards (25-ward model, 2018) and neighbourhoods do not nest. Overlaps are areas "
+            "measured on the published boundaries along scanlines about 55 m apart (WGS84 "
+            "degrees scaled to km): close to, but not, the City's own figures, and an area share "
+            "is not a population share. The 140 model matches the 2001-2016 Neighbourhood "
+            "Profiles, the 158 model the 2021 ones.",
+            "Les quartiers électoraux (modèle à 25, 2018) et les quartiers ne s'emboîtent pas. "
+            "Les chevauchements sont des superficies mesurées sur les limites publiées, le long "
+            "de lignes espacées d'environ 55 m (degrés WGS84 convertis en km) : proches des "
+            "chiffres de la Ville sans être les siens, et une part de superficie n'est pas une "
+            "part de population. Le modèle à 140 correspond aux profils de 2001 à 2016, celui à "
+            "158 aux profils de 2021.",
+        ),
+    )
+
+
+# --- One indicator across neighbourhoods ------------------------------------
+
+_COMPARE_SORTS = ("value_desc", "value_asc", "name", "number")
+
+
+def _level(label: str) -> int:
+    return (len(label) - len(label.lstrip(" "))) // 2
+
+
+async def compare_neighbourhoods(
+    characteristic: str,
+    census_year: int = 2016,
+    topic: str | None = None,
+    row_id: int | None = None,
+    divide_by_parent: bool = False,
+    sort: str = "value_desc",
+    limit: int = 140,
+    offset: int = 0,
+    lang: str = "en",
+) -> NeighbourhoodComparison:
+    table = c.PROFILE_TABLES.get(census_year)
+    years = sorted(c.PROFILE_TABLES, reverse=True)
+    if table is None:
+        raise_localized(
+            InvalidInput,
+            f"census_year must be one of {years}.",
+            f"census_year doit être l'une de {years}.",
+            lang,
+        )
+    _check_paging(limit, offset, lang)
+    if sort not in _COMPARE_SORTS:
+        raise_localized(
+            InvalidInput,
+            f"sort must be one of {list(_COMPARE_SORTS)}, got {sort!r}.",
+            f"sort doit être l'une de {list(_COMPARE_SORTS)} (reçu : {sort!r}).",
+            lang,
+        )
+    label_column = table.label_column
+    labels, cached = await _all_rows(table.resource_id, ("_id", "Topic", label_column), lang)
+
+    def label_of(i: int) -> str:
+        return str(labels[i].get(label_column) or "")
+
+    wanted = characteristic.strip().casefold()
+    topic_key = _fold(topic) if topic else None
+    matches = [
+        i
+        for i, row in enumerate(labels)
+        if (row_id is None or _int(row.get("_id")) == row_id)
+        and label_of(i).strip().casefold() == wanted
+        and (not topic_key or topic_key in _fold(str(row.get("Topic") or "")))
+    ]
+    if not matches:
+        close = [
+            f"{row.get('_id')}: {label_of(i).strip()} ({row.get('Topic')})"
+            for i, row in enumerate(labels)
+            if wanted and wanted in label_of(i).casefold()
+        ][:10]
+        under_en = f" under a topic matching {topic!r}" if topic else ""
+        under_fr = f" sous un sujet correspondant à {topic!r}" if topic else ""
+        raise_localized(
+            NotFound,
+            f"no {census_year} profile row is labelled {characteristic!r}{under_en}. Labels "
+            f"containing it (row_id: label (topic)): {close}. toronto_get_neighbourhood_profile "
+            "lists every label.",
+            f"aucune ligne des profils de {census_year} n'a le libellé {characteristic!r}"
+            f"{under_fr}. Libellés qui le contiennent (row_id : libellé (sujet)) : {close}. "
+            "toronto_get_neighbourhood_profile liste tous les libellés.",
+            lang,
+        )
+    if len(matches) > 1:
+        listing = [f"{labels[i].get('_id')} ({labels[i].get('Topic')})" for i in matches[:10]]
+        raise_localized(
+            InvalidInput,
+            f"{characteristic!r} labels {len(matches)} rows: {listing}. Give topic or row_id.",
+            f"{characteristic!r} désigne {len(matches)} lignes : {listing}. Précisez topic ou "
+            "row_id.",
+            lang,
+        )
+    index = matches[0]
+    row_label = label_of(index)
+    parent_index: int | None = None
+    if divide_by_parent:
+        parent_index = next(
+            (i for i in range(index - 1, -1, -1) if _level(label_of(i)) < _level(row_label)),
+            None,
+        )
+        if parent_index is None:
+            raise_localized(
+                InvalidInput,
+                f"{row_label.strip()!r} is a top-level row of the {census_year} table, so it "
+                "has no parent row to divide by; leave divide_by_parent false.",
+                f"{row_label.strip()!r} est une ligne de premier niveau du tableau de "
+                f"{census_year} : elle n'a pas de ligne parente ; laissez divide_by_parent à "
+                "false.",
+                lang,
+            )
+    wanted_ids = [labels[index].get("_id")]
+    if parent_index is not None:
+        wanted_ids.append(labels[parent_index].get("_id"))
+    full: list[dict[str, Any]] = []
+    for wanted_id in wanted_ids:
+        rows, _, page_cached = await _page(
+            table.resource_id, lang, filters={"_id": str(wanted_id)}, limit=1
+        )
+        cached = cached and page_cached
+        full.append(rows[0] if rows else {})
+    row = full[0]
+    parent = full[1] if len(full) > 1 else None
+    numbers = {name: number for number, name in (await _neighbourhood_numbers(lang)).items()}
+    columns = await _profile_columns(table, lang)
+
+    def entry(column: str) -> NeighbourhoodValue:
+        value_number = _number(row.get(column))
+        parent_number = _number(parent.get(column)) if parent else None
+        return NeighbourhoodValue(
+            number=numbers.get(column),
+            neighbourhood=column,
+            value=_text(row.get(column)),
+            value_number=value_number,
+            parent_value_number=parent_number,
+            share=(
+                round(value_number / parent_number, 4)
+                if value_number is not None and parent_number
+                else None
+            ),
+        )
+
+    values = [entry(column) for column in columns]
+
+    def measure(v: NeighbourhoodValue) -> float | None:
+        return v.share if divide_by_parent else v.value_number
+
+    if sort in ("value_desc", "value_asc"):
+        sign = -1.0 if sort == "value_desc" else 1.0
+        values.sort(key=lambda v: (measure(v) is None, sign * (measure(v) or 0.0)))
+    elif sort == "name":
+        values.sort(key=lambda v: v.neighbourhood)
+    else:
+        values.sort(key=lambda v: int(v.number) if v.number else 10_000)
+    page = values[offset : offset + limit]
+    params = {"resource_id": table.resource_id, "filters": json.dumps({"_id": str(wanted_ids[0])})}
+    return NeighbourhoodComparison(
+        census_year=census_year,
+        characteristic=row_label.strip(),
+        topic=_text(labels[index].get("Topic")),
+        row_id=_int(labels[index].get("_id")) or 0,
+        parent_characteristic=label_of(parent_index).strip() if parent_index is not None else None,
+        data_source=_text(row.get("Data Source")) if table.has_source_column else None,
+        sort=sort,
+        total_matched=len(values),
+        returned_count=len(page),
+        offset=offset,
+        neighbourhoods=page,
+        city=entry(c.CITY_COLUMN),
+        source=_source(c.PROFILE_DATASET, table.resource_id, lang),
+        provenance=_provenance(
+            params,
+            cached,
+            "NeighbourhoodComparison",
+            lang,
+            f"One row of the City's {census_year} Neighbourhood Profiles across its 140 "
+            "neighbourhoods (the model used before 2021), values as published; share is the "
+            "row divided by the row it sits under, computed here. The label must match a row "
+            "exactly (case aside).",
+            f"Une ligne des profils de quartier de {census_year} de la Ville pour ses 140 "
+            "quartiers (le modèle d'avant 2021), valeurs telles que publiées ; share est la "
+            "ligne divisée par sa ligne parente, calculée ici. Le libellé doit correspondre "
+            "exactement à une ligne (casse mise à part).",
+        ),
+    )
+
+
+# --- A ward's councillor, RentSafeTO scores and neighbourhood renter shares --
+
+_WARD_CAVEATS = (
+    (
+        (
+            "Wards (25-ward model, 2018) and the City's 140 neighbourhoods do not nest: a "
+            "neighbourhood can straddle two or more wards. Each renter share describes the whole "
+            "neighbourhood, including any part outside the ward; share_of_neighbourhood says how "
+            "much of it lies inside. Overlaps are areas from the published boundaries, not "
+            "population counts."
+        ),
+        (
+            "Les quartiers électoraux (modèle à 25, 2018) et les 140 quartiers de la Ville ne "
+            "s'emboîtent pas : un quartier peut en chevaucher plusieurs. Chaque part de locataires "
+            "décrit tout le quartier, y compris la partie hors du quartier électoral ; "
+            "share_of_neighbourhood indique la part qui s'y trouve. Les chevauchements sont des "
+            "superficies tirées des limites publiées, pas des populations."
+        ),
+    ),
+    (
+        (
+            "No ward-level renter share is given: averaging the neighbourhoods' shares by area "
+            "would assume renters are spread evenly. The City's Ward Profiles (2021 census by ward) "
+            "and the 2021 Neighbourhood Profiles (158 neighbourhoods) are published only as Excel "
+            "files, which this server does not download from Toronto's portal."
+        ),
+        (
+            "Aucune part de locataires n'est donnée pour le quartier électoral : pondérer les parts "
+            "des quartiers par la superficie supposerait des locataires répartis uniformément. Les "
+            "profils des quartiers électoraux de la Ville (recensement de 2021) et les profils de "
+            "quartier de 2021 (158 quartiers) ne sont publiés qu'en fichiers Excel, que ce serveur "
+            "ne télécharge pas du portail de Toronto."
+        ),
+    ),
+    (
+        (
+            "Different years: renter shares are from the 2016 census (private households by "
+            "tenure, 25% sample); scores are RentSafeTO evaluations since 2023; the councillor is "
+            "the 2022-2026 term as the City last published it."
+        ),
+        (
+            "Années différentes : parts de locataires du recensement de 2016 (ménages privés selon "
+            "le mode d'occupation, échantillon de 25 %) ; notes des évaluations RentSafeTO depuis "
+            "2023 ; conseiller du mandat 2022-2026 tel que la Ville l'a publié en dernier."
+        ),
+    ),
+    (
+        (
+            "RentSafeTO scores only buildings with 3+ storeys or 10+ units: renters in houses, "
+            "basements and small buildings count in the census share but have no score. Mean "
+            "scores weight every building equally, whatever its units. A building is placed in a "
+            "neighbourhood by its coordinates; its ward is the City's own field."
+        ),
+        (
+            "RentSafeTO n'évalue que les immeubles de 3 étages et plus ou de 10 logements et plus : "
+            "les locataires de maisons, de sous-sols et de petits immeubles comptent dans la part "
+            "du recensement mais n'ont pas de note. Les moyennes donnent le même poids à chaque "
+            "immeuble, quel que soit son nombre de logements. Un immeuble est placé dans un "
+            "quartier par ses coordonnées ; son quartier électoral est le champ de la Ville."
+        ),
+    ),
+)
+
+
+async def get_ward_profile(
+    ward: str, lowest: int = 5, min_overlap: float = 0.01, lang: str = "en"
+) -> WardHousingProfile:
+    if lowest < 0 or lowest > 50:
+        raise_localized(
+            InvalidInput,
+            f"lowest must be between 0 and 50, got {lowest}.",
+            f"lowest doit être entre 0 et 50 (reçu : {lowest}).",
+            lang,
+        )
+    _check_overlap(min_overlap, lang)
+    wards, wards_cached = await _wards(lang)
+    key = _match_ward(ward, {k: name for k, (name, _) in wards.items()}, lang)
+    ward_name, ward_shape = wards[key]
+    members, council_cached = await _council(lang)
+    councillor = next((m for m in members if m.ward == key), None)
+
+    evaluations, evaluations_cached = await _evaluations(lang, latest_only=True)
+    in_ward = [e for e in evaluations if e.ward == key]
+    ranked = list(in_ward)
+    _sort(ranked, "score_asc")
+
+    areas, areas_cached = await _neighbourhoods(140, lang)
+    _, found = _overlaps(ward_shape, areas, min_overlap)
+    candidates = [a for a in areas if a.shape.overlaps_box(ward_shape)]
+    placed: dict[str, list[ApartmentEvaluation]] = {}
+    without_coordinates = 0
+    for evaluation in in_ward:
+        if evaluation.latitude is None or evaluation.longitude is None:
+            without_coordinates += 1
+            continue
+        home = next(
+            (a for a in candidates if a.shape.contains(evaluation.longitude, evaluation.latitude)),
+            None,
+        )
+        if home is not None:
+            placed.setdefault(home.number, []).append(evaluation)
+    # A sliver below min_overlap still appears when one of the ward's buildings is in it.
+    listed = {area.number for area, _ in found}
+    extra = [a for a in areas if a.number in placed and a.number not in listed]
+    if extra:
+        found.extend(_overlaps(ward_shape, extra, 0.0)[1])
+
+    tenure = await compare_neighbourhoods(
+        c.TENURE_RENTER_LABEL,
+        census_year=2016,
+        topic="Household characteristics",
+        divide_by_parent=True,
+        sort="number",
+        limit=c.ROWS_MAX,
+        lang=lang,
+    )
+    by_number = {v.number: v for v in tenure.neighbourhoods if v.number}
+    neighbourhoods = []
+    for area, overlap in found:
+        tenure_row = by_number.get(area.number)
+        here = placed.get(area.number, [])
+        scores = [e.score for e in here if e.score is not None]
+        neighbourhoods.append(
+            WardNeighbourhoodHousing(
+                **overlap.model_dump(),
+                buildings_evaluated=len(here),
+                mean_score=round(statistics.fmean(scores), 2) if scores else None,
+                renter_households=tenure_row.value_number if tenure_row else None,
+                private_households=tenure_row.parent_value_number if tenure_row else None,
+                renter_share=tenure_row.share if tenure_row else None,
+            )
+        )
+    params = {
+        "resource_id": c.WARD_RESOURCE,
+        "fields": ",".join(c.WARD_FIELDS),
+        "sort": "_id",
+        "limit": c.PAGE_ROWS,
+    }
+    cached = (
+        wards_cached
+        and council_cached
+        and evaluations_cached
+        and areas_cached
+        and tenure.provenance.cached
+    )
+    return WardHousingProfile(
+        ward=key,
+        ward_name=ward_name,
+        councillor=councillor,
+        scores=WardScores(
+            ward=_score_group(key, ward_name, in_ward),
+            city=_score_group("all", None, evaluations),
+            lowest=ranked[:lowest],
+        ),
+        buildings_without_coordinates=without_coordinates,
+        neighbourhoods=neighbourhoods,
+        city_renter_share=tenure.city.share,
+        caveats=[pick(lang, en, fr) for en, fr in _WARD_CAVEATS],
+        sources=[
+            _source(c.COUNCIL_DATASET, c.COUNCIL_RESOURCE, lang),
+            _source(c.EVALUATION_DATASET, c.EVALUATION_RESOURCE, lang),
+            _source(c.WARD_DATASET, c.WARD_RESOURCE, lang),
+            _source(c.NEIGHBOURHOOD_DATASET, c.NEIGHBOURHOOD_RESOURCES[140], lang),
+            _source(c.PROFILE_DATASET, c.PROFILE_TABLES[2016].resource_id, lang),
+        ],
+        provenance=_provenance(
+            params,
+            cached,
+            "WardHousingProfile",
+            lang,
+            "Five City of Toronto tables combined: Elected Officials' Contact Information, "
+            "RentSafeTO evaluations since 2023, City Wards, Neighbourhoods (140 model) and the "
+            "2016 Neighbourhood Profiles; cite each figure from `sources` and read `caveats` "
+            "before putting them side by side.",
+            "Cinq tableaux de la Ville de Toronto combinés : coordonnées des élus, évaluations "
+            "RentSafeTO depuis 2023, quartiers électoraux, quartiers (modèle à 140) et profils "
+            "de quartier de 2016 ; citez chaque chiffre d'après `sources` et lisez `caveats` "
+            "avant de les mettre côte à côte.",
         ),
     )

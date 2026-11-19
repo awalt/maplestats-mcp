@@ -1,5 +1,9 @@
 # RentSafeTO building scores by neighbourhood
 
+Second example in this folder: [a ward's councillor, its RentSafeTO scores and
+its neighbourhoods' renter share](ward_profile.md), answered through the
+server's own tools.
+
 **Question.** Do Toronto neighbourhoods where more households rent have
 lower-scoring apartment buildings?
 

@@ -953,6 +953,10 @@ the refusal stays until the City says otherwise.
 | Apartment Building Evaluations (RentSafeTO) | "2023 - current" `244f7a02-…` (7,151 evaluations, 3,608 buildings); "Pre-2023" `b987be09-…` | `toronto_get_apartment_evaluations`, `toronto_summarize_apartment_scores` (2023 on) |
 | Short Term Rentals Registration | `f4659cc1-…` (8,620 rows) | `toronto_summarize_short_term_rentals` (counts only) |
 | DineSafe | `75dbb3ff-…` (126,282 rows from 2023-11-10) | `toronto_search_dinesafe` |
+| Elected Officials' Contact Information | 2022-2026 `16d6b1b3-…` (mayor and 25 councillors); 2018-2022 `ef3023ae-…` | `toronto_get_councillors` (2022-2026), added 2026-11-18 |
+| City Wards | 25-ward model `7672dac5-…` (GeoJSON text per ward) | `toronto_get_ward_neighbourhoods`, `toronto_get_ward_profile` |
+| Neighbourhoods | 140 model "historical 140" `7d3ae06b-…`, 158 model `5e6095fc-…` | the same two tools |
+| Ward Profiles (25-Ward Model) | none: XLSX only (2011-2021 census by ward) | Not built (files) |
 | 311 Service Requests – Customer Initiated | none: one ZIP per year, 2010 to 2026 | Not built (files) |
 | TTC Routes and Schedules / Merged GTFS | none: ZIPs | Not built (files); the TTC feed stays in `transit_*` from StatCan's national database |
 
@@ -968,6 +972,21 @@ empty, and `q` accepts a JSON object for a per-column full-text search
 (`{"estName": "pizza"}`). Short-term rental rows hold the operator's
 registration number and street address; the tool counts them and returns
 neither.
+
+Added 2026-11-18, confirmed live: the council table writes the literal text
+"None" for an empty cell (the mayor's District ID, most "Personal Website"
+cells), District ID is "1".."25" unpadded while RentSafeTO pads wards to
+"01".."25"; the ward and neighbourhood tables keep each boundary as GeoJSON
+text in a `geometry` column (WGS84), about 1 MB for the 25 wards and 1.7 MB
+for the 140 neighbourhoods; the 140 model's AREA_NAME ends in its number
+("Brookhaven-Amesbury (30)"), the 158 model's does not. Overlaps are measured
+by scanlines (`toronto/geometry.py`, no GIS library): the 25 wards sum to
+641.6 km² and every ward's neighbourhood shares sum to 1. The ward profile tool
+(`toronto_get_ward_profile`) joins five tables; worked example in
+`docs/examples/toronto/ward_profile.md`. `toronto_compare_neighbourhoods`
+reads one profile row for all 140 neighbourhoods (the 2016 renter share is
+"Renter" over its parent row, "Total - Private households by tenure - 25%
+sample data"; 2006 labels it "Rented").
 
 Smoke test (`scripts/smoke_test_toronto.py`) passed 2026-11-08: Annex renters
 2016 (9,870), Regent Park in 2011, 2006 and 2001, 3,608 buildings in 25

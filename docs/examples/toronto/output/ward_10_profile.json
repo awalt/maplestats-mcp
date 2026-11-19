@@ -1,0 +1,294 @@
+{
+ "question": "Who is the councillor for Toronto ward 10, how do its apartment buildings score on RentSafeTO, and what is the renter share of its neighbourhoods?",
+ "first_plan_step": {
+  "tool": "toronto_get_ward_profile",
+  "purpose": "one ward in one call: its councillor, RentSafeTO scores (with the lowest buildings) and each overlapping neighbourhood's 2016 renter share: ward=<number or name>",
+  "call": "{\"ward\":\"<str>\"}"
+ },
+ "call": {
+  "name": "toronto_get_ward_profile",
+  "arguments": {
+   "ward": "10",
+   "lowest": 5
+  }
+ },
+ "result": {
+  "ward": "10",
+  "ward_name": "Spadina-Fort York",
+  "councillor": {
+   "role": "Councillor",
+   "ward": "10",
+   "ward_name": "Spadina-Fort York",
+   "name": "Ausma Malik",
+   "email": "Councillor_Malik@toronto.ca",
+   "phone": "416-392-4044",
+   "office_address": "Toronto City Hall, 100 Queen Street West, Suite C50, Toronto, M5H 2N2",
+   "website": "https://www.toronto.ca/city-government/council/members-of-council/councillor-ward-10/"
+  },
+  "scores": {
+   "ward": {
+    "key": "10",
+    "label": "Spadina-Fort York",
+    "buildings": 62,
+    "units": 10610,
+    "mean_score": 90.37,
+    "median_score": 93.0,
+    "p25_score": 87.0,
+    "min_score": 45.0,
+    "max_score": 100.0
+   },
+   "city": {
+    "key": "all",
+    "label": null,
+    "buildings": 3611,
+    "units": 330292,
+    "mean_score": 90.88,
+    "median_score": 92.0,
+    "p25_score": 88.0,
+    "min_score": 45.0,
+    "max_score": 100.0
+   },
+   "lowest": [
+    {
+     "rsn": "5369828",
+     "address": "15 GORE VALE AVE",
+     "ward": "10",
+     "ward_name": "Spadina-Fort York",
+     "property_type": "PRIVATE",
+     "year_built": 1913,
+     "year_registered": 2023,
+     "storeys": 3,
+     "units": 10,
+     "evaluation_date": "2026-08-19",
+     "score": 45.0,
+     "proactive_score": 46.0,
+     "reactive_score": -1.0,
+     "areas_evaluated": 33,
+     "latitude": 43.646503767,
+     "longitude": -79.41168935,
+     "evaluations_on_record": 2
+    },
+    {
+     "rsn": "4153409",
+     "address": "164 GRANGE AVE",
+     "ward": "10",
+     "ward_name": "Spadina-Fort York",
+     "property_type": "PRIVATE",
+     "year_built": 1970,
+     "year_registered": 2017,
+     "storeys": 3,
+     "units": 24,
+     "evaluation_date": "2025-07-29",
+     "score": 71.0,
+     "proactive_score": 71.0,
+     "reactive_score": 0.0,
+     "areas_evaluated": 35,
+     "latitude": 43.651369768,
+     "longitude": -79.401162282,
+     "evaluations_on_record": 2
+    },
+    {
+     "rsn": "4589593",
+     "address": "49 MC CAUL ST",
+     "ward": "10",
+     "ward_name": "Spadina-Fort York",
+     "property_type": "PRIVATE",
+     "year_built": null,
+     "year_registered": null,
+     "storeys": 4,
+     "units": 44,
+     "evaluation_date": "2026-11-05",
+     "score": 73.0,
+     "proactive_score": 73.0,
+     "reactive_score": 0.0,
+     "areas_evaluated": 35,
+     "latitude": 43.651593328,
+     "longitude": -79.390062452,
+     "evaluations_on_record": 2
+    },
+    {
+     "rsn": "4153385",
+     "address": "25 HENRY LANE TER",
+     "ward": "10",
+     "ward_name": "Spadina-Fort York",
+     "property_type": "TCHC",
+     "year_built": 1979,
+     "year_registered": 2017,
+     "storeys": 6,
+     "units": 196,
+     "evaluation_date": "2025-07-29",
+     "score": 76.0,
+     "proactive_score": 77.0,
+     "reactive_score": -1.0,
+     "areas_evaluated": 42,
+     "latitude": 43.647537528,
+     "longitude": -79.370291158,
+     "evaluations_on_record": 2
+    },
+    {
+     "rsn": "5046735",
+     "address": "165 BATHURST ST",
+     "ward": "10",
+     "ward_name": "Spadina-Fort York",
+     "property_type": "PRIVATE",
+     "year_built": 1918,
+     "year_registered": null,
+     "storeys": 6,
+     "units": 47,
+     "evaluation_date": "2025-07-29",
+     "score": 79.0,
+     "proactive_score": 80.0,
+     "reactive_score": -1.0,
+     "areas_evaluated": 38,
+     "latitude": 43.64673173,
+     "longitude": -79.40357889,
+     "evaluations_on_record": 2
+    }
+   ]
+  },
+  "buildings_without_coordinates": 9,
+  "neighbourhoods": [
+   {
+    "number": "77",
+    "neighbourhood": "Waterfront Communities-The Island",
+    "classification": "Not an NIA or Emerging Neighbourhood",
+    "overlap_km2": 12.94,
+    "share_of_ward": 0.693,
+    "share_of_neighbourhood": 0.966,
+    "buildings_evaluated": 20,
+    "mean_score": 90.9,
+    "renter_households": 23930.0,
+    "private_households": 40760.0,
+    "renter_share": 0.5871
+   },
+   {
+    "number": "82",
+    "neighbourhood": "Niagara",
+    "classification": "Not an NIA or Emerging Neighbourhood",
+    "overlap_km2": 3.21,
+    "share_of_ward": 0.172,
+    "share_of_neighbourhood": 0.997,
+    "buildings_evaluated": 10,
+    "mean_score": 92.9,
+    "renter_households": 9395.0,
+    "private_households": 18775.0,
+    "renter_share": 0.5004
+   },
+   {
+    "number": "81",
+    "neighbourhood": "Trinity-Bellwoods",
+    "classification": "Not an NIA or Emerging Neighbourhood",
+    "overlap_km2": 0.93,
+    "share_of_ward": 0.05,
+    "share_of_neighbourhood": 0.537,
+    "buildings_evaluated": 5,
+    "mean_score": 80.6,
+    "renter_households": 3305.0,
+    "private_households": 6920.0,
+    "renter_share": 0.4776
+   },
+   {
+    "number": "78",
+    "neighbourhood": "Kensington-Chinatown",
+    "classification": "Not an NIA or Emerging Neighbourhood",
+    "overlap_km2": 0.71,
+    "share_of_ward": 0.038,
+    "share_of_neighbourhood": 0.463,
+    "buildings_evaluated": 15,
+    "mean_score": 86.6,
+    "renter_households": 6200.0,
+    "private_households": 8735.0,
+    "renter_share": 0.7098
+   },
+   {
+    "number": "76",
+    "neighbourhood": "Bay Street Corridor",
+    "classification": "Not an NIA or Emerging Neighbourhood",
+    "overlap_km2": 0.51,
+    "share_of_ward": 0.027,
+    "share_of_neighbourhood": 0.281,
+    "buildings_evaluated": 1,
+    "mean_score": 90.0,
+    "renter_households": 10245.0,
+    "private_households": 15080.0,
+    "renter_share": 0.6794
+   },
+   {
+    "number": "85",
+    "neighbourhood": "South Parkdale",
+    "classification": "Neighbourhood Improvement Area",
+    "overlap_km2": 0.37,
+    "share_of_ward": 0.02,
+    "share_of_neighbourhood": 0.161,
+    "buildings_evaluated": 2,
+    "mean_score": 91.5,
+    "renter_households": 9865.0,
+    "private_households": 11390.0,
+    "renter_share": 0.8661
+   }
+  ],
+  "city_renter_share": 0.4725,
+  "caveats": [
+   "Wards (25-ward model, 2018) and the City's 140 neighbourhoods do not nest: a neighbourhood can straddle two or more wards. Each renter share describes the whole neighbourhood, including any part outside the ward; share_of_neighbourhood says how much of it lies inside. Overlaps are areas from the published boundaries, not population counts.",
+   "No ward-level renter share is given: averaging the neighbourhoods' shares by area would assume renters are spread evenly. The City's Ward Profiles (2021 census by ward) and the 2021 Neighbourhood Profiles (158 neighbourhoods) are published only as Excel files, which this server does not download from Toronto's portal.",
+   "Different years: renter shares are from the 2016 census (private households by tenure, 25% sample); scores are RentSafeTO evaluations since 2023; the councillor is the 2022-2026 term as the City last published it.",
+   "RentSafeTO scores only buildings with 3+ storeys or 10+ units: renters in houses, basements and small buildings count in the census share but have no score. Mean scores weight every building equally, whatever its units. A building is placed in a neighbourhood by its coordinates; its ward is the City's own field."
+  ],
+  "sources": [
+   {
+    "dataset": "Elected Officials' Contact Information",
+    "landing_page": "https://open.toronto.ca/dataset/elected-officials-contact-information/",
+    "resource_id": "16d6b1b3-b474-47f4-8c09-8bf5b3aa0e68",
+    "licence": "shared_notes[0]",
+    "citation": "City of Toronto, Elected Officials' Contact Information, open.toronto.ca (https://open.toronto.ca/dataset/elected-officials-contact-information/), DataStore resource 16d6b1b3-b474-47f4-8c09-8bf5b3aa0e68, retrieved 2026-11-19. Contains information licensed under the Open Government Licence - Toronto."
+   },
+   {
+    "dataset": "Apartment Building Evaluations (RentSafeTO)",
+    "landing_page": "https://open.toronto.ca/dataset/apartment-building-evaluation/",
+    "resource_id": "244f7a02-da5c-425b-b55f-fbdd133dd732",
+    "licence": "shared_notes[0]",
+    "citation": "City of Toronto, Apartment Building Evaluations (RentSafeTO), open.toronto.ca (https://open.toronto.ca/dataset/apartment-building-evaluation/), DataStore resource 244f7a02-da5c-425b-b55f-fbdd133dd732, retrieved 2026-11-19. Contains information licensed under the Open Government Licence - Toronto."
+   },
+   {
+    "dataset": "City Wards",
+    "landing_page": "https://open.toronto.ca/dataset/city-wards/",
+    "resource_id": "7672dac5-b383-4d7c-90ec-291dc69d37bf",
+    "licence": "shared_notes[0]",
+    "citation": "City of Toronto, City Wards, open.toronto.ca (https://open.toronto.ca/dataset/city-wards/), DataStore resource 7672dac5-b383-4d7c-90ec-291dc69d37bf, retrieved 2026-11-19. Contains information licensed under the Open Government Licence - Toronto."
+   },
+   {
+    "dataset": "Neighbourhoods",
+    "landing_page": "https://open.toronto.ca/dataset/neighbourhoods/",
+    "resource_id": "7d3ae06b-0217-4cc9-92ed-97adafca2f7b",
+    "licence": "shared_notes[0]",
+    "citation": "City of Toronto, Neighbourhoods, open.toronto.ca (https://open.toronto.ca/dataset/neighbourhoods/), DataStore resource 7d3ae06b-0217-4cc9-92ed-97adafca2f7b, retrieved 2026-11-19. Contains information licensed under the Open Government Licence - Toronto."
+   },
+   {
+    "dataset": "Neighbourhood Profiles",
+    "landing_page": "https://open.toronto.ca/dataset/neighbourhood-profiles/",
+    "resource_id": "7f8eee5e-85fb-415c-aef3-c3bd4998445f",
+    "licence": "shared_notes[0]",
+    "citation": "City of Toronto, Neighbourhood Profiles, open.toronto.ca (https://open.toronto.ca/dataset/neighbourhood-profiles/), DataStore resource 7f8eee5e-85fb-415c-aef3-c3bd4998445f, retrieved 2026-11-19. Contains information licensed under the Open Government Licence - Toronto."
+   }
+  ],
+  "provenance": {
+   "source": "toronto",
+   "url": "https://ckan0.cf.opendata.inter.prod-toronto.ca/api/3/action/datastore_search?resource_id=7672dac5-b383-4d7c-90ec-291dc69d37bf&fields=_id%2CAREA_SHORT_CODE%2CAREA_NAME%2Cgeometry&sort=_id&limit=1000",
+   "queried_at": "2026-11-19T04:30:19.625096Z",
+   "as_of": null,
+   "freshness": null,
+   "coverage": null,
+   "limits": "Five City of Toronto tables combined: Elected Officials' Contact Information, RentSafeTO evaluations since 2023, City Wards, Neighbourhoods (140 model) and the 2016 Neighbourhood Profiles; cite each figure from `sources` and read `caveats` before putting them side by side.",
+   "cached": false,
+   "lang": "en",
+   "schema_name": "toronto.WardHousingProfile",
+   "licence": "Open Government Licence - Toronto (https://open.toronto.ca/open-data-licence/): use, copy, adapt and publish, commercially too, acknowledging the source. Attribution: 'Contains information licensed under the Open Government Licence - Toronto.' Source: City of Toronto, open.toronto.ca.",
+   "commercial_use": "allowed",
+   "caveats": [],
+   "reproduce": "For scripts, call reproduce_code with this tool's name and arguments."
+  },
+  "shared_notes": [
+   "Open Government Licence - Toronto (https://open.toronto.ca/open-data-licence/)"
+  ]
+ }
+}

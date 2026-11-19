@@ -86,7 +86,54 @@ DINESAFE_FIELDS = (
 )
 DINESAFE_STATUSES = ("Pass", "Conditional Pass", "Closed")
 
+# Elected Officials' Contact Information, 2022-2026 term: the mayor (District ID
+# "None", the text) and 25 councillors (District ID "1".."25", not zero-padded).
+COUNCIL_DATASET = "elected-officials-contact-information"
+COUNCIL_RESOURCE = "16d6b1b3-b474-47f4-8c09-8bf5b3aa0e68"
+COUNCIL_TERM = "2022-2026"
+COUNCIL_FIELDS = (
+    "_id",
+    "District name",
+    "District ID",
+    "Primary role",
+    "First name",
+    "Last name",
+    "Email",
+    "Website",
+    "Address line 1",
+    "Address line 2",
+    "Locality",
+    "Postal code",
+    "Phone",
+)
+
+# City Wards (25-ward model, 2018): one row per ward, AREA_SHORT_CODE "01".."25",
+# geometry a GeoJSON Polygon as text (WGS84).
+WARD_DATASET = "city-wards"
+WARD_RESOURCE = "7672dac5-b383-4d7c-90ec-291dc69d37bf"
+WARD_FIELDS = ("_id", "AREA_SHORT_CODE", "AREA_NAME", "geometry")
+
+# Neighbourhood boundaries: the 140 model the 2001-2016 profiles use, and the 158
+# model of 2021 on. AREA_SHORT_CODE is the number ("030"), AREA_NAME carries it too
+# in the 140 model ("Brookhaven-Amesbury (30)") but not in the 158 one.
+NEIGHBOURHOOD_DATASET = "neighbourhoods"
+NEIGHBOURHOOD_RESOURCES = {
+    140: "7d3ae06b-0217-4cc9-92ed-97adafca2f7b",
+    158: "5e6095fc-1bef-4776-887c-28d37f722c51",
+}
+NEIGHBOURHOOD_FIELDS = ("_id", "AREA_SHORT_CODE", "AREA_NAME", "CLASSIFICATION", "geometry")
+
+# Scanline spacing for boundary overlaps, in degrees of latitude (about 55 m).
+SCANLINE_DEGREES = 0.0005
+
+# 2016 tenure rows, the renter share's numerator and denominator.
+TENURE_TOTAL_LABEL = "Total - Private households by tenure - 25% sample data"
+TENURE_RENTER_LABEL = "Renter"
+
 DATASET_TITLES = {
+    COUNCIL_DATASET: "Elected Officials' Contact Information",
+    WARD_DATASET: "City Wards",
+    NEIGHBOURHOOD_DATASET: "Neighbourhoods",
     PROFILE_DATASET: "Neighbourhood Profiles",
     EVALUATION_DATASET: "Apartment Building Evaluations (RentSafeTO)",
     RENTAL_DATASET: "Short Term Rentals Registration",

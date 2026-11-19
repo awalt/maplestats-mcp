@@ -11,9 +11,13 @@ from maplestats_mcp.modules.toronto.constants import ROWS_DEFAULT
 from maplestats_mcp.modules.toronto.schemas import (
     ApartmentEvaluations,
     ApartmentScoreSummary,
+    CouncilRoster,
     InspectionSearch,
+    NeighbourhoodComparison,
     NeighbourhoodProfile,
     ShortTermRentalSummary,
+    WardHousingProfile,
+    WardNeighbourhoods,
 )
 
 Lang = Literal["en", "fr"]
@@ -181,3 +185,123 @@ async def toronto_search_dinesafe(
         offset=offset,
         lang=lang,
     )
+
+
+@tool
+async def toronto_get_councillors(ward: str | None = None, lang: Lang = "en") -> CouncilRoster:
+    """List Toronto's mayor and city councillors, or the councillor for one ward.
+
+    Use for: who is the city councillor for a Toronto ward (number "10",
+    "Ward 10" or name "Spadina-Fort York"), or the whole council (the
+    mayor and the 25 ward councillors), with each member's City Hall
+    office email, phone, address and toronto.ca page, from the City's
+    Elected Officials' Contact Information for the 2022-2026 term. For a
+    postal code's councillor, MP and MPP use represent_lookup_postcode.
+    English only.
+    Keywords: city councillor, ward councillor, city council, mayor,
+    council members, elected officials, ward, contact.
+    Mots-clés : conseiller municipal, conseillère, conseil municipal,
+    maire, membres du conseil, élus municipaux,
+    quartier électoral, coordonnées.
+    """
+    return await client.get_councillors(ward=ward, lang=lang)
+
+
+@tool
+async def toronto_get_ward_neighbourhoods(
+    ward: str,
+    neighbourhood_model: Literal[140, 158] = 140,
+    min_overlap: float = 0.01,
+    lang: Lang = "en",
+) -> WardNeighbourhoods:
+    """List the neighbourhoods that overlap a Toronto city ward, and by how much.
+
+    Use for: linking a ward (number or name) to the City's
+    neighbourhoods, since the two do not nest: each neighbourhood that
+    overlaps the ward, its fraction of the ward's area and the fraction of the
+    neighbourhood inside the ward (1.0 = wholly inside), measured on the
+    City Wards and Neighbourhoods boundaries. `neighbourhood_model` 140
+    matches the 2001-2016 Neighbourhood Profiles
+    (toronto_get_neighbourhood_profile), 158 the 2021 model. Slivers
+    below `min_overlap` of the ward are left out. Areas, not
+    population. English only.
+    Keywords: ward neighbourhoods, ward boundary, neighbourhood boundary,
+    overlap, which neighbourhoods are in ward, 25 wards, 140
+    neighbourhoods, 158 neighbourhoods.
+    Mots-clés : quartiers d'un quartier électoral, limites des quartiers
+    électoraux, limites des quartiers, chevauchement, 25 quartiers
+    électoraux, 140 quartiers, 158 quartiers, correspondance.
+    """
+    return await client.get_ward_neighbourhoods(
+        ward, neighbourhood_model=neighbourhood_model, min_overlap=min_overlap, lang=lang
+    )
+
+
+@tool
+async def toronto_compare_neighbourhoods(
+    characteristic: str,
+    census_year: Literal[2016, 2011, 2006, 2001] = 2016,
+    topic: str | None = None,
+    row_id: int | None = None,
+    divide_by_parent: bool = False,
+    sort: Literal["value_desc", "value_asc", "name", "number"] = "value_desc",
+    limit: int = 140,
+    offset: int = 0,
+    lang: Lang = "en",
+) -> NeighbourhoodComparison:
+    """Compare one Neighbourhood Profiles indicator across the City's 140 neighbourhoods.
+
+    Use for: ranking or listing the neighbourhoods on one row of the
+    City's Neighbourhood Profiles (2016, 2011, 2006, 2001): renter
+    households (as a fraction of all households), population, a language
+    or age group, with the city value. `characteristic` is the row's
+    exact label ("Renter", "Population, 2016"); `topic`
+    ("Household characteristics") or `row_id` settles a label used twice.
+    `divide_by_parent` divides by the row it sits under: "Renter" with it
+    gives renters / private households by tenure (2016: "Renter"; 2006:
+    "Rented"). toronto_get_neighbourhood_profile lists the labels.
+    English only.
+    Keywords: compare neighbourhoods, rank neighbourhoods, renters,
+    tenure, neighbourhood ranking, Neighbourhood Profiles, 140
+    neighbourhoods, census indicator.
+    Mots-clés : comparer les quartiers, classement des quartiers, part de
+    locataires, mode d'occupation, profils de quartier, 140 quartiers,
+    indicateur du recensement, profils.
+    """
+    return await client.compare_neighbourhoods(
+        characteristic,
+        census_year=census_year,
+        topic=topic,
+        row_id=row_id,
+        divide_by_parent=divide_by_parent,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+        lang=lang,
+    )
+
+
+@tool
+async def toronto_get_ward_profile(
+    ward: str, lowest: int = 5, min_overlap: float = 0.01, lang: Lang = "en"
+) -> WardHousingProfile:
+    """Profile a Toronto ward: its councillor, RentSafeTO scores and its neighbourhoods' renters.
+
+    Use for: one question across the City's tables about a ward
+    (number "10" or name "Spadina-Fort York"): who its councillor is,
+    how its apartment buildings score on RentSafeTO (buildings, mean,
+    median, lowest, beside the city, and the lowest-scoring buildings),
+    and, for each of the 140 neighbourhoods overlapping the ward, the
+    part inside the ward, the ward's evaluated buildings there with
+    their mean score, and the neighbourhood's 2016 renter share. Every
+    table is cited in `sources`; `caveats` says why wards and
+    neighbourhoods, and 2016 tenure and 2023+ scores, do not line up.
+    English only.
+    Keywords: ward profile, councillor and RentSafeTO, renters,
+    apartment buildings in ward, ward summary, tenants, ward councillor,
+    neighbourhoods in ward.
+    Mots-clés : profil du quartier électoral, conseiller et RentSafeTO,
+    part de locataires, immeubles d'appartements, résumé du quartier
+    électoral, locataires, quartiers, conseil.
+    """
+    return await client.get_ward_profile(ward, lowest=lowest, min_overlap=min_overlap, lang=lang)

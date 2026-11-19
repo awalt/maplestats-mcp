@@ -1164,6 +1164,23 @@ TOPICS: tuple[Topic, ...] = (
                 "2016 to 2001): neighbourhood=<name or number>, characteristic or topic",
                 ("neighbourhood", "neighborhood", "quartier"),
             ),
+            PlanStep(
+                "toronto_compare_neighbourhoods",
+                "one Neighbourhood Profiles row across all 140 neighbourhoods on "
+                "open.toronto.ca, ranked: characteristic=<exact label>, e.g. 'Renter' with "
+                "divide_by_parent=True for the renter share",
+                (
+                    "renter share",
+                    "share of renters",
+                    "renters",
+                    "rank*",
+                    "compare neighbourhoods",
+                    "which neighbourhood*",
+                    "part de locataires",
+                    "locataires",
+                    "classement",
+                ),
+            ),
             PlanStep("borealis_search_ivt", "older or custom census tables in Beyond 20/20 format"),
             PlanStep(
                 "statcan_census_profile_archive_list_geography_levels",
@@ -3197,6 +3214,11 @@ REPRESENTATIVES = Topic(
             "current MPs by province, party or riding",
             ("member of parliament", "deputes", "my mp", "mon depute"),
         ),
+        PlanStep(
+            "toronto_get_councillors",
+            "Toronto City Council: the mayor and the 25 ward councillors, or ward=<number or "
+            "name> for one",
+        ),
         PlanStep("ourcommons_get_ministry", "the federal Cabinet and portfolios", _CABINET_TERMS),
         PlanStep(
             "ourcommons_get_party_standings",
@@ -4113,6 +4135,61 @@ HEALTH_WORKFORCE = Topic(
     ),
 )
 TOPICS = (*TOPICS, HEALTH_WORKFORCE)
+
+# A Toronto ward question that crosses tables: its councillor, its apartment buildings'
+# RentSafeTO scores and its neighbourhoods' census figures. "ward" alone is too common
+# (hospital wards, other cities' wards), so the topic needs Toronto in the question too.
+_TORONTO_WARD = (
+    r"^(?=.*?\btoronto\b)(?=.*?\b(?P<cue>wards?|councillors?|city council"
+    r"|quartiers? electora\w*|circonscriptions? municipa\w*|conseill\w* municipa\w*)\b)"
+)
+TORONTO_WARDS = Topic(
+    "toronto_wards",
+    "Toronto wards: councillor, RentSafeTO scores, neighbourhoods",
+    (),
+    (
+        PlanStep(
+            "toronto_get_ward_profile",
+            "one ward in one call: its councillor, RentSafeTO scores (with the lowest "
+            "buildings) and each overlapping neighbourhood's 2016 renter share: ward=<number "
+            "or name>",
+        ),
+        PlanStep("toronto_get_councillors", "the ward's councillor: ward=<number or name>"),
+        PlanStep(
+            "toronto_get_apartment_evaluations",
+            "every evaluated building in the ward, worst score first: ward=<number or name>",
+        ),
+        PlanStep(
+            "toronto_get_ward_neighbourhoods",
+            "which neighbourhoods overlap the ward and by how much: ward=<number or name>, "
+            "neighbourhood_model=140 for the 2001-2016 profiles",
+        ),
+        PlanStep(
+            "toronto_compare_neighbourhoods",
+            "the neighbourhoods' renter share: characteristic='Renter', divide_by_parent=True",
+        ),
+        PlanStep(
+            "toronto_summarize_short_term_rentals",
+            "short-term rental registrations by ward",
+            ("short-term rental*", "airbnb", "location a court terme"),
+        ),
+    ),
+    (
+        (
+            "Toronto's 25 wards and its 140 (or 158) neighbourhoods do not nest: a "
+            "neighbourhood's census figures cover all of it, including any part outside the "
+            "ward. Give each neighbourhood's figure with its share inside the ward; do not "
+            "average neighbourhoods into a ward figure."
+        ),
+        (
+            "The Neighbourhood Profiles read here are the 2016 census (140 neighbourhoods); "
+            "RentSafeTO scores are evaluations since 2023 and cover only buildings with 3+ "
+            "storeys or 10+ units. Say which year and which table each figure comes from."
+        ),
+    ),
+    patterns=(_TORONTO_WARD,),
+)
+TOPICS = (*TOPICS, TORONTO_WARDS)
 
 # Places this server has no data for. A question naming one of them, with no
 # Canadian place and nothing that crosses the border (trade, exchange rates,

@@ -54,6 +54,43 @@ async def main() -> int:
     failures += pizza.total_matched == 0 or closed.total_matched == 0
     failures += any("None" in (i.address or "").split() for i in pizza.inspections)
 
+    council = await client.get_councillors()
+    wards = {m.ward for m in council.members if m.ward}
+    print(f"OK: council {len(council.members)} members, {len(wards)} wards")
+    failures += len(wards) != 25 or not any(m.role == "Mayor" for m in council.members)
+    one = await client.get_councillors(ward="Spadina-Fort York")
+    print(f"OK: ward 10 councillor {[m.name for m in one.members]}")
+    failures += [m.ward for m in one.members] != ["10"]
+
+    for model in (140, 158):
+        overlap = await client.get_ward_neighbourhoods("10", neighbourhood_model=model)
+        total = sum(n.share_of_ward for n in overlap.neighbourhoods)
+        print(
+            f"OK: ward 10 ({overlap.ward_area_km2} km2), {model} model: "
+            f"{[(n.neighbourhood, n.share_of_ward) for n in overlap.neighbourhoods]}"
+        )
+        failures += not overlap.neighbourhoods or not 0.95 <= total <= 1.01
+
+    renters = await client.compare_neighbourhoods("Renter", divide_by_parent=True, limit=3)
+    print(
+        f"OK: highest renter shares 2016 {[(v.neighbourhood, v.share) for v in renters.neighbourhoods]}"
+        f", city {renters.city.share}"
+    )
+    failures += renters.total_matched != 140 or not 0.3 < (renters.city.share or 0) < 0.7
+    rented = await client.compare_neighbourhoods("Rented", census_year=2006, divide_by_parent=True)
+    failures += rented.city.share is None
+
+    profile = await client.get_ward_profile("10")
+    print(
+        f"OK: ward profile {profile.ward_name}: {profile.councillor and profile.councillor.name}, "
+        f"{profile.scores.ward.buildings} buildings, mean {profile.scores.ward.mean_score}, "
+        f"{len(profile.neighbourhoods)} neighbourhoods"
+    )
+    placed = sum(n.buildings_evaluated for n in profile.neighbourhoods)
+    failures += profile.councillor is None or len(profile.sources) != 5
+    failures += placed + profile.buildings_without_coordinates != profile.scores.ward.buildings
+    failures += any(n.renter_share is None for n in profile.neighbourhoods)
+
     print("TORONTO SMOKE TEST " + ("PASSED" if not failures else f"FAILED ({failures})"))
     return 1 if failures else 0
 

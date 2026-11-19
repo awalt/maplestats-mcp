@@ -1910,6 +1910,65 @@ FR: dict[str, str] = {
         "faible coût et à usage occasionnel sont sur crtc.gc.ca, qui bloque l'accès "
         "automatisé."
     ),
+    # Toronto wards
+    "Toronto wards: councillor, RentSafeTO scores, neighbourhoods": (
+        "Quartiers électoraux de Toronto : conseiller, notes RentSafeTO, quartiers"
+    ),
+    "one ward in one call: its councillor, RentSafeTO scores (with the lowest "
+    "buildings) and each overlapping neighbourhood's 2016 renter share: ward=<number "
+    "or name>": (
+        "un quartier électoral en un appel : son conseiller, ses notes RentSafeTO (avec les "
+        "immeubles les moins bien notés) et la part de locataires en 2016 de chaque quartier "
+        "qui le chevauche : ward=<numéro ou nom>"
+    ),
+    "the ward's councillor: ward=<number or name>": (
+        "le conseiller du quartier électoral : ward=<numéro ou nom>"
+    ),
+    "every evaluated building in the ward, worst score first: ward=<number or name>": (
+        "chaque immeuble évalué du quartier électoral, la pire note d'abord : ward=<numéro ou nom>"
+    ),
+    "which neighbourhoods overlap the ward and by how much: ward=<number or name>, "
+    "neighbourhood_model=140 for the 2001-2016 profiles": (
+        "quels quartiers chevauchent le quartier électoral, et dans quelle mesure : "
+        "ward=<numéro ou nom>, neighbourhood_model=140 pour les profils de 2001 à 2016"
+    ),
+    "the neighbourhoods' renter share: characteristic='Renter', divide_by_parent=True": (
+        "la part de locataires des quartiers : characteristic='Renter', divide_by_parent=True"
+    ),
+    "short-term rental registrations by ward": (
+        "inscriptions de locations à court terme par quartier électoral"
+    ),
+    "Toronto's 25 wards and its 140 (or 158) neighbourhoods do not nest: a "
+    "neighbourhood's census figures cover all of it, including any part outside the "
+    "ward. Give each neighbourhood's figure with its share inside the ward; do not "
+    "average neighbourhoods into a ward figure.": (
+        "Les 25 quartiers électoraux de Toronto et ses 140 (ou 158) quartiers ne "
+        "s'emboîtent pas : les chiffres du recensement d'un quartier le couvrent en entier, "
+        "y compris la partie hors du quartier électoral. Donnez le chiffre de chaque quartier "
+        "avec sa part dans le quartier électoral ; ne faites pas la moyenne des quartiers "
+        "pour obtenir un chiffre du quartier électoral."
+    ),
+    "The Neighbourhood Profiles read here are the 2016 census (140 neighbourhoods); "
+    "RentSafeTO scores are evaluations since 2023 and cover only buildings with 3+ "
+    "storeys or 10+ units. Say which year and which table each figure comes from.": (
+        "Les profils de quartier lus ici sont ceux du recensement de 2016 (140 quartiers) ; "
+        "les notes RentSafeTO sont des évaluations depuis 2023 et ne couvrent que les "
+        "immeubles de 3 étages et plus ou de 10 logements et plus. Dites de quelle année et "
+        "de quel tableau vient chaque chiffre."
+    ),
+    "Toronto City Council: the mayor and the 25 ward councillors, or ward=<number or "
+    "name> for one": (
+        "Conseil municipal de Toronto : la mairesse ou le maire et les 25 conseillers des "
+        "quartiers électoraux, ou ward=<numéro ou nom> pour un seul"
+    ),
+    "one Neighbourhood Profiles row across all 140 neighbourhoods on "
+    "open.toronto.ca, ranked: characteristic=<exact label>, e.g. 'Renter' with "
+    "divide_by_parent=True for the renter share": (
+        "une ligne des profils de quartier pour les 140 quartiers sur open.toronto.ca, "
+        "classés : "
+        "characteristic=<libellé exact>, p. ex. 'Renter' avec divide_by_parent=True pour la "
+        "part de locataires"
+    ),
 }
 # The entries are typed with ordinary spaces ("x; y", "a : b"); french_text
 # gives them French no-break spacing, as every French server message has.
