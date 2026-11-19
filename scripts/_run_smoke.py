@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import TextIO
 
 import httpx
-from _smoke_common import SKIPPED_EXIT, is_upstream_outage
+from _smoke_common import SKIPPED_EXIT, is_upstream_outage, report_skipped_hosts
 
 HERE = Path(__file__).resolve().parent
 
@@ -66,21 +66,26 @@ def main(script: str) -> int:
     sys.argv = [str(path)]
     tee = _Tee(sys.stdout)
     sys.stdout = tee
+    outage: BaseException | None = None
     try:
         runpy.run_path(str(path), run_name="__main__")
+        code = 0
     except SystemExit as done:
-        code = done.code
-        return code if isinstance(code, int) else (0 if code is None else 1)
+        exit_code = done.code
+        code = exit_code if isinstance(exit_code, int) else (0 if exit_code is None else 1)
     # Re-raised unless it is an outage, so only an outage is skipped.
     except Exception as exc:
         if not _is_outage(exc) or tee.failed:
             raise
         print(f"SKIP: {script} stopped by an outage ({type(exc).__name__}: {exc})")
         print(f"\n{script} SKIPPED: a source was unavailable; not a pass")
-        return SKIPPED_EXIT
+        outage, code = exc, SKIPPED_EXIT
     finally:
         sys.stdout = tee.inner
-    return 0
+    # A skipped run names the hosts it was cut short by: smoke.yml counts the scripts per host.
+    if code == SKIPPED_EXIT:
+        report_skipped_hosts(script, outage)
+    return code
 
 
 if __name__ == "__main__":
