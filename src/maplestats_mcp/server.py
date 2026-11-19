@@ -53,6 +53,7 @@ from mcp.types import Icon, ToolAnnotations
 from maplestats_mcp import __version__, config, gis_profile
 from maplestats_mcp.catalogue import (
     EXTRA_FILES,
+    FRED_TOOLS,
     MODULES_ROOT,
     PROFILE_SWITCHES,
     TOOL_FILES,
@@ -549,6 +550,15 @@ class AnnotatedBM25SearchTransform(BM25SearchTransform):
                 # A name MAPLE_GIS has hidden is an unknown name, as for any other caller;
                 # the other switches are limits, and say so.
                 switch = TOOL_SWITCHES.get(name)
+                if name in FRED_TOOLS and switch is not None and not switch():
+                    raise InvalidInput(
+                        f"{name} needs a FRED API key, and this server has none. The key is "
+                        "free and the server's operator creates it at FRED "
+                        "(https://fred.stlouisfed.org/docs/api/api_key.html), then sets it as "
+                        "FRED_API_KEY in the server's environment and restarts the server. "
+                        "MapleStats never ships, asks for or stores a key. For Canadian "
+                        "series use the wds_, boc_, oecd_ or ilo_ tools meanwhile."
+                    )
                 if switch is not None and not switch() and name not in PROFILE_SWITCHES:
                     raise InvalidInput(
                         f"{name} is switched off on this server (it runs code or files "

@@ -327,6 +327,13 @@ SOURCE_LICENCES: dict[str, str] = {
         "Source: Office for National Statistics licensed under the Open Government Licence "
         "v3.0 (https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/)."
     ),
+    "fred": (
+        "Source: Federal Reserve Bank of St. Louis, FRED®. Use is bound by the FRED® "
+        "API Terms of Use (https://fred.stlouisfed.org/docs/api/terms_of_use.html): "
+        "show that the product is not endorsed or certified by the Federal Reserve Bank "
+        "of St. Louis; series FRED marks Copyright belong to third parties whose "
+        "permission is needed."
+    ),
     "imf": (
         "Source: International Monetary Fund. Data may be copied, published and "
         "distributed with the IMF credited as the source and any material "
@@ -558,6 +565,14 @@ LICENCES_FR: dict[str, str] = {
     SOURCE_LICENCES["ons"]: (
         "Source : Office for National Statistics, sous licence Open Government Licence v3.0 "
         "(https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/)."
+    ),
+    SOURCE_LICENCES["fred"]: (
+        "Source : Federal Reserve Bank of St. Louis, FRED®. L'utilisation est soumise "
+        "aux conditions d'utilisation de l'API FRED® "
+        "(https://fred.stlouisfed.org/docs/api/terms_of_use.html) : indiquer que le "
+        "produit n'est ni approuvé ni certifié par la Federal Reserve Bank of St. Louis "
+        "; les séries que FRED marque Copyright appartiennent à des tiers dont "
+        "l'autorisation est requise."
     ),
     SOURCE_LICENCES["imf"]: (
         "Source : Fonds monétaire international. Les données peuvent être copiées, "
@@ -912,6 +927,9 @@ _SOURCE_COMMERCIAL_USE: dict[str, CommercialUse] = {
     "ilo": "allowed",
     # OGL v3: commercial and non-commercial reuse with the source acknowledged.
     "ons": "allowed",
+    # The FRED API terms say nothing on commercial use; third-party series need their
+    # owner's permission (read 2026-11-18).
+    "fred": "unknown",
     # Data may be copied and distributed with credit; "For any potential commercial
     # reuse of IMF Data, email copyright@imf.org to request permission" (read 2026-11-18).
     "imf": "not_allowed",
