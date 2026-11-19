@@ -243,6 +243,17 @@ def get_breaker_enabled() -> bool:
     return raw not in {"0", "false", "no", "off"}
 
 
+def get_statcan_fallback_enabled() -> bool:
+    """Whether a blocked StatCan WDS tool answers from another official source.
+
+    MAPLE_STATCAN_FALLBACK=0 (or off, false, no) turns it off: a WDS tool whose host
+    (www150.statcan.gc.ca) is paused or challenged fails with its own error, as
+    before. On by default: the substitute is always labelled (see shared/substitution.py).
+    """
+    raw = os.environ.get("MAPLE_STATCAN_FALLBACK", "1").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
+
 def get_breaker_failures() -> int:
     """Failures in a row, within the window, that open a host's breaker (MAPLE_BREAKER_FAILURES)."""
     value = _env_int("MAPLE_BREAKER_FAILURES", 5)

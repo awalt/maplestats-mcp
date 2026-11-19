@@ -82,6 +82,16 @@ class Provenance(BaseModel):
             "(docs://planner/fitness-rules)."
         ),
     )
+    substituted_for: str | None = Field(
+        default=None,
+        description=(
+            "Set only when this result came from another official source because the tool's "
+            "own one was blocked or paused (for example 'wds' for a Statistics Canada Web Data "
+            "Service tool answered from the Bank of Canada, the CCEI SDMX space or the Alberta "
+            "dashboard). `source` and `url` then name the host that answered and `caveats` say "
+            "why, in the call's language. Null for every ordinary result."
+        ),
+    )
     reproduce: str = Field(
         default="For scripts, call reproduce_code with this tool's name and arguments.",
         description="How to get retrieval and cleaning code for this result.",
