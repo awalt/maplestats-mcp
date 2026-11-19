@@ -128,7 +128,21 @@ def _listing_card(card: Any, dataset_type: str | None) -> DatasetSummary | None:
 def _parse_listing(html: str, dataset_type: str | None, lang: str = "en") -> list[DatasetSummary]:
     soup = BeautifulSoup(html, "html.parser")
     container = soup.select_one("#Master_ContentPlaceHolder1_DataSets")
+    title = soup.title.get_text(" ", strip=True) if soup.title else ""
+    if container is None and constants.PORTAL_TITLE not in title:
+        # Not the portal's page at all (a block or maintenance page): served once to
+        # the Azure host on 2026-11-19 and fine on the next request, so retry later.
+        raise_localized(
+            UpstreamUnavailable,
+            "Open Data Newfoundland and Labrador answered with a page that is not its "
+            "dataset listing (a maintenance or block page). Try again shortly.",
+            "le portail de données ouvertes de Terre-Neuve-et-Labrador a renvoyé une page "
+            "qui n'est pas sa liste de jeux de données (page de maintenance ou de "
+            "blocage). Réessayez sous peu.",
+            lang,
+        )
     if container is None:
+        # The portal's own page without its dataset block: the layout has changed.
         raise_localized(
             UpstreamError,
             "nl-opendata listing page did not contain its dataset container.",

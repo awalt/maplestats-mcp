@@ -9,9 +9,15 @@ the chain also checks that one tool's output feeds the next.
 tests/test_live_coverage.py fails if a module has neither its own
 script nor a step here, so a new module cannot ship without a live check.
 
+With --url, the same steps go over HTTP to a hosted server instead (the
+Azure endpoint after a deploy, say), so what is checked is the deployed code
+on the host's network. Each call opens its own session and the calls are
+spaced to stay under the hosted rate limit.
+
 Usage:
     uv run python scripts/smoke_test_modules.py            # every module
     uv run python scripts/smoke_test_modules.py cihi aer   # some modules
+    uv run python scripts/smoke_test_modules.py --url https://mcp.maplestats.danielstats.io/mcp
 """
 
 from __future__ import annotations
@@ -25,7 +31,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Self
 
 from _smoke_common import SKIPPED_EXIT
 from fastmcp import Client
@@ -87,6 +93,46 @@ DOWN_MODULES: dict[str, str] = {}
 # oee.nrcan.gc.ca was unreachable from 2026-09-29 to at least 2026-10-03 and
 # answered again on 2026-11-07, so its tools run again.
 DOWN_TOOLS: dict[str, str] = {}
+
+
+# A call opens a session (initialize, its notice, the call: three requests), so one
+# call every 2 s is about 90 requests a minute, under the hosted limit of 120
+# (MAPLE_RATE_LIMIT_REQUESTS). Faster runs were refused on Azure (2026-11-19).
+_HOSTED_CALL_SPACING_SECONDS = 2.0
+
+
+class _HostedClient:
+    """The call_tool of fastmcp.Client, one HTTP session per call to a hosted server.
+
+    A session held for the whole run was dropped by Azure's ingress partway through
+    (ReadError, 2026-11-19). A call whose connection drops is tried once more; a
+    second drop is returned as a failed call, so the run goes on.
+    """
+
+    def __init__(self, url: str) -> None:
+        self.url = url
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+    async def call_tool(self, name: str, arguments: dict[str, Any], **kwargs: Any) -> Any:
+        from types import SimpleNamespace
+
+        from mcp.shared.exceptions import MCPError
+
+        problem: Exception | None = None
+        for _ in range(2):
+            await asyncio.sleep(_HOSTED_CALL_SPACING_SECONDS)
+            try:
+                async with Client(self.url, timeout=180) as client:
+                    return await client.call_tool(name, arguments, **kwargs)
+            except (MCPError, OSError, RuntimeError) as exc:
+                problem = exc
+        text = f"[hosted_connection] {type(problem).__name__}: {problem}"
+        return SimpleNamespace(is_error=True, content=[TextContent(type="text", text=text)])
 
 
 async def _ourcommons_blocked_on_ci() -> bool:
@@ -1690,7 +1736,8 @@ STEPS: list[Step] = [
         },
         lambda data: "experience" in data["scripts"][1]["code"].lower(),
     ),
-    # Excel: a Power Query reading the key's series, and a formatted workbook.
+    # StatCan blocks its SDMX service for scripts (November 2026): no script is
+    # written, and the note says why and names the WDS tool to use instead.
     Step(
         "reproduce",
         "reproduce_code",
@@ -1699,7 +1746,21 @@ STEPS: list[Step] = [
             "arguments": {"product_id": 18100004, "key": "2.2", "last_n_observations": 3},
             "language": "excel",
         },
-        lambda data: "Xml.Document" in data["scripts"][0]["code"],
+        lambda data: (
+            data["scripts"] == []
+            and any("No script: Statistics Canada blocks" in n for n in data["notes"])
+        ),
+    ),
+    # Excel: a Power Query reading the series, and a formatted workbook.
+    Step(
+        "reproduce",
+        "reproduce_code",
+        {
+            "tool_name": "boc_get_observations",
+            "arguments": {"series_names": ["FXUSDCAD"], "recent": 5},
+            "language": "excel",
+        },
+        lambda data: "Web.Contents" in data["scripts"][0]["code"],
     ),
     Step(
         "reproduce",
@@ -1788,7 +1849,7 @@ async def _eps_reloading() -> bool:
     return False
 
 
-async def main(modules: set[str]) -> int:
+async def main(modules: set[str], url: str | None = None) -> int:
     ctx: Context = {}
     failures: list[str] = []
     # Outages seen during this run: reported as SKIPPED (not a pass), never as FAILED.
@@ -1801,7 +1862,7 @@ async def main(modules: set[str]) -> int:
         print("SKIP ourcommons: ourcommons.ca answers HTTP 403 to this GitHub runner")
         DOWN_MODULES["ourcommons"] = "blocked on this runner (HTTP 403)"
     step_tools = {step.tool for step in STEPS}
-    async with Client(mcp) as client:
+    async with _HostedClient(url) if url else Client(mcp) as client:
         for step in STEPS:
             if modules and step.module not in modules:
                 continue
@@ -1892,4 +1953,10 @@ async def main(modules: set[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main(set(sys.argv[1:]))))
+    argv = sys.argv[1:]
+    hosted_url = None
+    if "--url" in argv:
+        at = argv.index("--url")
+        hosted_url = argv[at + 1]
+        del argv[at : at + 2]
+    sys.exit(asyncio.run(main(set(argv), hosted_url)))
