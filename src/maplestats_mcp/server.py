@@ -65,7 +65,7 @@ from maplestats_mcp.catalogue import (
     read_catalogue,
     tool_enabled,
 )
-from maplestats_mcp.shared import search, semantic
+from maplestats_mcp.shared import host_health, search, semantic
 from maplestats_mcp.shared.argument_aliases import apply_aliases
 from maplestats_mcp.shared.breaker import render_status
 from maplestats_mcp.shared.dereference import CachedDereferenceMiddleware
@@ -455,9 +455,22 @@ class AnnotatedBM25SearchTransform(BM25SearchTransform):
         scores = search.apply_boosts(scores, boosts)
         # The catalog is deduplicated by name; resolve the current version's schema.
         by_name = {t.name: t for t in tools}
-        return [
-            by_name[self._indexed[i].name] for i in search.top_indices(scores, self._max_results)
+        blocked = host_health.blocked_now()
+        if not blocked:
+            return [
+                by_name[self._indexed[i].name]
+                for i in search.top_indices(scores, self._max_results)
+            ]
+        # A host is blocking automated clients (a Cloudflare challenge): look twice as deep, so
+        # tools on hosts that work can take the places of the ones that cannot answer, and keep
+        # the blocked ones behind them (search_tools marks them).
+        pool = [
+            by_name[self._indexed[i].name]
+            for i in search.top_indices(scores, 2 * self._max_results)
         ]
+        working = [t for t in pool if host_health.block_of(t.name, blocked) is None]
+        stuck = [t for t in pool if host_health.block_of(t.name, blocked) is not None]
+        return [*working, *stuck][: self._max_results]
 
     def _make_search_tool(self) -> Tool:
         transform = self
@@ -491,7 +504,8 @@ class AnnotatedBM25SearchTransform(BM25SearchTransform):
                 )
             serializer = transform._full_serializer if detail == "full" else transform._serializer
             rendered = serializer(results)
-            return await rendered if inspect.isawaitable(rendered) else rendered
+            rendered = await rendered if inspect.isawaitable(rendered) else rendered
+            return host_health.mark_results(rendered, host_health.blocked_now())
 
         tool = Tool.from_function(
             fn=search_tools,

@@ -35,6 +35,35 @@ STILL_WORKING_PREFIXES = (
     "oecd_",
 )
 
+# Tool-name prefixes of the tools whose every call needs one host, for the planner and
+# search_tools to tell which tools a blocked host takes down. Only a tool that cannot
+# answer without the host is listed: statcan_surveys_ and statcan_lode_ read more than one
+# host (the IMDB at www23 and the statcan.gc.ca pages still answer), calc_, check_answer
+# and reproduce_ also read the Bank of Canada, and statcan_census_profile_archive_ only
+# lists links, so none of them is marked. `sdmx_get_` is the www150 SDMX service; the
+# `sdmx_space_` tools read api.statcan.gc.ca. tests/test_blocked_hosts.py checks each
+# prefix against the constants of the sub-package it names.
+HOST_TOOL_PREFIXES: dict[str, tuple[str, ...]] = {
+    "www150.statcan.gc.ca": (
+        "wds_",
+        "sdmx_get_",
+        "cimt_",
+        "statcan_daily_",
+        "statcan_indicators_",
+        "statcan_delta_",
+        "statcan_reference_",
+        "statcan_pumf_",
+    ),
+}
+
+
+def host_of_tool(tool: str) -> str | None:
+    """The host every call of `tool` needs, when HOST_TOOL_PREFIXES knows it."""
+    for host, prefixes in HOST_TOOL_PREFIXES.items():
+        if tool.startswith(prefixes):
+            return host
+    return None
+
 
 def clock_time(when: datetime, french: bool) -> str:
     """HH:MM, or "H h MM" in French; the caller says UTC."""
@@ -75,6 +104,16 @@ def still_working(host: str, french: bool) -> str:
         "Bank of Canada (boc_), CMHC (cmhc_), the provincial modules and the OECD (oecd_); "
         "plan_query lists the ones for this question."
     )
+
+
+def still_working_short(host: str, french: bool) -> str:
+    """still_working as tool-name prefixes only, for a plan's guidance line; "" for others."""
+    if host not in STATCAN_HOSTS:
+        return ""
+    prefixes = ", ".join(STILL_WORKING_PREFIXES)
+    if french:
+        return f" Toujours accessibles : {prefixes} et les outils provinciaux."
+    return f" Still working: {prefixes} and the provincial tools."
 
 
 def challenge_fix(host: str, french: bool) -> str:
