@@ -84,6 +84,9 @@ class Provenance(BaseModel):
     )
     substituted_for: str | None = Field(
         default=None,
+        # Left out of the output while null, so an ordinary result is byte for byte what it
+        # was before this field existed.
+        exclude_if=lambda value: value is None,
         description=(
             "Set only when this result came from another official source because the tool's "
             "own one was blocked or paused (for example 'wds' for a Statistics Canada Web Data "

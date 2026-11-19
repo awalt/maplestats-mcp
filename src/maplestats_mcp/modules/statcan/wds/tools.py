@@ -275,6 +275,7 @@ async def wds_get_series_info(
     exactly one form: `vector_id`, or `product_id` + `coordinate`. Also
     returns the series title, frequency, decimals, scalar factor and
     unit-of-measure codes.
+    A challenged WDS gets a labelled stand-in.
     Keywords: statcan, vector, coordinate, resolve, productId, series
     info, wds, Statistics Canada, conversion, identifier.
     Mots-clés : Statistique Canada, vecteur, coordonnée, résoudre,
@@ -338,6 +339,7 @@ async def wds_get_data_from_vectors(
     compute from the published levels; a series already in percent gets
     percentage-point changes. `transformed` holds the computed values
     with their formula.
+    A challenged WDS gets a labelled stand-in.
     Keywords: statcan, vector, observations, latest, data, time series,
     wds, values, year-over-year, yoy, inflation rate, percent change,
     growth rate, annualized, quarterly average, annual average, index,
@@ -457,6 +459,7 @@ async def wds_get_data_from_cube_coord(
     history is fetched for the lag; `observations` keep the published
     values and `transformed` holds the computed ones with their formula
     and unit.
+    A challenged WDS gets a labelled stand-in.
     Keywords: statcan, coordinate, coordinates, table series, every
     province, observations, latest, data, wds, productId, Statistics
     Canada, year-over-year, percent change, growth rate, quarterly

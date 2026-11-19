@@ -467,6 +467,31 @@ async def test_substituted_cube_coord_and_series_info(httpx_mock, cloudflare_cha
     assert by_coord.vector_id == 65201210
 
 
+async def test_a_series_whose_vector_is_spelled_differently_in_some_rows_is_still_served(
+    httpx_mock, cloudflare_challenge
+):
+    # 36-10-0222's Alberta GDP wrote its VECTOR "v62788314" in some rows and left it out of
+    # others (live 2026-11-18), which moves the attribute off the series onto the rows.
+    _block(httpx_mock, cloudflare_challenge)
+    mixed = _csv(
+        _row("_T", "2026-06", "2371177", "65201210"),
+        _row("_T", "2026-07", "2371788", "v65201210"),
+        _row("_T", "2026-08", "2371635", ""),
+    )
+    _ccei(httpx_mock, data_csv=mixed)
+    result = await _fn(tools.wds_get_data_from_vectors)(vector_ids=[65201210], latest_n=3)
+    assert [o.value for o in result.series[0].observations] == [2371177.0, 2371788.0, 2371635.0]
+
+
+async def test_a_key_that_returns_another_vector_is_refused(httpx_mock, cloudflare_challenge):
+    _block(httpx_mock, cloudflare_challenge)
+    _ccei(httpx_mock, data_csv=_csv(_row("_T", "2026-08", "5", "777")))
+    _others(httpx_mock)
+    with pytest.raises(CloudflareChallenge, match="substitute sources failed"):
+        await _fn(tools.wds_get_data_from_vectors)(vector_ids=[65201210], latest_n=3)
+    assert STATS.fallbacks == {}
+
+
 # ------------------------------------------------------------------ the other routes
 
 

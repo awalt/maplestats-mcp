@@ -102,9 +102,18 @@ def period_date(period: str) -> date | None:
         return None
 
 
-def _vector_of(series: SpaceSeries) -> int | None:
-    raw = series.attributes.get("VECTOR", "").strip().lower().removeprefix("v")
-    return int(raw) if raw.isdigit() else None
+def _vectors_of(series: SpaceSeries) -> set[int]:
+    """The vector ids a series carries, written "21" or "v21".
+
+    VECTOR is one value for the whole series, unless some of its observations spell it
+    differently or leave it out (36-10-0222's Alberta GDP did, live 2026-11-18): then it is
+    on the observations and not in the series' constant attributes.
+    """
+    raws = [series.attributes.get("VECTOR", "")] + [
+        o.attributes.get("VECTOR", "") for o in series.observations
+    ]
+    texts = (raw.strip().lower().removeprefix("v") for raw in raws)
+    return {int(text) for text in texts if text.isdigit()}
 
 
 def _to_int(raw: str | None) -> int:
@@ -208,7 +217,11 @@ async def serve(wanted: Wanted, latest_n: int, lang: str) -> Served | None:
         max_rows=min(latest_n, 5000),
         lang=lang,
     )
-    series = next((s for s in data.series if _vector_of(s) == vector), None)
+    # The key came from this flow's own index, so it names one series; a VECTOR that says
+    # another vector is the only reason to refuse it.
+    series = next((s for s in data.series if vector in _vectors_of(s)), None)
+    if series is None and len(data.series) == 1 and not _vectors_of(data.series[0]):
+        series = data.series[0]
     if series is None:
         raise NotFound(f"{flow.ref}: key {key} did not return vector {vector}.")
     days = [period_date(o.period) for o in series.observations]
