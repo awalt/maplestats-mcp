@@ -87,6 +87,14 @@ MAX_ROWS = 500  # newest observations kept per series
 MAX_SERIES = 200
 MAX_LAST_N = 5_000
 
+# Looking up a series by its StatCan vector id (client.vector_keys) reads a whole flow at
+# one observation per series; a flow whose read is larger than this is not indexed
+# (the largest checked, DF_11100239 with 48,000 series, is 4.6 MB).
+VECTOR_INDEX_MAX_BYTES = 8_000_000
+# Agencies of the production copies of StatCan tables (DF_<8-digit product id>). The
+# "STC" flows of the same ids (v1.0) are references, not data.
+TABLE_AGENCIES = ("CA1.CCEI", "CA1.QOL", "CA1.MEA")
+
 # Listing and structure browsing.
 DEFAULT_LIST_LIMIT = 50
 MAX_LIST_LIMIT = 250

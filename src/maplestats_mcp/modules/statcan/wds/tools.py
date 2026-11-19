@@ -19,12 +19,14 @@ from maplestats_mcp.modules.statcan.wds import (
     client,
     constants,
     context,
+    fallback,
     leaves,
     query,
     transforms,
     vintage,
 )
 from maplestats_mcp.modules.statcan.wds.client import CodeSetCategory
+from maplestats_mcp.modules.statcan.wds.fallback_types import Wanted
 from maplestats_mcp.modules.statcan.wds.schemas import (
     ChangedCubeList,
     ChangedSeriesList,
@@ -39,6 +41,7 @@ from maplestats_mcp.modules.statcan.wds.schemas import (
     VectorDataSet,
     VintageSeries,
 )
+from maplestats_mcp.shared import substitution
 from maplestats_mcp.shared.envelope import raise_error
 from maplestats_mcp.shared.errors import InvalidInput
 from maplestats_mcp.shared.limits import join_limits
@@ -149,14 +152,31 @@ async def wds_get_cube_metadata(
     tableau, description du tableau.
     """
     client.use_lang(lang)
-    return await client.get_cube_metadata(
-        product_id,
-        dimension=dimension,
-        member_query=member_query,
-        member_limit=member_limit,
-        member_offset=member_offset,
-        footnote_limit=footnote_limit,
-    )
+    try:
+        return await client.get_cube_metadata(
+            product_id,
+            dimension=dimension,
+            member_query=member_query,
+            member_limit=member_limit,
+            member_offset=member_offset,
+            footnote_limit=footnote_limit,
+        )
+    except substitution.TRIGGERS as exc:
+        if not substitution.enabled():
+            raise
+        # No other source carries WDS's member ids, the numbers a coordinate is built from.
+        raise await fallback.refuse(
+            exc,
+            lang,
+            product_id=client.normalize_product_id(product_id),
+            why=_m(
+                "WDS table metadata (the member ids a coordinate is built from) is carried by "
+                "no other source.",
+                "Les métadonnées de tableau du SDW (les identifiants de membre dont se forme "
+                "une coordonnée) ne sont détenues par aucune autre source.",
+                lang,
+            ),
+        ) from exc
 
 
 @tool
@@ -263,10 +283,23 @@ async def wds_get_series_info(
     """
     client.use_lang(lang)
     _vector_or_coord("wds_get_series_info", vector_id, product_id, coordinate, lang)
-    if vector_id is not None:
-        return await client.get_series_info_from_vector(vector_id)
-    assert product_id is not None and coordinate is not None
-    return await client.get_series_info_from_cube_pid_coord(product_id, coordinate)
+    try:
+        if vector_id is not None:
+            return await client.get_series_info_from_vector(vector_id)
+        assert product_id is not None and coordinate is not None
+        return await client.get_series_info_from_cube_pid_coord(product_id, coordinate)
+    except substitution.TRIGGERS as exc:
+        if not substitution.enabled():
+            raise
+        wanted = (
+            Wanted(vector_id=vector_id)
+            if vector_id is not None
+            else Wanted(
+                product_id=client.normalize_product_id(product_id or 0),
+                coordinate=client._pad_coordinate(coordinate or ""),
+            )
+        )
+        return await fallback.series_info(exc, wanted, lang)
 
 
 @tool
@@ -319,6 +352,34 @@ async def wds_get_data_from_vectors(
     request = transforms.TransformRequest(transform, frequency, aggregation, index_base, window)
     request.check(lang)
     client._check_vector_ids(vector_ids)
+    try:
+        return await _vectors_from_wds(vector_ids, latest_n, request, lang)
+    except substitution.TRIGGERS as exc:
+        if not substitution.enabled():
+            raise
+        if request.active:
+            raise await fallback.refuse(exc, lang, why=_levels_only(lang)) from exc
+        return await fallback.vectors(exc, vector_ids, latest_n, lang)
+
+
+def _m(en: str, fr: str, lang: str) -> str:
+    return fr if lang == "fr" else en
+
+
+def _levels_only(lang: str) -> str:
+    return _m(
+        "A transform or frequency needs WDS's unit codes, and the substitute sources serve "
+        "published levels only: ask again without transform and frequency.",
+        "Une transformation ou une fréquence a besoin des codes d'unité du SDW, et les sources "
+        "de remplacement ne servent que les niveaux publiés : redemandez sans transform ni "
+        "frequency.",
+        lang,
+    )
+
+
+async def _vectors_from_wds(
+    vector_ids: list[int], latest_n: int, request: transforms.TransformRequest, lang: str
+) -> VectorDataSet:
     if not request.active:
         data, _ = await asyncio.gather(
             client.get_data_from_vectors_and_latest_n_periods(vector_ids, latest_n),
@@ -412,6 +473,19 @@ async def wds_get_data_from_cube_coord(
     asked = ([coordinate] if coordinate else []) + list(coordinates or [])
     pid = client.normalize_product_id(product_id)
     padded = client.check_coordinates(asked, latest_n)
+    try:
+        return await _coordinates_from_wds(pid, padded, latest_n, request)
+    except substitution.TRIGGERS as exc:
+        if not substitution.enabled():
+            raise
+        if request.active:
+            raise await fallback.refuse(exc, lang, product_id=pid, why=_levels_only(lang)) from exc
+        return await fallback.coordinates(exc, pid, padded, latest_n, lang)
+
+
+async def _coordinates_from_wds(
+    pid: int, padded: list[str], latest_n: int, request: transforms.TransformRequest
+) -> VectorData:
     if not request.active:
         data, _ = await asyncio.gather(
             client.get_data_from_cube_pid_coords_and_latest_n_periods(pid, padded, latest_n),

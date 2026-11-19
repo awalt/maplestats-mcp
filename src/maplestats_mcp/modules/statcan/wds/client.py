@@ -27,7 +27,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from maplestats_mcp.modules.statcan.lang import say
-from maplestats_mcp.modules.statcan.wds import constants
+from maplestats_mcp.modules.statcan.wds import constants, fallback_book
 from maplestats_mcp.modules.statcan.wds.schemas import (
     ChangedCubeEntry,
     ChangedCubeList,
@@ -755,6 +755,7 @@ async def explain_missing_coordinate(pid: int, coordinate: str, method: str) -> 
 
 def _series_info(obj: dict[str, Any], method: str) -> SeriesInfo:
     terminated = obj.get("terminated")
+    fallback_book.learn(int(obj["productId"]), obj["coordinate"], int(obj["vectorId"]))
     return SeriesInfo(
         product_id=int(obj["productId"]),
         coordinate=obj["coordinate"],
@@ -949,6 +950,9 @@ def _release_time_utc(raw: str) -> datetime:
 
 
 def _series_from_json(obj: dict[str, Any], legend: Legend | None = None) -> VectorSeries:
+    # Remembered for the fallback (fallback_book.py): with WDS blocked, nothing else says
+    # which table a vector is in. Reads only; the result is unchanged.
+    fallback_book.learn(int(obj["productId"]), obj["coordinate"], int(obj["vectorId"]))
     return VectorSeries(
         product_id=int(obj["productId"]),
         coordinate=obj["coordinate"],
