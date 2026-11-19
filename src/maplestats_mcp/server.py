@@ -855,7 +855,8 @@ Sources, by tool-name prefix:
   AQHI, snow, groundwater wells, provincial streamflow), bcgw_ (BC Geographic
   Warehouse), bc_lobbyists_ (BC Registrar of Lobbyists), drivebc_ (BC
   highway road events and closures), nl_opendata_,
-  opendatasoft_vancouver_, eps_ (Edmonton police occurrences), ets_
+  opendatasoft_vancouver_, calgary_ (Calgary building permits, civic census
+  community populations), eps_ (Edmonton police occurrences), ets_
   (Edmonton real-time transit), bc_transit_ (BC Transit real-time:
   Victoria, Kelowna and ten more systems), epcor_ (Edmonton water quality),
   toronto_ (City of Toronto: councillors, wards and their neighbourhoods,

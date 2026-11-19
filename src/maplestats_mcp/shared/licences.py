@@ -141,6 +141,14 @@ EDMONTON_TERMS = (
     "Credit: City of Edmonton."
 )
 
+# The terms page every data.calgary.ca dataset links to (read 2026-11-19): version 2.1,
+# "including for commercial purposes", with this attribution statement.
+CALGARY_TERMS = (
+    "Open Government Licence - City of Calgary 2.1 "
+    "(https://data.calgary.ca/stories/s/Open-Calgary-Terms-of-Use/u45n-7awa). Attribution: "
+    "'Contains information licensed under the Open Government Licence - City of Calgary.'"
+)
+
 REPRESENT_TERMS = (
     "Open North's Represent API (https://represent.opennorth.ca) states no licence of its own. "
     "Boundary sets carry their publisher's licence (licence_url on each set); representative "
@@ -224,6 +232,7 @@ SOURCE_LICENCES: dict[str, str] = {
         "AER's written permission."
     ),
     "bcer": BCER_TERMS,
+    "calgary": CALGARY_TERMS,
     "epcor": terms_not_stated("EPCOR", "https://apps.epcor.ca"),
     "eps": terms_not_stated(
         "Edmonton Police Service", "https://communitysafetydataportal.edmontonpolice.ca"
@@ -699,6 +708,14 @@ EDMONTON_TERMS_FR = (
 )
 
 
+CALGARY_TERMS_FR = (
+    "Licence du gouvernement ouvert – Ville de Calgary 2.1 (Open Government Licence - City of "
+    "Calgary, https://data.calgary.ca/stories/s/Open-Calgary-Terms-of-Use/u45n-7awa). "
+    "Attribution : « Contains information licensed under the Open Government Licence - City "
+    "of Calgary. »"
+)
+
+
 def terms_not_stated_fr(publisher: str, url: str) -> str:
     """terms_not_stated() in French."""
     return (
@@ -727,6 +744,7 @@ _PROVINCIAL_FR: dict[str, str] = {
     ),
     "ab-opendata": OGL_ALBERTA_FR,
     "open-alberta": OGL_ALBERTA_FR,
+    "calgary": CALGARY_TERMS_FR,
     "epcor": terms_not_stated_fr("EPCOR", "https://apps.epcor.ca"),
     "eps": terms_not_stated_fr(
         "Service de police d'Edmonton", "https://communitysafetydataportal.edmontonpolice.ca"
@@ -848,6 +866,7 @@ COMMERCIAL_USE: dict[str, CommercialUse] = {
     ECCC_LICENCE: "allowed",
     # Open Government Licence - Edmonton 1.0: "for any lawful purpose".
     EDMONTON_TERMS: "allowed",
+    CALGARY_TERMS: "allowed",
     CANADA_CA_TERMS: "not_allowed",
     CIHI_TERMS: "not_allowed",
     CMHC_TERMS: "not_allowed",

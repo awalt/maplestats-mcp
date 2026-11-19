@@ -378,6 +378,15 @@ SOURCES: dict[str, Source] = {
         domain="statistics",
     ),
     "calc": Source("Calculations across series", "Calculs entre séries", "utility"),
+    "calgary": Source(
+        "City of Calgary: building permits and community populations",
+        "Ville de Calgary : permis de construire et population des quartiers",
+        "municipal",
+        "City of Calgary",
+        "Ville de Calgary",
+        places=("AB",),
+        row="municipal_feed",
+    ),
     "cbsa": Source(
         "Canada Border Services Agency: border wait times",
         "Agence des services frontaliers du Canada : temps d'attente à la frontière",

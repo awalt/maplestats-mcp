@@ -166,7 +166,9 @@ def test_a_rent_question_does_not_get_the_citys_police_transit_and_water_tools()
 
 def test_a_permit_question_keeps_only_the_named_citys_records():
     tools = _tools("building permits in Calgary")
-    assert "socrata_query_dataset_rows" in tools
+    # Calgary's permits have their own tool since 2026-11-19 (calgary_, issue #266).
+    assert "calgary_summarize_building_permits" in tools
+    assert "socrata_query_dataset_rows" in _tools("building permits in Winnipeg")
     assert "ckan_datastore_search" not in tools
     assert "arcgis_hub_query_feature_layer" not in tools
     # No place named: every city's records stay; a province keeps its cities'.
