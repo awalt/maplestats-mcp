@@ -158,3 +158,117 @@ class InspectionSearch(BaseModel):
     inspections: list[Inspection]
     source: DatasetSource
     provenance: Provenance
+
+
+class Councillor(BaseModel):
+    role: str = Field(description="'Mayor' or 'Councillor', as published.")
+    ward: str | None = Field(description="Ward number, '01' to '25'; None for the mayor.")
+    ward_name: str | None = Field(description="Ward name; 'Toronto' for the mayor.")
+    name: str
+    email: str | None
+    phone: str | None
+    office_address: str | None = Field(description="City Hall office, as published.")
+    website: str | None = Field(description="The member's page on toronto.ca.")
+
+
+class CouncilRoster(BaseModel):
+    term: str = Field(description="Council term the table covers, e.g. '2022-2026'.")
+    ward_filter: str | None
+    members: list[Councillor]
+    source: DatasetSource
+    provenance: Provenance
+
+
+class WardNeighbourhood(BaseModel):
+    number: str = Field(description="The City's neighbourhood number in the chosen model.")
+    neighbourhood: str = Field(description="Neighbourhood name, number removed.")
+    classification: str | None = Field(
+        description="Toronto Strong Neighbourhoods Strategy class (NIA, Emerging, or neither)."
+    )
+    overlap_km2: float = Field(description="Approximate area shared with the ward, km².")
+    share_of_ward: float = Field(description="Share of the ward's area in this neighbourhood.")
+    share_of_neighbourhood: float = Field(
+        description="Share of the neighbourhood's area inside the ward; 1.0 = wholly inside."
+    )
+
+
+class WardNeighbourhoods(BaseModel):
+    ward: str = Field(description="Ward number, '01' to '25'.")
+    ward_name: str
+    neighbourhood_model: Literal[140, 158]
+    ward_area_km2: float = Field(description="Approximate ward area, km² (scanline estimate).")
+    min_overlap: float = Field(description="Slivers below this share of the ward are left out.")
+    neighbourhoods: list[WardNeighbourhood] = Field(
+        description="Neighbourhoods overlapping the ward, largest share of the ward first."
+    )
+    sources: list[DatasetSource]
+    provenance: Provenance
+
+
+class NeighbourhoodValue(BaseModel):
+    number: str | None = Field(description="140-model neighbourhood number (2016 table).")
+    neighbourhood: str
+    value: str | None = Field(description="The value as published.")
+    value_number: float | None
+    parent_value_number: float | None = Field(
+        description="The value of the row this one sits under, with divide_by_parent."
+    )
+    share: float | None = Field(description="value / parent value, 0 to 1, with divide_by_parent.")
+
+
+class NeighbourhoodComparison(BaseModel):
+    census_year: int
+    characteristic: str = Field(description="The indicator's label, leading spaces removed.")
+    topic: str | None
+    row_id: int = Field(description="The row's _id in the DataStore table.")
+    parent_characteristic: str | None = Field(
+        description="The label of the row this one sits under (its denominator), with "
+        "divide_by_parent."
+    )
+    data_source: str | None
+    sort: str
+    total_matched: int
+    returned_count: int
+    offset: int
+    neighbourhoods: list[NeighbourhoodValue]
+    city: NeighbourhoodValue
+    source: DatasetSource
+    provenance: Provenance
+
+
+class WardScores(BaseModel):
+    ward: ScoreGroup = Field(description="The ward's buildings at their latest evaluation.")
+    city: ScoreGroup = Field(description="Every evaluated building in Toronto, for comparison.")
+    lowest: list[ApartmentEvaluation] = Field(description="The ward's lowest-scoring buildings.")
+
+
+class WardNeighbourhoodHousing(WardNeighbourhood):
+    buildings_evaluated: int = Field(
+        description="RentSafeTO buildings in the ward whose coordinates fall in this neighbourhood."
+    )
+    mean_score: float | None = Field(description="Mean latest score of those buildings.")
+    renter_households: float | None = Field(description="2016 census, 25% sample.")
+    private_households: float | None = Field(description="2016 census, households by tenure.")
+    renter_share: float | None = Field(
+        description="renter_households / private_households, 0 to 1 (2016, whole neighbourhood, "
+        "including any part outside the ward)."
+    )
+
+
+class WardHousingProfile(BaseModel):
+    ward: str = Field(description="Ward number, '01' to '25'.")
+    ward_name: str
+    councillor: Councillor | None
+    scores: WardScores
+    buildings_without_coordinates: int = Field(
+        description="The ward's evaluated buildings with no coordinates, so in no neighbourhood."
+    )
+    neighbourhoods: list[WardNeighbourhoodHousing] = Field(
+        description="140-model neighbourhoods overlapping the ward, largest share first."
+    )
+    city_renter_share: float | None = Field(description="Toronto's 2016 renter share, 0 to 1.")
+    caveats: list[str] = Field(description="What the combination of these sources cannot show.")
+    sources: list[DatasetSource] = Field(
+        description="Every table used: councillors, RentSafeTO, wards, neighbourhoods, profiles."
+    )
+    provenance: Provenance

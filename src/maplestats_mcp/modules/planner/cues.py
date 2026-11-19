@@ -118,6 +118,9 @@ SIDE_TRIPS: dict[str, tuple[str, ...]] = {
     "rdaas_search_classifications": (),
     "toronto_summarize_": (),
     "toronto_get_neighbourhood_profile": (),
+    "toronto_compare_neighbourhoods": (),
+    # The council list is for a question that names Toronto.
+    "toronto_get_councillors": ("toronto",),
     # Measured on the discovery benchmark: gating these cost no plan metric.
     # A past release of a series, for a question about vintages and revisions, not a Delta File.
     "wds_get_series_as_of": (),

@@ -31,7 +31,12 @@ Confirmed live 2026-11-08 against ckan0.cf.opendata.inter.prod-toronto.ca:
 3. Short-term rental registrations (8,620 rows) give the operator's
    registration number and street address per listing; this module only
    counts them (by ward, property type or FSA).
-4. DineSafe's DataStore table, which answered HTTP 500/502 on 2026-10-27,
+4. (2026-11-18) Elected Officials' Contact Information writes the text
+   "None" in empty cells; City Wards and Neighbourhoods hold GeoJSON text
+   boundaries, read whole and measured in `geometry.py` (scanlines, no GIS
+   library). Wards and neighbourhoods do not nest, so the ward tools give
+   area shares both ways and never a ward figure built from neighbourhoods.
+5. DineSafe's DataStore table, which answered HTTP 500/502 on 2026-10-27,
    answers again (126,282 inspection rows). `q` accepts a JSON object for a
    per-column full-text search ({"estName": "pizza"}), and the address
    carries the literal word "None" where the unit is empty.
@@ -41,7 +46,9 @@ MODULE_NAME = "toronto"
 MODULE_DESCRIPTION = (
     "City of Toronto open data (open.toronto.ca), curated tools over the portal's DataStore "
     "tables with tidy rows, the dataset citation and the Open Government Licence - Toronto: "
-    "Neighbourhood Profiles for one of the 140 neighbourhoods (census 2016, 2011, 2006, 2001; "
+    "the mayor and 25 ward councillors, which neighbourhoods overlap each ward, a ward's "
+    "councillor, RentSafeTO scores and neighbourhood renter shares in one call, one profile "
+    "indicator across all 140 neighbourhoods, Neighbourhood Profiles for one of the 140 neighbourhoods (census 2016, 2011, 2006, 2001; "
     "2,000+ indicators), RentSafeTO apartment building evaluation scores by building, ward or "
     "property type, short-term rental registrations counted by ward, property type or FSA, and "
     "DineSafe restaurant inspections. English only. Use ckan_ with portal='toronto' for the "
@@ -50,7 +57,10 @@ MODULE_DESCRIPTION = (
 MODULE_DESCRIPTION_FR = (
     "Données ouvertes de la Ville de Toronto (open.toronto.ca), outils ciblés sur les tableaux "
     "DataStore du portail, en lignes ordonnées avec la citation du jeu de données et la "
-    "Licence du gouvernement ouvert – Toronto : profils des 140 quartiers (recensements de "
+    "Licence du gouvernement ouvert – Toronto : la mairesse et les 25 conseillers, les "
+    "quartiers qui chevauchent chaque quartier électoral, le conseiller, les notes RentSafeTO "
+    "et la part de locataires des quartiers d'un quartier électoral en un appel, un indicateur "
+    "des profils pour les 140 quartiers, profils des 140 quartiers (recensements de "
     "2016, 2011, 2006 et 2001 ; plus de 2 000 indicateurs), notes d'évaluation des immeubles "
     "d'appartements RentSafeTO par immeuble, quartier électoral ou type de propriété, "
     "inscriptions de locations à court terme comptées par quartier électoral, type de "

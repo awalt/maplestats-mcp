@@ -635,5 +635,340 @@
     "longitude": "-79.39186304"
    }
   ]
+ },
+ "council": {
+  "resource_id": "16d6b1b3-b474-47f4-8c09-8bf5b3aa0e68",
+  "fields": [
+   {
+    "id": "_id",
+    "type": "int"
+   },
+   {
+    "id": "District name",
+    "type": "text"
+   },
+   {
+    "id": "District ID",
+    "type": "text"
+   },
+   {
+    "id": "Primary role",
+    "type": "text"
+   },
+   {
+    "id": "First name",
+    "type": "text"
+   },
+   {
+    "id": "Last name",
+    "type": "text"
+   },
+   {
+    "id": "Email",
+    "type": "text"
+   },
+   {
+    "id": "Photo URL",
+    "type": "text"
+   },
+   {
+    "id": "Website",
+    "type": "text"
+   },
+   {
+    "id": "Address line 1",
+    "type": "text"
+   },
+   {
+    "id": "Address line 2",
+    "type": "text"
+   },
+   {
+    "id": "Locality",
+    "type": "text"
+   },
+   {
+    "id": "Postal code",
+    "type": "text"
+   },
+   {
+    "id": "Province",
+    "type": "text"
+   },
+   {
+    "id": "Phone",
+    "type": "text"
+   },
+   {
+    "id": "Personal Website",
+    "type": "text"
+   }
+  ],
+  "records": [
+   {
+    "_id": 1,
+    "District name": "Toronto",
+    "District ID": "None",
+    "Primary role": "Mayor",
+    "First name": "Olivia",
+    "Last name": "Chow",
+    "Email": "mayor_chow@toronto.ca",
+    "Photo URL": "https://www.toronto.ca/wp-content/uploads/2023/07/964c-Olivia-Chow-Photo-350x233.jpg",
+    "Website": "https://www.toronto.ca/city-government/council/office-of-the-mayor/",
+    "Address line 1": "Toronto City Hall",
+    "Address line 2": "2nd Floor, 100 Queen Street West",
+    "Locality": "Toronto",
+    "Postal code": "M5H 2N2",
+    "Province": "Ontario",
+    "Phone": "416-397-2489",
+    "Personal Website": "None"
+   },
+   {
+    "_id": 6,
+    "District name": "York South-Weston",
+    "District ID": "5",
+    "Primary role": "Councillor",
+    "First name": "Frances",
+    "Last name": "Nunziata",
+    "Email": "councillor_nunziata@toronto.ca",
+    "Photo URL": "https://www.toronto.ca/wp-content/uploads/2022/11/8fcc-Cllr-Nunziata-web.jpg",
+    "Website": "https://www.toronto.ca/city-government/council/members-of-council/councillor-ward-5/",
+    "Address line 1": "Toronto City Hall",
+    "Address line 2": "100 Queen Street West, Suite C49",
+    "Locality": "Toronto",
+    "Postal code": "M5H 2N2",
+    "Province": "Ontario",
+    "Phone": "416-392-4091",
+    "Personal Website": "http://www.councillornunziata.com/"
+   },
+   {
+    "_id": 14,
+    "District name": "Toronto Centre",
+    "District ID": "13",
+    "Primary role": "Councillor",
+    "First name": "Chris",
+    "Last name": "Moise",
+    "Email": "Councillor_Moise@toronto.ca",
+    "Photo URL": "https://www.toronto.ca/wp-content/uploads/2022/11/981c-Cllr-Moise-web.jpg",
+    "Website": "https://www.toronto.ca/city-government/council/members-of-council/councillor-ward-13/",
+    "Address line 1": "Toronto City Hall",
+    "Address line 2": "100 Queen Street West, Suite A5",
+    "Locality": "Toronto",
+    "Postal code": "M5H 2N2",
+    "Province": "Ontario",
+    "Phone": "416-392-7903",
+    "Personal Website": "https://www.chrismoise.ca/"
+   },
+   {
+    "_id": 21,
+    "District name": "Scarborough Southwest",
+    "District ID": "20",
+    "Primary role": "Councillor",
+    "First name": "Parthi",
+    "Last name": "Kandavel",
+    "Email": "Councillor_Kandavel@toronto.ca",
+    "Photo URL": "https://www.toronto.ca/wp-content/uploads/2024/01/9555-2320261W20CouncillorParthiKandavel-350x438.jpg",
+    "Website": "https://www.toronto.ca/city-government/council/members-of-council/councillor-ward-20/",
+    "Address line 1": "Toronto City Hall",
+    "Address line 2": "100 Queen Street West, Suite A11",
+    "Locality": "Toronto",
+    "Postal code": "M5H 2N2",
+    "Province": "Ontario",
+    "Phone": "416-392-4052",
+    "Personal Website": "None"
+   }
+  ]
+ },
+ "wards": {
+  "resource_id": "7672dac5-b383-4d7c-90ec-291dc69d37bf",
+  "fields": [
+   {
+    "id": "_id",
+    "type": "int"
+   },
+   {
+    "id": "AREA_ID",
+    "type": "float8"
+   },
+   {
+    "id": "AREA_SHORT_CODE",
+    "type": "text"
+   },
+   {
+    "id": "AREA_LONG_CODE",
+    "type": "text"
+   },
+   {
+    "id": "AREA_NAME",
+    "type": "text"
+   },
+   {
+    "id": "AREA_DESC",
+    "type": "text"
+   },
+   {
+    "id": "geometry",
+    "type": "text"
+   }
+  ],
+  "records": [
+   {
+    "_id": 1,
+    "AREA_ID": null,
+    "AREA_SHORT_CODE": "05",
+    "AREA_LONG_CODE": "05",
+    "AREA_NAME": "York South-Weston",
+    "AREA_DESC": "York South-Weston (5)",
+    "geometry": "{\"type\": \"Polygon\", \"coordinates\": [[[-79.52, 43.68], [-79.46, 43.68], [-79.46, 43.72], [-79.52, 43.72], [-79.52, 43.68]]]}"
+   },
+   {
+    "_id": 2,
+    "AREA_ID": null,
+    "AREA_SHORT_CODE": "20",
+    "AREA_LONG_CODE": "20",
+    "AREA_NAME": "Scarborough Southwest",
+    "AREA_DESC": "Scarborough Southwest (20)",
+    "geometry": "{\"type\": \"Polygon\", \"coordinates\": [[[-79.3, 43.68], [-79.26, 43.68], [-79.26, 43.72], [-79.3, 43.72], [-79.3, 43.68]]]}"
+   },
+   {
+    "_id": 3,
+    "AREA_ID": null,
+    "AREA_SHORT_CODE": "13",
+    "AREA_LONG_CODE": "13",
+    "AREA_NAME": "Toronto Centre",
+    "AREA_DESC": "Toronto Centre (13)",
+    "geometry": "{\"type\": \"Polygon\", \"coordinates\": [[[-79.38, 43.65], [-79.34, 43.65], [-79.34, 43.68], [-79.38, 43.68], [-79.38, 43.65]]]}"
+   }
+  ]
+ },
+ "neighbourhoods_140": {
+  "resource_id": "7d3ae06b-0217-4cc9-92ed-97adafca2f7b",
+  "fields": [
+   {
+    "id": "_id",
+    "type": "int"
+   },
+   {
+    "id": "AREA_ID",
+    "type": "int4"
+   },
+   {
+    "id": "AREA_SHORT_CODE",
+    "type": "text"
+   },
+   {
+    "id": "AREA_LONG_CODE",
+    "type": "text"
+   },
+   {
+    "id": "AREA_NAME",
+    "type": "text"
+   },
+   {
+    "id": "AREA_DESC",
+    "type": "text"
+   },
+   {
+    "id": "CLASSIFICATION",
+    "type": "text"
+   },
+   {
+    "id": "CLASSIFICATION_CODE",
+    "type": "text"
+   },
+   {
+    "id": "geometry",
+    "type": "text"
+   }
+  ],
+  "records": [
+   {
+    "_id": 1,
+    "AREA_ID": null,
+    "AREA_SHORT_CODE": "095",
+    "AREA_LONG_CODE": "095",
+    "AREA_NAME": "Annex (95)",
+    "AREA_DESC": "Annex (95)",
+    "CLASSIFICATION": "Not an NIA or Emerging Neighbourhood",
+    "CLASSIFICATION_CODE": null,
+    "geometry": "{\"type\": \"Polygon\", \"coordinates\": [[[-79.52, 43.68], [-79.49, 43.68], [-79.49, 43.72], [-79.52, 43.72], [-79.52, 43.68]]]}"
+   },
+   {
+    "_id": 2,
+    "AREA_ID": null,
+    "AREA_SHORT_CODE": "072",
+    "AREA_LONG_CODE": "072",
+    "AREA_NAME": "Regent Park (72)",
+    "AREA_DESC": "Regent Park (72)",
+    "CLASSIFICATION": "Neighbourhood Improvement Area",
+    "CLASSIFICATION_CODE": null,
+    "geometry": "{\"type\": \"Polygon\", \"coordinates\": [[[-79.49, 43.68], [-79.44, 43.68], [-79.44, 43.72], [-79.49, 43.72], [-79.49, 43.68]]]}"
+   },
+   {
+    "_id": 3,
+    "AREA_ID": null,
+    "AREA_SHORT_CODE": "017",
+    "AREA_LONG_CODE": "017",
+    "AREA_NAME": "Mimico (includes Humber Bay Shores) (17)",
+    "AREA_DESC": "Mimico (includes Humber Bay Shores) (17)",
+    "CLASSIFICATION": "Not an NIA or Emerging Neighbourhood",
+    "CLASSIFICATION_CODE": null,
+    "geometry": "{\"type\": \"Polygon\", \"coordinates\": [[[-79.3, 43.68], [-79.26, 43.68], [-79.26, 43.72], [-79.3, 43.72], [-79.3, 43.68]]]}"
+   }
+  ]
+ },
+ "neighbourhoods_158": {
+  "resource_id": "5e6095fc-1bef-4776-887c-28d37f722c51",
+  "fields": [
+   {
+    "id": "_id",
+    "type": "int"
+   },
+   {
+    "id": "AREA_ID",
+    "type": "int4"
+   },
+   {
+    "id": "AREA_SHORT_CODE",
+    "type": "text"
+   },
+   {
+    "id": "AREA_LONG_CODE",
+    "type": "text"
+   },
+   {
+    "id": "AREA_NAME",
+    "type": "text"
+   },
+   {
+    "id": "AREA_DESC",
+    "type": "text"
+   },
+   {
+    "id": "CLASSIFICATION",
+    "type": "text"
+   },
+   {
+    "id": "CLASSIFICATION_CODE",
+    "type": "text"
+   },
+   {
+    "id": "geometry",
+    "type": "text"
+   }
+  ],
+  "records": [
+   {
+    "_id": 1,
+    "AREA_ID": null,
+    "AREA_SHORT_CODE": "174",
+    "AREA_LONG_CODE": "174",
+    "AREA_NAME": "South Eglinton-Davisville",
+    "AREA_DESC": "South Eglinton-Davisville (174)",
+    "CLASSIFICATION": "Not an NIA or Emerging Neighbourhood",
+    "CLASSIFICATION_CODE": "NA",
+    "geometry": "{\"type\": \"Polygon\", \"coordinates\": [[[-79.52, 43.69], [-79.46, 43.69], [-79.46, 43.71], [-79.52, 43.71], [-79.52, 43.69]]]}"
+   }
+  ]
  }
 }

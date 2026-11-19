@@ -866,8 +866,9 @@ Sources, by tool-name prefix:
   opendatasoft_vancouver_, eps_ (Edmonton police occurrences), ets_
   (Edmonton real-time transit), bc_transit_ (BC Transit real-time:
   Victoria, Kelowna and ten more systems), epcor_ (Edmonton water quality),
-  toronto_ (City of Toronto: neighbourhood profiles, RentSafeTO building
-  scores, short-term rentals, DineSafe),
+  toronto_ (City of Toronto: councillors, wards and their neighbourhoods,
+  neighbourhood profiles, RentSafeTO building scores, short-term rentals,
+  DineSafe),
   electricity_ontario_ (IESO), electricity_quebec_ (Hydro-Quebec, including
   water flows at its dams), electricity_alberta_ (AESO pool price, load,
   generation by fuel; non-commercial use only), oeb_ (Ontario Energy Board: utility RRR
