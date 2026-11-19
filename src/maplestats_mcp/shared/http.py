@@ -51,7 +51,7 @@ from tenacity import (
 )
 
 from maplestats_mcp import __version__
-from maplestats_mcp.shared import challenge_notes, upstream_wait
+from maplestats_mcp.shared import challenge_notes, path_health, upstream_wait
 from maplestats_mcp.shared.blocked_hosts import challenge_fix
 from maplestats_mcp.shared.breaker import BREAKER, is_failure_status, one_call
 from maplestats_mcp.shared.errors import CloudflareChallenge, TooLarge
@@ -185,6 +185,7 @@ class BreakerClient(httpx.AsyncClient):
             _track(-1)
         if response.headers.get("cf-mitigated", "").lower() == "challenge":
             BREAKER.record_failure(host, "cloudflare", probe=probe)
+            path_health.record_challenge(host, request.url.path)
         elif is_failure_status(response.status_code):
             BREAKER.record_failure(host, "server_error", probe=probe)
         elif response.status_code == 403:
@@ -193,6 +194,7 @@ class BreakerClient(httpx.AsyncClient):
             BREAKER.release(host, probe=probe)
         else:
             BREAKER.record_success(host)
+            path_health.record_answer(host, request.url.path)
         return response
 
 
@@ -365,6 +367,7 @@ def raise_if_cloudflare_challenge(response: httpx.Response) -> None:
         # BreakerClient counted the challenges that carry Cf-Mitigated already.
         if response.headers.get("cf-mitigated", "").lower() != "challenge":
             BREAKER.record_failure(host, "cloudflare")
+        path_health.record_challenge(host, response.request.url.path)
         # The publisher's own context and the closest route still open, when known.
         note = challenge_notes.note_for(host, response.request.url.path)
         note_en = f" {note[0]}" if note else ""

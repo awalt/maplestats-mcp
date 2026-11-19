@@ -65,7 +65,7 @@ from maplestats_mcp.catalogue import (
     read_catalogue,
     tool_enabled,
 )
-from maplestats_mcp.shared import search, semantic
+from maplestats_mcp.shared import path_health, search, semantic
 from maplestats_mcp.shared.argument_aliases import apply_aliases
 from maplestats_mcp.shared.breaker import render_status
 from maplestats_mcp.shared.dereference import CachedDereferenceMiddleware
@@ -455,9 +455,17 @@ class AnnotatedBM25SearchTransform(BM25SearchTransform):
         scores = search.apply_boosts(scores, boosts)
         # The catalog is deduplicated by name; resolve the current version's schema.
         by_name = {t.name: t for t in tools}
-        return [
+        top = [
             by_name[self._indexed[i].name] for i in search.top_indices(scores, self._max_results)
         ]
+        # StatCan's bot check met a path lately (shared/path_health.py): the same tools, the
+        # ones that cannot answer behind the ones that can (search_tools marks them and names
+        # the working route), so the set and the number of results are what they were.
+        challenged = path_health.challenged_now()
+        if not challenged:
+            return top
+        stuck = [t for t in top if path_health.dependency_blocking(t.name, challenged)]
+        return [*(t for t in top if t not in stuck), *stuck]
 
     def _make_search_tool(self) -> Tool:
         transform = self
@@ -491,7 +499,8 @@ class AnnotatedBM25SearchTransform(BM25SearchTransform):
                 )
             serializer = transform._full_serializer if detail == "full" else transform._serializer
             rendered = serializer(results)
-            return await rendered if inspect.isawaitable(rendered) else rendered
+            rendered = await rendered if inspect.isawaitable(rendered) else rendered
+            return path_health.mark_results(rendered, path_health.challenged_now())
 
         tool = Tool.from_function(
             fn=search_tools,
