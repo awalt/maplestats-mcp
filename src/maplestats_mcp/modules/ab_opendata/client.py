@@ -11,16 +11,23 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Literal
+from datetime import UTC, datetime
+from typing import Any, Literal, NoReturn
 from urllib.parse import unquote, urlparse
 
 from maplestats_mcp.modules.ab_opendata import constants
 from maplestats_mcp.modules.ab_opendata.schemas import (
+    ActivityIndex,
+    ActivityIndexPoint,
     DatasetDetail,
     DatasetEntry,
     DatasetList,
     OrganizationCount,
     OrganizationList,
+    PopulationProjection,
+    ProjectionRow,
+    ProjectionSummary,
+    ProjectionSummaryRow,
     ResourceEntry,
     ResourceRows,
     ResourceStructure,
@@ -36,6 +43,7 @@ from maplestats_mcp.shared.executor import run_parse
 from maplestats_mcp.shared.i18n import french_spacing, pick
 from maplestats_mcp.shared.json_utils import list_or_empty
 from maplestats_mcp.shared.licences import OGL_ALBERTA
+from maplestats_mcp.shared.models import Provenance
 from maplestats_mcp.shared.rate_limiter import get_limiter
 
 Lang = Literal["en", "fr"]
@@ -777,5 +785,566 @@ async def read_resource(
             limits=pick(lang, "; ", " ; ").join(notes) or None,
             licence=_dataset_licence(entry, lang),
             lang=lang,
+        ),
+    )
+
+
+# --- Treasury Board and Finance products with named tools -------------------
+# The Alberta Activity Index and the population projections are ordinary Open
+# Alberta files; these functions find the current file by dataset slug and
+# resource title (constants.py has the layouts seen live on 2026-11-19) and turn
+# its rows into typed values, reading through read_resource above.
+
+_MONTH = re.compile(r"^(\d{4})-(\d{2})$")
+_DATE_CELL = re.compile(r"^(\d{4})-(\d{2})")
+_YEAR_CELL = re.compile(r"^\d{4}$")
+_GENDERS: dict[str, Literal["women+", "men+", "all"]] = {
+    "women+": "women+",
+    "men+": "men+",
+    "all": "all",
+}
+GenderName = Literal["all", "women+", "men+", "any"]
+ScenarioName = Literal["low", "medium", "high"]
+ProjectionGeography = Literal[
+    "alberta",
+    "census_division",
+    "census_metropolitan_area",
+    "economic_region",
+    "local_geographic_area",
+    "aggregated_local_geographic_area",
+    "css_region",
+    "land_use_framework_region",
+    "health_subzone",
+    "health_status_area",
+    "health_corridor",
+    "health_peer_group",
+    "school_authority_public",
+    "school_authority_separate",
+    "school_authority_francophone",
+]
+
+
+def _number(text: str | None) -> float | None:
+    cleaned = (text or "").replace(",", "").strip()
+    try:
+        return float(cleaned)
+    except ValueError:
+        # "." marks a value not available (the first year's fertility rate).
+        return None
+
+
+def _integer(text: str | None) -> int | None:
+    value = _number(text)
+    return round(value) if value is not None else None
+
+
+async def _all_rows(
+    url: str, sheet: str | None, header_row: int | None, lang: Lang
+) -> ResourceRows:
+    """Every row of one sheet: the file is cached, so further pages cost no download."""
+    page = await read_resource(
+        url, sheet=sheet, header_row=header_row, limit=constants.ROWS_LIMIT_MAX, lang=lang
+    )
+    rows = list(page.rows)
+    while page.truncated and len(rows) < page.total_rows:
+        page = await read_resource(
+            url,
+            sheet=sheet,
+            header_row=header_row,
+            limit=constants.ROWS_LIMIT_MAX,
+            offset=len(rows),
+            lang=lang,
+        )
+        if not page.rows:
+            break
+        rows.extend(page.rows)
+    return page.model_copy(update={"rows": rows})
+
+
+def _layout_changed(what: str, url: str, lang: str) -> NoReturn:
+    raise_localized(
+        UpstreamError,
+        f"ab_opendata: {what} in {url} no longer has the layout this tool reads; read it "
+        "with ab_opendata_describe_resource and ab_opendata_read_resource.",
+        f"ab_opendata : {what} dans {url} n'a plus la mise en page que cet outil lit ; "
+        "lisez-le avec ab_opendata_describe_resource et ab_opendata_read_resource.",
+        lang,
+    )
+
+
+def _month(value: str | None, name: str, lang: str) -> str | None:
+    if value is None:
+        return None
+    match = _MONTH.match(value.strip())
+    if match is None or not 1 <= int(match[2]) <= 12:
+        raise_localized(
+            InvalidInput,
+            f"ab_opendata: {name} must be a month as YYYY-MM, e.g. 2024-01.",
+            f"ab_opendata : {name} doit être un mois au format AAAA-MM, p. ex. 2024-01.",
+            lang,
+        )
+    return value.strip()
+
+
+async def get_activity_index(
+    start: str | None = None,
+    end: str | None = None,
+    last_n: int | None = None,
+    lang: Lang = "en",
+) -> ActivityIndex:
+    first, last = _month(start, "start", lang), _month(end, "end", lang)
+    if last_n is not None and not 1 <= last_n <= constants.ROWS_LIMIT_MAX:
+        raise_localized(
+            InvalidInput,
+            f"ab_opendata: last_n must be 1 to {constants.ROWS_LIMIT_MAX}.",
+            f"ab_opendata : last_n doit être compris entre 1 et {constants.ROWS_LIMIT_MAX}.",
+            lang,
+        )
+    entry = (await get_dataset(constants.ACTIVITY_INDEX_DATASET, lang)).dataset
+    resource = next((r for r in entry.resources if r.readable), None)
+    if resource is None:
+        _layout_changed("the Alberta Activity Index dataset", entry.dataset_url, lang)
+    # Row 1 is the header: a blank date column, then the series title. The
+    # header guess would take the first month as the header (live 2026-11-19).
+    table = await _all_rows(resource.url, None, 1, lang)
+    if len(table.all_columns) < 2:
+        _layout_changed("the Alberta Activity Index", resource.url, lang)
+    date_column, value_column = table.all_columns[0], table.all_columns[1]
+    series: list[ActivityIndexPoint] = []
+    for row in table.rows:
+        match = _DATE_CELL.match(row.get(date_column, "").strip())
+        value = _number(row.get(value_column))
+        if match and value is not None:
+            series.append(ActivityIndexPoint(period=f"{match[1]}-{match[2]}", value=value))
+    if not series:
+        _layout_changed("the Alberta Activity Index", resource.url, lang)
+    chosen = [
+        p
+        for p in series
+        if (first is None or p.period >= first) and (last is None or p.period <= last)
+    ]
+    notes: list[str] = []
+    if last_n is None and first is None and last is None:
+        last_n = constants.ACTIVITY_INDEX_DEFAULT_MONTHS
+        notes.append(
+            pick(
+                lang,
+                f"the latest {last_n} months; pass start, end or last_n for others "
+                f"(the series starts {series[0].period})",
+                f"les {last_n} derniers mois ; passez start, end ou last_n pour d'autres "
+                f"(la série commence en {series[0].period})",
+            )
+        )
+    if last_n is not None:
+        chosen = chosen[-last_n:]
+    return ActivityIndex(
+        series=value_column,
+        observations=chosen,
+        first_period=series[0].period,
+        last_period=series[-1].period,
+        total_observations=len(series),
+        dataset=entry.name,
+        dataset_title=entry.title,
+        dataset_url=entry.dataset_url,
+        resource_name=resource.name,
+        url=resource.url,
+        licence=entry.licence,
+        ogl_alberta=entry.ogl_alberta,
+        attribution=_attribution(entry),
+        provenance=make_provenance(
+            source=constants.PROVENANCE_SOURCE,
+            url=resource.url,
+            cached=table.provenance.cached,
+            schema_name="ab_opendata.ActivityIndex",
+            freshness=_freshness(entry, resource, lang),
+            coverage=pick(
+                lang,
+                "Alberta Activity Index (Treasury Board and Finance), monthly, January 1981 "
+                f"= 100, {series[0].period} to {series[-1].period}: a weighted average of "
+                "nine monthly Alberta indicators (employment, average weekly earnings, "
+                "retail and wholesale trade, manufacturing, new truck sales, housing "
+                "starts, rigs drilling and oil production, as the dataset describes them). "
+                "Recent months are revised as the indicators are.",
+                "Indice d'activité de l'Alberta (Conseil du Trésor et Finances), mensuel, "
+                f"janvier 1981 = 100, de {series[0].period} à {series[-1].period} : moyenne "
+                "pondérée de neuf indicateurs mensuels de l'Alberta (emploi, rémunération "
+                "hebdomadaire moyenne, commerce de détail et de gros, fabrication, ventes de "
+                "camions neufs, mises en chantier, appareils de forage actifs et production "
+                "de pétrole, selon la description du jeu). Les derniers mois sont révisés "
+                "avec les indicateurs.",
+            ),
+            limits=pick(lang, "; ", " ; ").join(notes) or None,
+            licence=_dataset_licence(entry, lang),
+            lang=lang,
+        ),
+    )
+
+
+def _editions(edition: int | None, lang: str) -> list[int]:
+    this_year = datetime.now(UTC).year
+    if edition is not None:
+        if not constants.PROJECTIONS_FIRST_EDITION <= edition <= this_year + 1:
+            raise_localized(
+                InvalidInput,
+                f"ab_opendata: edition must be {constants.PROJECTIONS_FIRST_EDITION} to "
+                f"{this_year + 1} (the first projection year); older editions are found with "
+                "ab_opendata_search_datasets.",
+                f"ab_opendata : edition doit être comprise entre "
+                f"{constants.PROJECTIONS_FIRST_EDITION} et {this_year + 1} (première année "
+                "projetée) ; les éditions plus anciennes se trouvent avec "
+                "ab_opendata_search_datasets.",
+                lang,
+            )
+        return [edition]
+    # A new edition comes out each summer under the same slug pattern; try this
+    # year's and last year's before the latest one confirmed live.
+    years = {this_year, this_year - 1, constants.PROJECTIONS_LATEST_KNOWN}
+    return sorted((y for y in years if y >= constants.PROJECTIONS_LATEST_KNOWN), reverse=True)
+
+
+async def _projection_dataset(edition: int | None, lang: Lang) -> tuple[int, DatasetEntry]:
+    tried: list[str] = []
+    for year in _editions(edition, lang):
+        name = constants.PROJECTIONS_DATASET.format(edition=year)
+        tried.append(name)
+        try:
+            return year, (await get_dataset(name, lang)).dataset
+        except NotFound:
+            continue
+    raise_localized(
+        NotFound,
+        f"ab_opendata: no population projections dataset {', '.join(tried)} on "
+        f"{constants.DOMAIN}; search with ab_opendata_search_datasets.",
+        f"ab_opendata : aucun jeu de projections de population {', '.join(tried)} sur "
+        f"{constants.DOMAIN} ; cherchez avec ab_opendata_search_datasets.",
+        lang,
+    )
+
+
+def _projection_file(entry: DatasetEntry, words: str, lang: str) -> ResourceEntry:
+    # Matched on the resource title: "local geographic areas (lgas)" is not part
+    # of "aggregated local geographic areas (algas)", so LGA and ALGA stay apart.
+    for resource in entry.resources:
+        if resource.readable and words in resource.name.lower():
+            return resource
+    raise_localized(
+        NotFound,
+        f"ab_opendata: dataset {entry.name!r} has no file titled with {words!r}.",
+        f"ab_opendata : le jeu {entry.name!r} n'a aucun fichier dont le titre contient {words!r}.",
+        lang,
+    )
+
+
+def _year_range(start_year: int | None, end_year: int | None, lang: str) -> None:
+    if start_year is not None and end_year is not None and start_year > end_year:
+        raise_localized(
+            InvalidInput,
+            "ab_opendata: start_year must not be after end_year.",
+            "ab_opendata : start_year ne doit pas être postérieure à end_year.",
+            lang,
+        )
+
+
+def _in_years(year: int, start_year: int | None, end_year: int | None) -> bool:
+    return (start_year is None or year >= start_year) and (end_year is None or year <= end_year)
+
+
+def _pick_area(areas: list[str], area: str, lang: str) -> str:
+    wanted = area.strip().lower()
+    exact = [a for a in areas if a.lower() == wanted]
+    partial = [a for a in areas if wanted in a.lower()]
+    if exact or len(partial) == 1:
+        return (exact or partial)[0]
+    shown = ", ".join(areas[:40]) + (" ..." if len(areas) > 40 else "")
+    raise_localized(
+        InvalidInput,
+        f"ab_opendata: area {area!r} matches {len(partial)} areas; give one of: {shown}.",
+        f"ab_opendata : la zone {area!r} correspond à {len(partial)} zones ; donnez l'une "
+        f"de : {shown}.",
+        lang,
+    )
+
+
+def _projection_provenance(
+    entry: DatasetEntry,
+    resource: ResourceEntry,
+    cached: bool,
+    schema: str,
+    coverage: str,
+    limits: str | None,
+    lang: Lang,
+) -> Provenance:
+    return make_provenance(
+        source=constants.PROVENANCE_SOURCE,
+        url=resource.url,
+        cached=cached,
+        schema_name=schema,
+        freshness=_freshness(entry, resource, lang),
+        coverage=coverage,
+        limits=limits,
+        licence=_dataset_licence(entry, lang),
+        lang=lang,
+    )
+
+
+async def get_population_projection(
+    geography: ProjectionGeography = "alberta",
+    area: str | None = None,
+    scenario: ScenarioName = "medium",
+    gender: GenderName = "all",
+    start_year: int | None = None,
+    end_year: int | None = None,
+    ages: bool = False,
+    edition: int | None = None,
+    lang: Lang = "en",
+) -> PopulationProjection:
+    _year_range(start_year, end_year, lang)
+    words = constants.PROJECTION_GEOGRAPHIES.get(geography)
+    if words is None:
+        names = ", ".join(constants.PROJECTION_GEOGRAPHIES)
+        raise_localized(
+            InvalidInput,
+            f"ab_opendata: geography must be one of {names}.",
+            f"ab_opendata : geography doit être l'une de {names}.",
+            lang,
+        )
+    provincial = geography == "alberta"
+    if provincial and area is not None:
+        raise_localized(
+            InvalidInput,
+            "ab_opendata: area is for a sub-provincial geography; leave it unset for Alberta.",
+            "ab_opendata : area vaut pour une géographie infraprovinciale ; laissez-la vide "
+            "pour l'Alberta.",
+            lang,
+        )
+    if not provincial and scenario != "medium":
+        raise_localized(
+            InvalidInput,
+            "ab_opendata: sub-provincial projections are published for the medium scenario "
+            "only; low and high exist for Alberta as a whole.",
+            "ab_opendata : les projections infraprovinciales ne sont publiées que pour le "
+            "scénario moyen ; les scénarios faible et fort existent pour l'Alberta seulement.",
+            lang,
+        )
+    year, entry = await _projection_dataset(edition, lang)
+    resource = _projection_file(entry, words, lang)
+    # A read with no sheet lists the sheets (a workbook of comparable sheets reads
+    # none); the file is then cached for the read of the chosen sheet.
+    listing = await read_resource(resource.url, limit=1, lang=lang)
+    areas = listing.sheets
+    sheet: str | None
+    if provincial:
+        prefix = constants.PROJECTION_SCENARIO_SHEETS[scenario]
+        sheet = next((s for s in areas if s.lower().startswith(prefix)), None)
+        if sheet is None:
+            _layout_changed(f"the {scenario} scenario sheet", resource.url, lang)
+    elif area is None:
+        sheet = None
+    else:
+        sheet = _pick_area(areas, area, lang)
+    title = pick(
+        lang,
+        f"Alberta population projections {year}-2051 (Treasury Board and Finance, Office "
+        f"of Statistics and Information), {scenario} scenario, {resource.name}",
+        f"Projections démographiques de l'Alberta {year}-2051 (Conseil du Trésor et "
+        f"Finances, Bureau de la statistique et de l'information), scénario {scenario}, "
+        f"{resource.name}",
+    )
+    common = {
+        "edition": year,
+        "geography": geography,
+        "scenario": scenario,
+        "areas": areas,
+        "dataset": entry.name,
+        "dataset_title": entry.title,
+        "dataset_url": entry.dataset_url,
+        "resource_name": resource.name,
+        "url": resource.url,
+        "licence": entry.licence,
+        "ogl_alberta": entry.ogl_alberta,
+        "attribution": _attribution(entry),
+    }
+    if sheet is None:
+        return PopulationProjection(
+            **common,
+            area=None,
+            rows=[],
+            provenance=_projection_provenance(
+                entry,
+                resource,
+                listing.provenance.cached,
+                "ab_opendata.PopulationProjection",
+                title,
+                pick(
+                    lang,
+                    f"no area was given, so no rows were read: pass one of the {len(areas)} "
+                    "`areas` as `area`",
+                    f"aucune zone n'a été donnée : aucune ligne n'a été lue. Passez l'une des "
+                    f"{len(areas)} zones de `areas` dans `area`",
+                ),
+                lang,
+            ),
+        )
+    table = await _all_rows(resource.url, sheet, None, lang)
+    columns = table.all_columns
+    if columns[:3] != ["Year", "Gender", "Total"]:
+        _layout_changed(f"sheet {sheet!r}", resource.url, lang)
+    age_columns = columns[3:]
+    rows: list[ProjectionRow] = []
+    for raw in table.rows:
+        cell = raw.get("Year", "").strip()
+        if not _YEAR_CELL.match(cell):
+            continue
+        row_year = int(cell)
+        # Published as "Women +", "Men +" and "All" (live 2026-11-19).
+        published = _GENDERS.get(raw.get("Gender", "").replace(" ", "").lower())
+        if published is None or not _in_years(row_year, start_year, end_year):
+            continue
+        if gender != "any" and published != gender:
+            continue
+        rows.append(
+            ProjectionRow(
+                year=row_year,
+                gender=published,
+                projected=row_year >= year,
+                total=_integer(raw.get("Total")),
+                ages={a: _integer(raw.get(a)) for a in age_columns} if ages else None,
+            )
+        )
+    if not rows and start_year is None and end_year is None:
+        _layout_changed(f"sheet {sheet!r}", resource.url, lang)
+    return PopulationProjection(
+        **common,
+        area=None if provincial else sheet,
+        rows=rows,
+        provenance=_projection_provenance(
+            entry,
+            resource,
+            table.provenance.cached,
+            "ab_opendata.PopulationProjection",
+            pick(
+                lang,
+                f"{title}, sheet {sheet!r}. Population on July 1; years before {year} are "
+                "Statistics Canada estimates (projected false).",
+                f"{title}, feuille {sheet!r}. Population au 1er juillet ; les années avant "
+                f"{year} sont des estimations de Statistique Canada (projected faux).",
+            ),
+            None,
+            lang,
+        ),
+    )
+
+
+# Summary columns, by the start of their published (lower-cased) header; the
+# headers carry footnote digits ("Population July 11 2 3", "Average Age5"), and
+# the child and elderly dependency ratios share one header over two columns
+# (live 2026-11-19).
+_SUMMARY_FIELDS = (
+    ("population", "population"),
+    ("percent change", "percent_change"),
+    ("ratio of men", "men_per_100_women"),
+    ("average age", "average_age"),
+    ("dependency", "child_dependency_ratio"),
+    ("period", "period"),
+    ("total fertility", "total_fertility_rate"),
+    ("median age at death", "median_age_at_death"),
+    ("births", "births"),
+    ("deaths", "deaths"),
+    ("immigrants", "immigrants"),
+    ("net emigrants", "net_emigrants"),
+    ("net npr", "net_non_permanent_residents"),
+    ("net interprovincial", "net_interprovincial"),
+    ("total net migration", "total_net_migration"),
+)
+_SUMMARY_INTEGERS = {
+    "population",
+    "births",
+    "deaths",
+    "immigrants",
+    "net_emigrants",
+    "net_non_permanent_residents",
+    "net_interprovincial",
+    "total_net_migration",
+}
+
+
+def _summary_columns(columns: list[str]) -> dict[str, str]:
+    found: dict[str, str] = {}
+    for index, column in enumerate(columns):
+        label = column.lower()
+        for prefix, field in _SUMMARY_FIELDS:
+            if field not in found and label.startswith(prefix):
+                found[field] = column
+                if field == "child_dependency_ratio" and index + 1 < len(columns):
+                    found["elderly_dependency_ratio"] = columns[index + 1]
+                break
+    return found
+
+
+async def get_population_projection_summary(
+    start_year: int | None = None,
+    end_year: int | None = None,
+    edition: int | None = None,
+    lang: Lang = "en",
+) -> ProjectionSummary:
+    _year_range(start_year, end_year, lang)
+    year, entry = await _projection_dataset(edition, lang)
+    resource = _projection_file(entry, constants.PROJECTION_SUMMARY, lang)
+    table = await _all_rows(resource.url, None, None, lang)
+    fields = _summary_columns(table.all_columns)
+    if not table.all_columns or table.all_columns[0] != "Year" or "population" not in fields:
+        _layout_changed("the summary sheet", resource.url, lang)
+    rows: list[ProjectionSummaryRow] = []
+    for raw in table.rows:
+        cell = raw.get("Year", "").strip()
+        if not _YEAR_CELL.match(cell) or not _in_years(int(cell), start_year, end_year):
+            continue
+        values: dict[str, Any] = {}
+        for field, column in fields.items():
+            text = raw.get(column)
+            if field == "period":
+                values[field] = (text or "").strip() or None
+            elif field in _SUMMARY_INTEGERS:
+                values[field] = _integer(text)
+            else:
+                values[field] = _number(text)
+        rows.append(ProjectionSummaryRow(year=int(cell), projected=int(cell) >= year, **values))
+    missing = [f for _, f in _SUMMARY_FIELDS if f not in fields]
+    return ProjectionSummary(
+        edition=year,
+        rows=rows,
+        dataset=entry.name,
+        dataset_title=entry.title,
+        dataset_url=entry.dataset_url,
+        resource_name=resource.name,
+        url=resource.url,
+        licence=entry.licence,
+        ogl_alberta=entry.ogl_alberta,
+        attribution=_attribution(entry),
+        provenance=_projection_provenance(
+            entry,
+            resource,
+            table.provenance.cached,
+            "ab_opendata.ProjectionSummary",
+            pick(
+                lang,
+                f"Alberta population projections {year}-2051, summary, medium scenario "
+                "(Treasury Board and Finance). Population on July 1; components of growth "
+                f"for the July-to-June period ending that year; years before {year} are "
+                "Statistics Canada estimates.",
+                f"Projections démographiques de l'Alberta {year}-2051, sommaire, scénario "
+                "moyen (Conseil du Trésor et Finances). Population au 1er juillet ; "
+                "composantes de l'accroissement pour la période de juillet à juin se "
+                f"terminant cette année-là ; les années avant {year} sont des estimations "
+                "de Statistique Canada.",
+            ),
+            pick(
+                lang,
+                f"columns not found in this edition: {', '.join(missing)}",
+                f"colonnes absentes de cette édition : {', '.join(missing)}",
+            )
+            if missing
+            else None,
+            lang,
         ),
     )

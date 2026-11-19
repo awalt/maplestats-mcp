@@ -785,7 +785,7 @@ Sources, by tool-name prefix:
   (NL Statistics Agency workbooks), yukon_stats_ (Yukon Bureau of
   Statistics tables), nwt_stats_ (NWT Bureau of Statistics workbooks),
   ab_economic_ (Alberta Economic Dashboard), ab_opendata_ (Open Alberta
-  Excel and CSV files).
+  Excel and CSV files; Alberta Activity Index, population projections).
 - Borealis (Canadian Dataverse): borealis_ (Beyond 20/20 tables from
   university libraries; ODESI DDI metadata, public files only).
 - Bank of Canada Valet: boc_ (also business and consumer survey results,
