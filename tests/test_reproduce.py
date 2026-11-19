@@ -53,18 +53,16 @@ def _by_language(result) -> dict[str, str]:
 # Builders ------------------------------------------------------------------------
 
 
-async def test_table_all_languages_with_house_layout():
-    result = await client.reproduce("wds_get_cube_metadata", {"product_id": 1810000401})
+async def test_vectors_all_languages_with_house_layout():
+    result = await client.reproduce(
+        "wds_get_data_from_vectors", {"vector_ids": [41690973], "latest_n": 3}
+    )
     code = _by_language(result)
     assert set(code) == {"r", "python", "stata", "julia", "excel"}
-    assert result.source_url == "https://www150.statcan.gc.ca/n1/tbl/csv/18100004-eng.zip"
-    assert 'get_cansim("18-10-0004-01")' in code["r"] and "val_norm" in code["r"]
-    # Suppressed rows (missing val_norm) are kept, as in the other languages.
-    assert "filter(!is.na(val_norm))" not in code["r"]
+    assert result.source_url.endswith("/t1/wds/rest/getDataFromVectorsAndLatestNPeriods")
+    # cansim's vector functions read WDS, which StatCan still serves.
+    assert "get_cansim_vector_for_latest_periods(" in code["r"]
     assert "http2=True" in code["python"]  # StatCan rejects HTTP/1.1-only clients
-    assert 'pl.col("SCALAR_ID")' in code["python"]
-    assert "real(value) * 10^real(scalar_id)" in code["stata"] and " cd " not in code["stata"]
-    assert "@clean_names" in code["julia"]
     # House layout: header block, then numbered sections in order.
     for language, text in code.items():
         assert text.lstrip().startswith(("# ====", "* ====", "// ====")), language
@@ -75,7 +73,9 @@ async def test_table_all_languages_with_house_layout():
 
 
 async def test_every_package_loads_in_setup():
-    result = await client.reproduce("wds_get_cube_metadata", {"product_id": 18100004})
+    result = await client.reproduce(
+        "wds_get_data_from_vectors", {"vector_ids": [41690973], "latest_n": 3}
+    )
     code = _by_language(result)
     read_at = code["r"].index("# 1. Read inputs")
     assert all(m.start() < read_at for m in re.finditer(r"library\(", code["r"]))
@@ -93,17 +93,6 @@ async def test_one_language_on_request():
     )
     assert [s.language for s in result.scripts] == ["python"]
     assert 'data.unpivot(index="d"' in result.scripts[0].code
-
-
-async def test_french_table_uses_semicolons_and_french_columns():
-    result = await client.reproduce("wds_get_cube_metadata", {"product_id": 18100004, "lang": "fr"})
-    code = _by_language(result)
-    assert result.source_url.endswith("18100004-fra.zip")
-    assert "separator=';'" in code["python"] and 'pl.col("VALEUR")' in code["python"]
-    # Stata's copy offers only HTTP/1.1, which StatCan drops, so it goes via Python.
-    assert "separator=';'" in code["stata"] and "python:" in code["stata"]
-    assert 'delim = ";"' in code["julia"]
-    assert 'language = "fr"' in code["r"]
 
 
 async def test_valet_and_socrata_keep_their_filters():
@@ -1340,12 +1329,12 @@ async def test_hostile_tool_name_gets_no_script(language):
 async def test_a_name_that_only_starts_like_a_statcan_tool_gets_no_script():
     # Well-formed, but no such tool: the argument-only routes never run the tool,
     # so the server's own registry is what refuses it.
-    with pytest.raises(InvalidInput, match="not a tool on this server"):
+    # (A product_id no longer routes a wds_ or sdmx_ name to the full-table
+    # builder: those tools now run, and an unknown one fails as unknown.)
+    with pytest.raises(InvalidInput, match="Unknown tool: 'wds_not_a_tool'"):
         await client.reproduce("wds_not_a_tool", {"product_id": 18100004}, "python")
     with pytest.raises(InvalidInput, match="not a tool on this server"):
         await client.reproduce("statcan_pumf_not_a_tool", {"url": PUMF_URL}, "python")
-    with pytest.raises(InvalidInput, match="n'est pas un outil de ce serveur"):
-        await client.reproduce("sdmx_not_a_tool", {"product_id": 18100004}, "r", "fr")
 
 
 @pytest.mark.parametrize("name", [HOSTILE_TOOL, 'wds_"', "wds_x ", "wds-x", "WDS_x", "1wds", ""])
@@ -1558,3 +1547,70 @@ async def test_ircc_program_is_one_phrase_across_name_and_program():
     code = _render(spec)
     assert "contains('canadian experience class', literal=True)" in code["python"]
     assert "contains('canadian', literal=True)" not in code["python"]
+
+
+@pytest.mark.parametrize("kind", ["zip", "zip_csv", "csv"])
+def test_statcan_file_scripts_stop_plainly_at_the_captcha(kind):
+    # Since November 2026 StatCan answers some automated downloads with a captcha.
+    # A script for a StatCan file that still downloads (a PUMF zip) stops with a
+    # plain message if that changes; it never relies on a copy saved by hand.
+    from maplestats_mcp.modules.reproduce.spec import Spec
+
+    url = "https://www150.statcan.gc.ca/n1/pub/71m0001x/2021001/2026-10-CSV.zip"
+    spec = Spec(kind=kind, url=url, file_name="2026-10-CSV.zip", method="exact: test")
+    r, _ = RENDERERS["r"](spec, "statcan_pumf_list_zip")
+    python, _ = RENDERERS["python"](spec, "statcan_pumf_list_zip")
+    stata, _ = RENDERERS["stata"](spec, "statcan_pumf_list_zip")
+    ast.parse(python)
+    for code in (r, python, stata):
+        assert "a script cannot pass the check" in code
+        assert "exists" not in code.split("Read inputs")[-1].split("Check inputs")[0]
+    assert 'response.headers.get("cf-mitigated", "").lower() == "challenge"' in python
+
+    other = Spec(kind=kind, url="https://example.invalid/a.zip", file_name="a.zip", method="x")
+    assert "captcha" not in RENDERERS["python"](other, "x")[0]
+    assert "captcha" not in RENDERERS["r"](other, "x")[0]
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments", "url"),
+    [
+        (
+            "sdmx_get_data",
+            {"product_id": 18100004, "key": "2.2", "last_n_observations": 1},
+            "https://www150.statcan.gc.ca/t1/wds/sdmx/",
+        ),
+        (
+            "wds_get_full_table_download",
+            {"product_id": 18100004},
+            "https://www150.statcan.gc.ca/n1/tbl/csv/",
+        ),
+    ],
+)
+async def test_no_script_where_statcan_blocks_scripts(monkeypatch, tool, arguments, url):
+    # StatCan blocks its SDMX service and announced it blocks full-table files for
+    # automated clients (November 2026): a script there would fail, so none is written.
+    async def run_tool(name, args, lang):
+        return {"provenance": {"url": url}}, []
+
+    async def registered(name, lang):
+        return None
+
+    monkeypatch.setattr(client, "_run_tool", run_tool)
+    monkeypatch.setattr(client, "_require_registered", registered)
+    result = await client.reproduce(tool, arguments, language="python")
+    assert result.scripts == []
+    assert any("No script: Statistics Canada blocks automated access" in n for n in result.notes)
+    assert any("wds_get_data_from_vectors" in n for n in result.notes)
+
+
+def test_scripts_name_themselves_and_never_pose_as_a_browser():
+    # The project owner asked (2026-11-18) that no code look like an attempt to get
+    # past a publisher's bot check.
+    from maplestats_mcp.modules.reproduce.render import SCRIPT_USER_AGENT
+    from maplestats_mcp.modules.reproduce.spec import Spec
+
+    spec = Spec(kind="csv", url="https://example.invalid/a.csv", file_name="a.csv", method="x")
+    python, _ = RENDERERS["python"](spec, "x")
+    assert f'"User-Agent": "{SCRIPT_USER_AGENT}"' in python
+    assert "Mozilla" not in python and "MapleStats" in SCRIPT_USER_AGENT

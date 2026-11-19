@@ -1,0 +1,18 @@
+{
+  "checked_at": "2026-11-18T19:36+00:00",
+  "status": {
+    "wds_metadata": "answers",
+    "wds_vectors": "answers",
+    "full_table_csv": "answers",
+    "sdmx": "blocked",
+    "cimt": "blocked",
+    "daily_rss": "blocked",
+    "daily_archive": "answers",
+    "indicators": "answers",
+    "catalogue_search": "blocked",
+    "pumf_file": "answers",
+    "census_profile_api": "answers",
+    "rdaas": "answers",
+    "census_www12": "blocked"
+  }
+}

@@ -19,7 +19,6 @@ from maplestats_mcp.modules.reproduce import client
 from maplestats_mcp.modules.reproduce.builders import full_table_spec
 from maplestats_mcp.modules.reproduce.render import _PY_SUMMARY, RENDERERS
 from maplestats_mcp.modules.reproduce.spec import Filter, Spec
-from maplestats_mcp.modules.statcan.wds import client as wds_client
 from maplestats_mcp.modules.statcan.wds.schemas import CubeDimension, DimensionMember
 from maplestats_mcp.shared.errors import InvalidInput
 
@@ -30,56 +29,14 @@ def _by_language(result) -> dict[str, str]:
     return {s.language: s.code for s in result.scripts}
 
 
-async def test_summary_scripts_are_r_and_python_with_the_filters():
+async def test_a_full_table_gets_no_script():
+    # StatCan blocks automated full-table downloads (November 2026), so even with
+    # summary=True there is no script, and the note says why.
     result = await client.reproduce(
-        "wds_get_full_table_download",
-        {
-            "product_id": "18-10-0256-01",
-            "members": {"Geography": ["Canada"], "Alternative measures": [_MEASURE]},
-            "start_period": "2025-01",
-            "end_period": "2025-12",
-        },
-        summary=True,
+        "wds_get_full_table_download", {"product_id": "18-10-0256-01"}, summary=True
     )
-    code = _by_language(result)
-    assert set(code) == {"r", "python"}
-    assert any("summary printout is written in R and Python only" in n for n in result.notes)
-    python, r = code["python"], code["r"]
-    # Geography is the CSV's GEO column; members match ignoring case.
-    assert "pl.col('GEO')" in python and "'canada'," in python
-    assert f"{_MEASURE.lower()!r}," in python
-    assert "pl.col('REF_DATE').cast(pl.Utf8) >= '2025-01'" in python
-    assert "pl.col('REF_DATE').cast(pl.Utf8) <= '2025-12-31'" in python
-    assert 'str_to_lower(str_trim(`GEO`)) %in% c(\n      "canada"\n    )' in r
-    # The summary comes last, after the cleaning, and prints instead of the frame.
-    for text, mark in ((python, "# %% 4. Summarize"), (r, "# 4. Summarize ----")):
-        assert text.index("3. Prepare data") < text.index(mark)
-        assert "a printed summary of it" in text
-    assert "library(tibble)" in r and "as_tibble(" in r
-    compile(python, "<script>", "exec")
-
-
-async def test_without_summary_the_scripts_are_unchanged():
-    result = await client.reproduce("wds_get_full_table_download", {"product_id": 18100256})
-    code = _by_language(result)
-    assert set(code) == {"r", "python", "stata", "julia", "excel"}
-    assert not any("Summarize" in text for text in code.values())
-    assert result.notes == []
-
-
-async def test_french_table_filters_french_columns_and_notes():
-    result = await client.reproduce(
-        "wds_get_full_table_download",
-        {"product_id": 34100130, "lang": "fr", "members": {"geo": "Montréal, Québec"}},
-        language="python",
-        lang="fr",
-        summary=True,
-    )
-    code = result.scripts[0].code
-    assert "pl.col('GÉO')" in code and "'montréal, québec'," in code
-    assert result.notes == [
-        "Le script télécharge le tableau complet, puis garde les membres et les périodes demandés."
-    ]
+    assert result.scripts == []
+    assert any("No script: Statistics Canada blocks" in n for n in result.notes)
 
 
 @pytest.mark.parametrize(
@@ -164,64 +121,6 @@ def _metadata(member_count: int | None = None):
         ],
     )
     return SimpleNamespace(dimensions=[geography])
-
-
-@pytest.fixture
-def offline_wds(monkeypatch):
-    """The inventory check, metadata and download link without WDS; a test may
-    replace `.metadata` on the returned object."""
-    state = SimpleNamespace(metadata=_metadata())
-
-    async def known(pid):
-        return None
-
-    async def metadata(pid, **kwargs):
-        return state.metadata
-
-    async def get(method, path_suffix=""):
-        pid, lang = path_suffix.strip("/").split("/")
-        return f"https://www150.statcan.gc.ca/n1/tbl/csv/{pid}-{lang[:2]}.zip"
-
-    monkeypatch.setattr(wds_client, "_require_known_table", known)
-    monkeypatch.setattr(wds_client, "get_cube_metadata", metadata)
-    monkeypatch.setattr(wds_client, "_get", get)
-    return state
-
-
-async def test_download_returns_summary_scripts_with_the_csv_spelling(offline_wds):
-    link = await wds_client.get_full_table_download_csv(
-        34100130, "fr", members={"GEO": ["montreal, quebec"]}, start_period="2020"
-    )
-    assert [s.language for s in link.scripts] == ["python", "r"]
-    python = link.scripts[0].code
-    # Matched without accents, written as the French file spells it.
-    assert "'montréal, québec'," in python and "pl.col('GÉO')" in python
-    assert "# %% 4. Summarize" in python
-
-
-async def test_download_without_members_still_has_scripts(offline_wds):
-    link = await wds_client.get_full_table_download_csv(34100130)
-    assert link.download_url.endswith("34100130-en.zip")
-    assert "4. Summarize" in link.scripts[1].code
-    assert "Keep the rows" not in link.scripts[1].code
-
-
-async def test_unknown_dimension_or_member_is_refused(offline_wds):
-    with pytest.raises(InvalidInput, match="Its dimensions: Geography"):
-        await wds_client.get_full_table_download_csv(34100130, members={"Sex": ["Males"]})
-    with pytest.raises(InvalidInput, match="'Toronto, Ontario' is not a member"):
-        await wds_client.get_full_table_download_csv(
-            34100130, members={"Geography": ["Toronto, Ontario"]}
-        )
-
-
-async def test_member_not_checked_when_the_metadata_is_capped(offline_wds):
-    # Only part of the dimension came back, so an unlisted name may still exist.
-    offline_wds.metadata = _metadata(member_count=5000)
-    link = await wds_client.get_full_table_download_csv(
-        34100130, members={"Geography": ["Toronto, Ontario"]}
-    )
-    assert "'toronto, ontario'," in link.scripts[0].code
 
 
 @pytest.mark.parametrize(

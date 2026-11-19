@@ -1,3 +1,0 @@
-### Fixed
-
-- `arcgis_hub_query_feature_layer` with `return_geometry=True`: a result over the 200,000-byte response budget had its polygons cut, not its rows. On real layers (Ontario GeoHub, Manitoba and Niagara Region, 2026-11-17) every vertex first lost its second coordinate and then each ring was cut to its first part, so the shapes returned were not valid polygons. The budget now drops whole rows, as it already did for the other geometry tools, and `provenance.limits` says how many rows were kept (for example "the first 3 of 5 items in `rows`"). The budget itself is unchanged. As for `statcan_geo_query_layer`, a single row larger than the budget still comes back whole rather than empty.

@@ -8,6 +8,1126 @@ each; `scripts/build_changelog.py` writes them in here at release time.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-18
+
+Statistics Canada now answers some automated requests with a Cloudflare check
+only a person in a web browser can pass (SDMX, CIMT trade, The Daily's RSS
+feeds, catalogue and publication pages, the census site and, on some networks,
+full-table files). MapleStats does not try to get past it. This release explains
+the block in every error, routes around it through the Web Data Service where it
+can (SDMX tools, whole-table rebuilds, The Daily's archive, the last good copy of
+a result), writes scripts only where a script can still work, and adds
+`statcan_check_access` to see what answers now. Details in
+`docs/findings/statcan-captcha-2026-11.md`.
+
+### Added
+
+- `ab_economic_get_data` reports two data problems in `provenance.caveats`,
+  without dropping rows: a table whose newest row is more than three years old
+  (`REACM_EdmRent` ends on 2021-01-01), and rows that share every column but
+  `Value`, either repeated (`JobVacanciesQuaterly_14100398_SQL`) or
+  disagreeing (`REACM_EdmRent` and `REACM_CgyRent` publish two "Overall Class A
+  Net Rent (PSF)" values a year, one near $20 and one in the tens of millions).
+- A `bcer` module (`bcer_` tools) for the BC Energy Regulator's bulk well, production,
+  drilling and facility files on iris.bcogc.ca (issue #250). `bcer_list_files` gives each
+  file's size, last-modified date and layout notes. `bcer_search_wells` searches the well
+  index (about 40,000 wells) by authorization number, UWI, name, location, operator, status,
+  fluid, area, formation, class and rig-release date, with each well's operator and surface
+  coordinates. `bcer_get_production` returns monthly oil, gas, water and condensate
+  production for a well, a list of wells, an operator, an area or formation, or the whole
+  province, with monthly totals. `bcer_get_drilling_records`, `bcer_get_fracture_records`
+  and `bcer_get_directional_survey` return a well's drilling, completion, test, status,
+  hydraulic fracture, perforation and survey records. `bcer_search_facilities` searches the
+  facility index and gas plant capacities, and `bcer_get_reference_table` decodes operator,
+  area, formation and status codes.
+- The 124 MB production zip, the 46 MB drilling zip and the other archives are never
+  downloaded or held whole: they are read by HTTP range requests and filtered row by row as
+  they inflate, and a read stops at the well's last row (the files are sorted by well
+  number, checked on every block). One call reads at most 64 MB compressed in 60 seconds;
+  when a ceiling ends a read early the result says so in `complete`, `members_read` and
+  `provenance.limits`. No existing cap was raised.
+- BCER states no licence for these files, and its website terms say the material may not be
+  reproduced or redistributed without the Province's written permission (its Open Data
+  Licence is stated only for the GIS portal). Every `bcer_` result therefore carries
+  `commercial_use: unknown`, the terms in `provenance.licence` and a caveat to use the data
+  for personal or internal analysis and check with BCER before reuse beyond that. The module
+  was built with the owner's approval of 2026-11-17, with the terms unresolved.
+- `boc_search_series`, `boc_get_series` and `boc_get_observations` say whether
+  a Valet series is still updated: each series carries `status` (`active` or
+  `discontinued`), `last_observation` and, where the Bank's replacement is
+  known, `successor`. A series counts as discontinued when its newest
+  observation is far older than its frequency allows, found from one
+  `recent=1` request per 50 series, not from a fixed list. The legacy noon and
+  closing exchange rates (e.g. `IEXE0101`, the USD/CAD noon rate, last value
+  2017-04-28) name their daily-average successors (`FXUSDCAD`, and
+  `FXM{ccy}CAD`/`FXA{ccy}CAD` for the monthly and annual averages). Valet still
+  serves these series; before, nothing said they had stopped.
+- Bank of Canada `FX*` exchange rates carry a caveat (in each series' `note`,
+  or `provenance.caveats` for observations): a single indicative daily average
+  per currency, published by about 16:30 ET, not a transactional rate.
+- `call_tool` takes `detail`: `"brief"` (the default) or `"full"`. A brief result keeps what an answer needs to be right and citable (values, periods, unit and scale, series title and geography, the citation line, status flags other than "normal", every caveat and limit, the source URL, the licence's name and link, `commercial_use`) and leaves out the rest: `queried_at`, `cached`, `lang`, `schema_name`, `freshness` and the `reproduce` hint (replaced by one `detail` line), StatCan's per-observation codes (`decimals`, `status_code`, ...) and default flags, each observation's `release_time`, empty fields, and `members` or `table_title` already in the series title or citation. `detail` can also go inside `arguments`. Measured with `scripts/benchmark_brief.py` on recorded calls: 33% of the full size over 14 calls, 40% to 81% for StatCan vector calls (caveats are kept whole), 22% for a CMHC table and 33% for a Bank of Canada history.
+- `/stats` reports each tool's result size (`result_size`: results, mean and largest in characters, mean tokens estimated at four characters each), never the content.
+- The Maple Test records each answer's cached input tokens, reports tokens in and out per arm, adds a cost-per-question table to the results, and `python -m tests.maple_test costs` prints cost and tokens per question and arm from run files without grading.
+- `scripts/benchmark_brief.py`: brief against full sizes for the Maple Test replay calls (run offline through `call_tool` on the recorded HTTP) and the website's recorded case results.
+- `call_tool` reads three commonly guessed argument names as the real ones, so a
+  model's first call no longer fails validation and costs a round trip (three of the five
+  first-call failures in one review session, issue #273): `series` as `series_names` on
+  `boc_get_observations` (a single code is put in a list), `noc_code` as `noc` on
+  `jobbank_get_wages`, and `limit` as `rows` on `ckan_search_datasets`. The result says in
+  its provenance caveats which name was read as which, in English or French, so the next
+  call can use the real one. The table is per tool and nothing else changes: no tool's
+  signature is different, a tool called by its own name still rejects the guess, and
+  when the caller gives both names nothing is mapped and validation reports them as before.
+- `statcan_census_profile_get_data` keeps every value it reads on its own, for 14 days, in memory and in one file of at most 8 MB (`MAPLE_CENSUS_CACHE_DIR`, `/data/census` on the hosted server), least recently used first. The 2021 Census Profile is a fixed release and one request takes 33 to 47 s whatever its size, so a repeat, or a question that overlaps an earlier one, now asks StatCan only for the values it lacks: none is an instant answer. The file survives restarts and deploys; a missing file is an empty store, a corrupt one is moved aside (`.bad`) and a bad line is skipped. `provenance.limits` says how many values came from values read earlier. The new result field `levels` lists the geography levels fetched.
+- The hosted server reads the census profile's four busiest code lists (characteristics, provinces, census divisions, metro areas) and its stored values in the background when it starts, so the first census question does not wait for them. The port opens as before and a failure is only logged.
+- `cihi_workforce_list_workbooks`, `cihi_workforce_list_tables`, `cihi_workforce_get_table`
+  and `cihi_workforce_get_notes` (`modules/cihi/workforce/`, issue #252): CIHI's health
+  workforce data tables. The workbooks are listed from CIHI's "Health workforce: Data
+  tables" page (a workbook is read only if that page names it): the physician supply,
+  distribution and migration tables (2025, with the 2001-2024 and 1971-2000 histories), the
+  National Physician Database utilization and payments tables (2024-2025 and the historical
+  files), regulated nurses (RNs, LPNs, NPs, RPNs), pharmacists, physiotherapists,
+  occupational therapists and personal support workers in Alberta, in English and French.
+  Rows come back by jurisdiction, profession, specialty, year, age or sex, each with its
+  sheet row (the cell is the column letter plus the row), the table's own notes and CIHI's
+  citation line. A mark CIHI prints ('—' no data, 'n/a', 'x' suppressed, 'n/r') is returned
+  as that mark, never as zero or blank; a percentage cell comes back as percentage text
+  ('90.4%' for the stored 0.904). A filter on a value the table does not have fails with
+  the real values, and "Alberta", "Alta." and "Alb." match each other. Not read: Quick Stats
+  dashboards,
+  the two .zip archives, hidden helper sheets, drop-down tabs, and any workbook over the
+  existing 30 MB download cap (the NPDB historical utilization 1996 to 2014, 40 MB, is
+  refused). CIHI's Terms of Use limit commercial use and use inside software applications
+  without its written authorization: every result carries them in `provenance.caveats`
+  and is flagged `commercial_use: not_allowed`.
+- `plan_query`: a `health_workforce` topic routes questions about physician, nurse,
+  pharmacist, therapist and support worker counts to the new tools, apart from the
+  `health` topic's indicators.
+- `cmhc_get_methodology`: CMHC's survey methodology and definitions as a tool,
+  for the Rental Market Survey (reliability codes and their CV thresholds,
+  suppression, the release rule of 4 or more responding entities, vacancy and
+  availability) and, new, the Starts and Completions Survey and Market Absorption
+  Survey (start, completion, absorbed: sold and completed, when a unit counts as
+  sold, unabsorbed units, SAAR, dwelling types), in English or French. The Rental
+  Market Survey text was only a `docs://` resource, which `search_tools` does not
+  find, and the absorption survey's was not in the server: in the Maple Test, both
+  kinds of question were answered from memory. The new text is also served as
+  `docs://cmhc/starts-absorption-methodology` (French:
+  `docs://cmhc/fr/methodologie-mises-en-chantier`).
+- `cmhc_get_table_data` takes an optional `aggregate`: `"annual"` sums a monthly
+  flow time series (housing starts (actual), completions, absorbed units, with
+  `row_field="TIMESERIES"`) into calendar-year totals, and `"ytd"` into January
+  to the latest month for every year, so Edmonton's January to September 2026
+  starts compare with the same months of 2025. Agents had been adding up the
+  monthly rows by hand. `aggregation_note` (also in `provenance.coverage`) says
+  the totals were summed by MapleStats from CMHC's monthly values and which
+  incomplete years were left out. Stocks (inventories), rates (starts SAAR),
+  prices and rental-market values are refused, never summed. The annual totals
+  match HMIP's own annual export of the same table.
+- `cmhc_get_table_options` says which axis each label names (`breakdown`:
+  `"column"` for HMIP's "By:" list, `"row"` for "Display Options:"), and keeps
+  the row label of the default table ("Survey Zones") as well as its column
+  label ("Bedroom Type").
+- `wds_get_data_from_cube_coord` takes `coordinates`, a list of up to 300 coordinates of one table, and fetches them in one WDS request (`getDataFromCubePidCoordAndLatestNPeriods` accepts a list of pairs). Each series comes back in the new `series` field, in the order asked, with its own context and, with `transform`, its own computed values; a coordinate WDS cannot serve is listed in the new `failed` field with the reason instead of failing the call. `coordinate` still works as before and keeps the single-series shape. One benchmark question made ten single calls per run.
+- `docs_read_resource` and `docs_list_resources`: read any of the server's `docs://` pages (per-source gotchas, well-known series and categories, `docs://catalogue`, ...) through `call_tool`, for hosted clients that show the model only `search_tools`, `call_tool` and `plan_query` and never offer MCP resources. With `lang="fr"` an English page with a French version returns that version. `SERVER_INSTRUCTIONS` says so in one line.
+- `docs://cmhc/rms-methodology` (French: `docs://cmhc/fr/methodologie-ell`): the CMHC Rental Market Survey's methodology from CMHC's own pages, with their URLs: October timing (the April survey ended in 2015), scope (privately initiated structures of 3 or more rental units in urban areas of 10,000 or more; the secondary rental market's Condo Apartment Survey in 17 CMAs), vacancy, availability (collected 2005 to 2017 only), turnover and rent definitions, the a/b/c/d reliability codes with CMHC's CV tables, and the release rules (4 or more responding entities, CV of 10 % or less for averages).
+- `cmhc_get_table_data` results carry `flag_legend`: what each flag in the result means (a/b/c/d reliability, `**` suppressed, `++` not significant, `n/a`), in the call's language, since HMIP's own CSV notes give the legend only for some tables.
+- `MAPLE_GIS=0` runs a statistics-only profile from the same install. It hides the 14 pure geospatial tools (`bcgw_get_active_wildfires`, `bcgw_get_mining_tenure`, `bcgw_query_layer`, `statcan_geo_list_services`, `statcan_geo_get_layer_detail`, `statcan_geo_query_layer`, `eccc_coverages_search`, `eccc_coverages_describe`, `eccc_coverages_get_data`, `nrcan_nbac_query_fires`, `nrcan_geo_locate`, `nrcan_geo_search_names`, `ab_wildfire_get_fire_perimeters` and `cwfis_get_fire_perimeters`) from `search_tools`, `plan_query`, the server instructions and `docs://catalogue`. A call by name reads as any unknown tool, `plan_query` drops the steps and the words that point at them, and the three modules that hold only such tools (`bcgw`, `nrcan_nbac`, `nrcan_geo`) are not registered, so a preload does not import them. The 40 tools that serve rows or figures from a map service (ArcGIS Hub, ECCC observations, the other Alberta and CWFIS wildfire tools, LODE, the census spatial layers) stay. The variable is on by default: with it unset, every tool, listing, plan and text is what it was.
+- `statcan_surveys_get_survey_metadata` reads the whole IMDB record, not only its status, frequency, description and subjects. `methodology` holds the eleven sections as text (`target_population`, `instrument_design`, `sampling`, `data_sources`, `error_detection`, `imputation`, `estimation`, `quality_evaluation`, `disclosure_control`, `revisions_and_seasonal_adjustment`, `data_accuracy`), and short fields give the record's `reference_period` and `collection_period`, whether response is `mandatory` or `voluntary` (`response`), how data are obtained (`collection_methods`), the design (`survey_design`) and the sentences that give the sample's size (`sample_size`). A new optional `section` argument (one name or a list) returns those sections in full and no others; without it every section is cut to about 900 characters at a sentence end, `trimmed_sections` names the cut ones and `provenance.limits` says how to get them whole.
+- `ircc_backlog_get_percentages`: IRCC's monthly backlog percentage, actual and
+  projected, for seven programs (Express Entry federal and provincial nominee,
+  spouses, partners and children, citizenship grant, temporary resident visas,
+  study permits, work permits) from January 2022, read from the tables on
+  IRCC's "Inventories and backlogs" page. Percentages only, not counts; the
+  result gives each program's last actual month, because the page's tables ended
+  in September 2025 (projections to November 2025) although the page itself was
+  modified in October 2026. Backlog is not a processing time.
+- When a cached result's refresh is answered with a Cloudflare bot check (as
+  Statistics Canada does for scripts since November 2026), the server returns
+  the last good copy instead of an error, and its provenance caveats say when
+  that copy was fetched. The store is in memory, separate from the cache, and
+  capped by `MAPLE_LAST_GOOD_MB` (default 32; 0 turns it off). Idea from
+  vrraiv/sixfigures (PR #105), which keeps the last good table on a 403.
+- Maple Test v3: 36 out-of-sample questions on technical data and documentation (survey
+  scope and revision policies, units, NAICS and NOC codes, WDS series and table metadata,
+  Valet series metadata, CMHC definitions, and dataset metadata and DataStore fields on
+  seven CKAN portals, Ontario and Alberta included), keyed from the publishers' own APIs
+  and pages (`build_key_v3.py`) and graded on the facts each answer must state
+  (`python -m tests.maple_test run|grade --version v3`). The weekly key checks in
+  `smoke.yml` and `maple-test.yml` now cover it.
+- Maple Test v4 has a fresh held-out test set: 25 questions written and keyed on
+  2026-11-09 from the publishers' own APIs (`build_key_v4_test.py`, with `--check`), before
+  any server answered them, stratified like the set they replace and reviewed by an
+  independent agent. The first test set (in-sample for MapleStats) moved to dev, as the
+  rotation rule says. The grader reads a comparison's call from an optional regex.
+- Maple Test v4 results, 2026-11-10: on the fresh held-out test set (25 questions,
+  out-of-sample), hosted MapleStats answered 84.0% correctly and OpenMCP 52.0%; on the dev
+  set (in-sample for MapleStats) 92.2% and 68.1%. A person read the 17.3% of answers the
+  judge flagged, not all of them.
+- Maple Test v4: 47 questions kept from v1 to v3 (near-duplicates and questions every
+  comparable server always got right or always got wrong dropped, by an item analysis of
+  the hand-reviewed grades), split into a public dev set and a held-out test set with a
+  rotation rule (`build_key_v4.py`). Answers end with a JSON block the grader reads first;
+  an LLM judge, calibrated against the v1 to v3 hand reviews, sends only disputed or
+  uncertain answers to a person (`grade --version v4 --judge`, `calibrate.py`). Runs take
+  one pass plus extra passes on volatile questions, ask hosted arms' questions in parallel,
+  run arms side by side (`run-many`), and can serve MapleStats' upstream HTTP from a frozen
+  cassette (`--frozen`).
+- `statcan_reference_get_section_text` reads the pages of a scanned PDF by OCR
+  (optional, off by default). A scan, an image of each page with no text layer,
+  used to come back empty; with `MAPLE_OCR=1`, the new `ocr` extra
+  (`pip install "maplestats-mcp[ocr]"`, pypdfium2) and the `tesseract` program
+  with its English and French data (the Docker image has all three), the pages
+  are drawn by PDFium and read by Tesseract 5, one page at a time. New arguments:
+  `ocr` (`auto`, the default, reads the first 5 scanned pages of a PDF that is
+  mostly scanned or the scanned pages of the `section` asked for; `off`;
+  `force`, which also reads pages that have text) and `pages` (`'6-10'`,
+  `'1,3,5-7'`: the pages to read, at most 10 a call). New result field
+  `ocr_pages` lists the pages recognised by OCR; `pages_without_text` counts
+  the pages with no text layer. Each page read starts with a line giving the
+  engine, the resolution and the mean word confidence, and `provenance.limits`
+  and `caveats` say that the text is recognised from a scan, not the
+  publisher's, which pages were read, which were not, and what to pass to read
+  them. Where OCR is not available, `auto` leaves the pages empty and says why,
+  and `force` is refused.
+- Caps, all new (none of the existing ones moves): 10 pages a call, 40 s for the
+  whole PDF step (the same budget as text extraction), a 15 s kill timeout per
+  page, one OCR page at a time on the server (a second caller waits up to 10 s,
+  then gets a "busy" error), at most 12 megapixels a page (the resolution drops
+  from 200 dpi to as low as 100, then the page is refused), a refusal for a page
+  whose images declare more than 60 megapixels (a 107 KB file can declare a
+  30,000 x 30,000 pixel image), 60,000 characters of OCR text a call, and,
+  on Linux, `MAPLE_OCR_MEMORY_MB` (default 1024) as an address-space cap on the
+  Tesseract process. The recognised text of each page is cached with its
+  resolution and the engine's version.
+- `MAPLE_OCR` and `MAPLE_OCR_MEMORY_MB` in the README's settings table and the
+  website's connect page. The Azure deployment sets `MAPLE_OCR=1`; `render.yaml`
+  sets `MAPLE_OCR=0` (512 MB).
+- `statcan_reference_get_section_text` and `statcan_reference_get_publication`
+  say when a PDF page has no text layer. A scanned PDF (an image of each page,
+  as Manitoba's 1870-1995 election results and many PBO information-request
+  letters are) used to come back as pages found, 0 characters and no warning.
+  Now `PublicationText.pages_without_text` counts the pages read with under 25
+  characters of text, `provenance.coverage` names them, `provenance.limits`
+  says whether they are scans (an image the size of the page) or blank pages or
+  drawings and points to the PDF page (`#page=N`), and each such page holds a
+  bracketed line saying so in the text, in English or French. Nothing is read
+  by OCR yet; the pages still come back empty.
+- `plan_query`: each plan step has an optional `call` field, the arguments of a first call to
+  its tool as JSON, with `<...>` where only the question can supply a value (`{"vector_ids":[<ids>],"latest_n":1}`).
+  Every tool gets one from its required arguments in the tool catalogue, and 21 of the most used
+  tools (WDS, CMHC, the census profile, the open-data portals) have a written recipe. A model can pass it to
+  `call_tool` without a `search_tools` call first.
+- `socrata_query_dataset_rows` takes optional `group` and `having` (SoQL's
+  `$group` and `$having`), so counts and sums by category are computed by the
+  portal over every matching row, e.g. Calgary's 2025 building permits by
+  permit type with `select="permittype, count(*) AS n"`, `group="permittype"`.
+  `order` was already there.
+- `statcan_check_access`: which Statistics Canada services answer scripts right
+  now. It sends one small request to each service MapleStats reads (WDS, full-table
+  files, SDMX, CIMT, The Daily's feeds and archive, indicators, catalogue search,
+  microdata files, the Census Profile and RDaaS APIs, the census site) and reports
+  each as answers, blocked, error or no answer, with the time checked and the
+  tools that use it. It only observes StatCan's Cloudflare check, never answers it.
+- A daily workflow (`.github/workflows/statcan-access.yml`) runs the same check and
+  fails when StatCan blocks or unblocks a service since
+  `docs/findings/statcan-access.json`, so the repo owner gets an email.
+- `wds_get_full_table_download`: new `file_check` and `notes` fields. The tool
+  asks StatCan for the file's first bytes and says whether the link served the
+  file or the captcha just now, and the notes name the WDS tools a script can
+  still use.
+- Every error from a StatCan page behind the captcha now says it is StatCan's
+  change (not a MapleStats outage), that the `wds_` tools still answer, and the
+  closest route for that page (WDS tables for CIMT trade, the release archive
+  for The Daily's feeds, a browser download for files). Details in
+  `docs/findings/statcan-captcha-2026-11.md`.
+- `statcan_geosuite_` (3 tools): Statistics Canada's Census GeoSuite (92-150-X) for the
+  1996, 2001, 2006, 2011, 2016 and 2021 censuses, the geographic attribute tables from
+  provinces down to dissemination blocks (enumeration areas in 1996): codes and unique IDs,
+  English and French names, the hierarchy, population and dwelling counts, land area and
+  representative points. `statcan_geosuite_list_tables` lists a year's tables with row and
+  column counts, sizes, source file, licence and attribution; `statcan_geosuite_describe_table`
+  gives each column's type, label, code meanings and StatCan field name with sample rows;
+  `statcan_geosuite_query` filters one table by exact codes (a trailing `*` matches a prefix)
+  and a case- and accent-insensitive name search, with `limit` up to 1,000 and `offset`.
+  StatCan's own copy on www12.statcan.gc.ca is behind a Cloudflare bot challenge, so the
+  tables are read as Parquet from MountainMath's re-host (data.mountainmath.ca), which
+  checked them column by column against StatCan's file; every result says so in
+  `provenance.caveats`, with the original file's URL and download date. Each file is
+  downloaded once (15.5 MB at most) and queried with DuckDB, which can read that file only.
+  `plan_query` routes census geography lookups (codes, UIDs, census tracts, dissemination
+  areas and blocks) to it, and to the official 2016 Standard Geographical Classification in
+  `rdaas_`.
+- `statcan_reference_get_publication`: a StatCan publication's editions and
+  table of contents from its catalogue number ("71-543-G", "62-553-X",
+  "13-017-X", "62F0014M2021011", any case) or a www150.statcan.gc.ca
+  publication URL. It reads the catalogue page (/n1/en/catalogue/<number>)
+  for the editions, newest first, then the chosen edition's main page for its
+  title, release date, PDF link and sections: the page's own headings and the
+  edition's other pages (chapters, appendices, glossary). `edition=` picks an
+  older one ("2020001", "2020"). A PDF-only edition (15-203-X, the Guide to the
+  Labour Force Survey up to 2006) is read from the PDF: its sections are the
+  PDF's bookmarks, or its pages ("page=192") when it has none.
+- `statcan_reference_get_section_text`: the text of a guide or methodology
+  publication, to quote and cite instead of answering from memory: one
+  section (`section=`, an id or title from `statcan_reference_get_publication`,
+  a page id from an earlier result, or a page URL), or the sections best
+  matching `query=` across up to 40 pages of the edition ("involuntary
+  part-time" finds the definition in Section 3 of the Guide to the Labour Force
+  Survey; "owned accommodation" chapter 10 of the CPI Reference Paper). A query
+  reads first the pages whose titles hold its words and stops once enough
+  sections hold every word: "owned accommodation" reads 6 of the CPI Reference
+  Paper's 15 pages in about 2.5 s instead of 6 s. Plain text with headings and
+  tables kept and menus, footers and modals dropped, cut at `max_chars` (6,000
+  by default) with `next_start_char` to read on; each section carries its own
+  URL and the result the edition's release date. PDF-only editions, or a PDF
+  URL given as the publication, are read with pypdf (up to 25 MB and 400
+  pages): pages and the headings inside them as sections, each cited as
+  `<pdf>#page=N`, the same query and paging, and a note that line breaks,
+  columns and tables may come out imperfect ("gross output approach" finds the
+  provincial GDP allocation methods on page 192 of 15-203-X). English and
+  French (`lang="fr"` reads the `-fra.htm` pages). Only www150.statcan.gc.ca and
+  www.statcan.gc.ca are fetched, redirects included; pages and extracted PDF
+  text are cached for a day.
+- `statcan_reference_get_section_text` says where a concept is defined when it
+  is not in the guide being searched: the supplementary unemployment rates R1
+  to R8 in table 14-10-0077-01's footnotes (not in any edition of the LFS
+  guide), and the provincial allocation of GDP by industry in 15-203-X.
+- `plan_query` points definition and methodology questions about the LFS, the
+  CPI and GDP and the national accounts to `statcan_reference_get_section_text`,
+  questions on R1 to R8 to table 14-10-0077-01's footnotes
+  (`wds_get_cube_metadata`), and the provincial allocation methods (gross
+  output, selected factor incomes) to 15-203-X.
+- pypdf (BSD-3-Clause, pure Python) is a new dependency, for PDF text.
+- `/stats` counts the chat demo's calls as `chat-demo`. Its default backend is Anthropic's
+  MCP connector, which announces its own client name and takes no custom headers, so the demo
+  adds `?client=maplestats-chat` to the endpoint URL. The server accepts a `?client=` value
+  only when it matches a label in its fixed list (anything else is ignored and the announced
+  name decides), and stores nothing but that label. The privacy page mentions it.
+- `/stats` now says what kind of client made the calls: `by_client` (and `by_day_client`
+  per UTC day) count calls under a label from a fixed list (`claude-code`, `claude-ai`,
+  `cursor`, `codex`, `python-fastmcp`, `uptime-check`, ... or `other`), matched from the
+  name the client announces when it connects. The announced name itself, arguments and
+  addresses are still never stored, and nothing new is sent to GoatCounter. Counts from
+  before this change show as `untracked`. They are saved in `MAPLE_USAGE_STATS_FILE`.
+- `MAPLE_INTERNAL_TOKEN`: a client that sends this secret in an `X-Maple-Internal` header
+  is counted as `internal`, and `/stats` gives `calls_excluding_internal`, so the
+  maintainer's own calls and benchmark runs can be told apart from everyone else's.
+  `tests/maple_test` sends the header when `MAPLE_INTERNAL_TOKEN` is set in its environment.
+- The privacy page says that `/stats` records the kind of client.
+- `/stats` now says why calls failed: `error_codes` (failures by code) and
+  `by_error` (failures per tool, by code), using the codes that lead every tool
+  error (`not_found`, `invalid_input`, `upstream_unavailable`, `upstream_error`,
+  `data_locked`, `unknown_tool`, `error`). Only that fixed list is kept, never the
+  message or the arguments. The codes are saved to `MAPLE_USAGE_STATS_FILE` with the
+  call counts; failures counted before this release show as `uncoded`.
+- `wds_get_full_table_download` (CSV) returns a Python script that rebuilds the
+  whole table through WDS, which StatCan still serves to scripts, now that it
+  blocks scripted full-table downloads. The script asks for every series in
+  batches and writes StatCan's own CSV layout; checked byte for byte against
+  StatCan's file on 2026-11-18 for 36-10-0104 (whole), 18-10-0004 and
+  14-10-0287. `members`, `start_period` and `end_period` keep part of a table,
+  and a new `rebuild` field gives its size in WDS calls; past 2,000 calls there
+  is no script and the notes say how to narrow it. The idea comes from
+  vrraiv/sixfigures (PR #105); the code is MapleStats' own.
+
+### Changed
+
+- `boc_search_series` and `boc_search_groups` also match entries holding every
+  word of a query, after the exact substring matches: "US dollar noon" now
+  finds "U.S. dollar (noon)".
+- **Breaking for clients that parse results:** through `call_tool`, results are now brief by default, so their shape changed: provenance keeps only `source`, `url`, `as_of`, `coverage`, `limits`, `licence` (name and link only), `commercial_use` and `caveats`; a list of six or more rows (`observations`, `rows`, ...) is one object `{"format": "csv", "rows": n, "csv": "header\nrow..."}` (with `columns` giving each column's keys when a value is nested) instead of a JSON object per row; and the fields listed under Added are left out. Pass `detail="full"` to `call_tool` for the previous output. A tool called directly by its own name still answers in full, matching its output schema. `reproduce_code` and `reproduce_workbook` read full results, and the chat demo reads both shapes.
+- In every result, brief or full, a note, caveat, footnote or licence repeated across items of one list (StatCan series from one table, datasets on one portal) is stated once in a top-level `shared_notes` list and each item holds `shared_notes[i]` in its place.
+- Smaller defaults, each saying how to get more: `sdmx_get_data` and `sdmx_get_vector_data` with no period return the latest 24 observations per series (was 100; pass `last_n_observations`); `boc_get_observations` and `boc_get_group_observations` with no window return the 30 most recent dates (was as many as fit in 200 KB; pass `start_date` or `recent_*`); `ckan_read_resource` returns 50 rows (was 100; `limit` up to 1000); `statcan_pumf_get_codebook` returns 25 variables (was 50; `query` or `limit`). `wds_get_data_from_vectors` keeps `latest_n=12`: brief CSV rows cost little, and twelve periods cover a latest value with its recent trend.
+- `statcan_census_profile_get_data`: `level` is optional. A DGUID names its level in its first nine characters (read from the 14 live geography codelists: no prefix is in two levels), so "Kelowna, BC and Canada" is one call with the three codes. The levels in a call are fetched at the same time (StatCan answers parallel requests in parallel: 36 s for two levels, one wait instead of two), and the values come back in the order asked. A code whose structure is unknown (a new vintage) is refused with an error that says how to pass `level`; `level` is still accepted, and used for exactly such a code.
+- `plan_query` sends census figures for Canada, provinces, metro areas and agglomerations to the WDS 98-10 tables first, which answer in under a second against the census profile's 33 to 47 s: population and dwellings (98-10-0005), average and median age (98-10-0020), household income (98-10-0061) and monthly shelter cost by tenure (98-10-0253), with a ready coordinate recipe for each (position of each dimension, member ids of the statistics, ids of Canada and the provinces, `wds_get_cube_metadata` with `member_query` for a place). Municipalities and census divisions (98-10-0004, -0022, -0060) and the income of census tracts (98-10-0058) are named too. Every figure was read through both and compared with the census profile's value for the same place, exactly equal. The profile stays in the plan for other characteristics and for dissemination areas, forward sortation areas and the like, and for the share of households spending 30% or more of income on shelter: the 98-10-0252 counts differ from it by rounding, so that table is not routed. "Shelter cost" and "frais de logement" now match the housing topic. A question about the census median age used to start with the profile's geography search and now starts with 98-10-0020.
+- `plan_query` lists a step that two topics share once, under the topic that ranks first, so the plan does not carry the same text twice.
+- The descriptions of `statcan_census_profile_get_data` and `statcan_census_profile_search_geography` point to the 98-10 tables first for Canada, provinces and metro areas.
+- The fitness note on census boundaries now also applies to results from the 98-10 tables the planner routes to (98-10-0004, -0005, -0020, -0022, -0058, -0060, -0061 and -0253).
+- The chat demo shows what it is doing while it works: the seconds elapsed, the step it is on
+  (planning, finding a tool, reading a source), and the answer as it is written, instead of a
+  blank wait until the end. The page now reads `POST /api/chat/stream` (newline-delimited JSON:
+  `tool` and `text` events, a `ping` every 10 s while quiet, then one `final` or `error`); the
+  guards, limits, counts and answer are the same as `POST /api/chat`, which still works. The old
+  note that the first question "can take up to a minute while the data server wakes" is gone: the
+  server has been always on since the move to Azure.
+- `statcan_census_profile_get_data` and `statcan_census_profile_search_geography` now say how slow
+  StatCan's census service is (30 to 45 s for a data call and about 20 s for the first search at a
+  level, measured 2026-11-16) and tell a model to make one call per geography level with
+  everything it needs in it. A demo answer comparing Kelowna with BC and Canada made three data
+  calls (two at one level) and spent about 95 s of its time waiting for this service.
+- The chat demo's step budget is cut from 12 to 2 requests per question (`CHAT_MAX_TOOL_STEPS`,
+  still set by environment variable). On the Anthropic path one request is not one model call:
+  the MCP connector runs up to about 10 model steps inside it before it pauses the turn, so 12
+  requests allowed about 120 steps for one question (a vague question made 17 tool calls over
+  93 to 158 s) and 2 allow about 20. The second request is the last, and its system prompt now
+  tells the model to stop calling tools and answer with what it has and say what is missing; if
+  it still pauses or writes nothing, the visitor gets the step-limit message as before. The
+  first request's prompt gains one sentence asking the model to put independent calls in the
+  same step. The `openai` backend, where the app runs the loop and a round is one model call,
+  has its own limit, `CHAT_MAX_TOOL_ROUNDS`, which keeps the old default of 12 (at most 12
+  model steps); its last round gets the same wrap-up, and a tool call asked for in it is not
+  run.
+- The chat demo can turn on prompt caching with `CHAT_PROMPT_CACHE=1` (off by default, so the
+  request is unchanged until it is set): the system prompt and the MCP toolset carry
+  `cache_control: {"type": "ephemeral"}`, which caches the tool list and the prompt (about
+  1,800 tokens, above Haiku 5.5's 512-token minimum). Cache reads and writes show as
+  `cache_read` and `cache_write` under `tokens` in the chat's `/stats`, as before.
+- The chat's `/stats` gains `per_answer`: for each answered question, how many requests to the
+  model, tool calls and model steps it took, as p50, p95 and a histogram, also per UTC day
+  under `by_day`. Counts only, like the rest of `/stats`: never a question, an answer, a tool's
+  arguments or an address.
+- `cimt_*`: a call with nothing cached is faster, about 4 s instead of about 10 s for `cimt_get_trade`. The static code-list files (commodities, countries, US states, provinces, units) now have their own rate limit of one request a second, apart from the REST service's one request every two seconds, which is unchanged. The lists load while the periods and the trade rows are fetched, instead of after them, and a call that fails cancels the lists still waiting. `cimt_get_top_partners` loads only the list it names partners from (countries or US states), not both.
+- `cimt_*`: the code-list files are read as JSON once their trailing commas are removed, about three times faster than the regular expression used before (0.35 s against 1.1 s for a 16 MB list shaped like HS10), and a list over 1 MB is read in a worker thread, so it no longer holds up the server's other requests. A file that does not read as JSON falls back to the regular expression.
+- `sdmx_get_data` and `sdmx_get_vector_data`: the SDMX data document is cached for an hour, as WDS vector data are; errors and empty answers are not cached. The status-code legend (WDS getCodeSets) and the table metadata behind the newer-data note are fetched alongside the data instead of after it. `provenance.cached` now says whether the data came from the cache.
+- `ckan_search_datasets`: each result now names the division or custodian that
+  owns the dataset (`owner_unit`) where its portal states one (Toronto's owner
+  division, Yukon's custodian), and counts the resources whose rows
+  `ckan_datastore_search` can query (`datastore_resources`; 0 means none, empty
+  where the portal has no DataStore). Toronto publishes every dataset as "City of
+  Toronto" and names the division only in `owner_division`, which no tool
+  returned: in the Maple Test, answers to "which City division owns this dataset"
+  said the portal names none, and an answer that stopped at the search result could
+  not say whether the rows were queryable. `ckan_get_dataset` now also returns
+  Toronto's `owner_division`, `owner_section`, `owner_unit` and `last_refreshed`
+  under `extras`.
+- `ckan_search_datasets`: each result now states the dataset's update frequency
+  (`update_frequency`) where its portal publishes one: federal (in plain words),
+  Ontario, Alberta, Québec, Northwest Territories, Yukon, Montréal, Toronto and
+  Niagara. Before, it was only in `ckan_get_dataset`'s `extras`, and since the
+  compact `search_tools` lines no tool's one-line description said where to find
+  it: in the Maple Test, two answers in three to an Ontario question stopped at the
+  search result and said the frequency was not given. The one-line descriptions of
+  `ckan_search_datasets` and `ckan_get_dataset` now name the fields each returns.
+- `cmhc_get_table_data`, its `flag_legend` and the CMHC fitness note now point to
+  `cmhc_get_methodology` instead of the `docs://cmhc/rms-methodology` resource.
+- **Breaking for clients that parse `search_tools`:** each tool found is now its `name`, a one-line `description` (the docstring's first paragraph, cut to its first sentence when long) and `arguments`, the input schema on one line (`{portal: "federal"|"on"|..., query?: str, lang?: "en"|"fr"}`; `?` marks an optional argument, and a list of more than about 140 characters of accepted values is cut to its first values and a count). Annotations stay only on a tool that is not read-only. `search_tools` takes `detail="full"` for the previous answer (whole description and `inputSchema`). Measured offline on ten queries: 12,675 characters against 57,743 (78% fewer). The Python, R and Julia clients still read `inputSchema`, so their search frame's input-schema column is empty against this server until they ask for `detail="full"`.
+- `call_tool` with arguments that fail validation now ends its error with the tool's full input schema (`Full input schema of <tool>: {...}`, in French with `lang="fr"`), so a call built from the one-line signature can be fixed without searching again.
+- Brief results (`call_tool`'s default) now shape catalogue and metadata tools too: `wds_get_cube_metadata`, `wds_search_cubes`, `ckan_search_datasets` and the other `ckan_*` metadata and list tools (not `ckan_datastore_search` or `ckan_read_resource`), `statcan_census_profile_search_geography`, `statcan_census_profile_search_characteristic`, the `statcan_geo_*` list and layer-detail tools and `statcan_daily_get_release_calendar`. The search tools among them used to keep their full format. A brief result of these keeps one language of a bilingual pair (`cube_title_en` or `_fr`, as `lang` asks), cuts notes, descriptions and footnotes over 200 characters to their first sentence (ending `...`, HTML tags removed), drops per-item tags, groups, StatCan subject and survey codes, a CKAN slug equal to the id and a machine name beside its display title, states once (`<list>_common`) a value every item of a list shares, and lists the first 10 members of a dimension of more than 30 (`members_shown`, with `member_count` the total) unless the call passed `dimension` or `member_query`. Identifiers, titles, dimension names with member counts, dates, licence and citation stay. Measured offline on 11 calls: 46,386 characters against 107,446 (57% fewer); `detail="full"` is unchanged.
+- `wds_get_data_from_cube_coord` caches its data for an hour, as `wds_get_data_from_vectors` does (it was never cached). It fetches the table's metadata beside the data instead of after it, and a `transform` reads the series' frequency from that cached metadata instead of a separate `getSeriesInfoFromCubePidCoord` request, so a cold call waits for two rounds of requests instead of three or four.
+- `wds_search_cubes` parses the table inventory and folds its titles once per fetched inventory instead of on every search (about 8,000 tables and 16,000 titles, about 245 ms per search on the hosted server, blocking other requests).
+- `statcan_delta_list_tables`: the `detail` parameter is now `include_members`
+  (same meaning: dimension members and correction notes for one `product_id`).
+  `detail` is call_tool's argument for a brief or full result, and the server
+  removes it from every data tool's arguments, so the old parameter could never
+  be set and asking for members returned none. Pass `include_members=True`
+  instead. A test now fails if any tool takes a parameter named `detail`.
+- `boc_search_series` and `boc_search_groups` find the Bank of Canada's core
+  inflation measures whatever the query adds or how it spells them: when no
+  entry holds every word of the query, they read each hyphenated word run
+  together ("CPI-X" as `CPIX`, "cpitrim"), then rank entries by the rarer query
+  words they hold, and `provenance.coverage` says the result is that partial
+  match. "CPI-trim inflation", "core inflation CPI-trim" and "CPI-trim
+  year-over-year" returned nothing before; they now start with `CPI_TRIM`.
+- `boc_search_groups` with "Banking and Financial Statistics" or "BFS" in the
+  query searches only the groups named by a BFS table code (`A4_RATES_MONTHLY`,
+  `C1_MONTHLY`, `E1_MONTHLY` and 82 more), since no group label names the
+  publication.
+- `statcan_surveys_search_surveys` matches a survey's acronym and whole words
+  of its name: "IPPI" gives 2318 (Industrial Product Price Index), "RMPI" 2306,
+  "LFS" 3701, "EICS" 4428, "SEPH" 2612, and the French "EPA", "IPMB" and "ECAE".
+  Before, the query was a plain substring of the name, so "IPPI" found only the
+  Coastwise Shipping Survey and "LFS" or "EICS" found nothing.
+- `plan_query` routes questions on core inflation (CPI-trim, CPI-median,
+  CPI-common, also table 18-10-0256-01), price levels across cities (the
+  discontinued inter-city index, table 18-10-0003-01), hedonic quality
+  adjustment (the CPI Reference Paper), Labour Force Survey definitions such
+  as involuntary part-time (the Guide to the Labour Force Survey), the Bank of
+  Canada's Banking and Financial Statistics, and IMDB survey ids (a new
+  survey-metadata topic), in English and French.
+- Docstring keywords so `search_tools` finds `boc_search_series` and
+  `boc_search_groups` for core inflation and Banking and Financial Statistics,
+  `statcan_surveys_search_surveys` for survey ids and acronyms, and
+  `statcan_surveys_get_survey_metadata` for survey definitions, which names the
+  survey guides that hold them.
+- `eccc_query_items`: a query of `climate-normals`, `climate-monthly`,
+  `climate-daily` or `climate-hourly` by station (`CLIMATE_IDENTIFIER`, `STN_ID` or
+  `STATION_NAME`) that matches no row now says why in `note`, from
+  `climate-stations`: whether such a station exists, its record dates, and whether
+  it has that kind of data at all (`HAS_NORMALS_DATA`, `HAS_MONTHLY_SUMMARY`,
+  `HAS_HOURLY_DATA`). A station with `HAS_NORMALS_DATA = N` has no published
+  normals, and the note says to report that. In the Maple Test, a question on the
+  1981-2010 normal of Toronto City Centre (opened 2009) got zero rows and an answer
+  that the normal was "not in the data I could reach" rather than that none is
+  published.
+- `ircc_get_express_entry_round` without `draw_number` returns the latest
+  round, as `ircc_get_latest_express_entry_round` does, instead of refusing
+  the call (8 of its 16 calls on the hosted server by 2026-11-10 were errors).
+- A server serving HTTP now imports every module and builds the search index at startup, before it opens its port, so the platform's probes keep traffic away until it is ready. Before, a module was imported on the event loop the first time one of its tools was called, which held every other request: the first StatCan call after a start took 12.7 s against 0.09 s afterwards. Startup takes longer instead (on a laptop, `/health` answered after 12-18 s against 4 s). `MAPLE_PRELOAD=0` turns it off, and `MAPLE_PRELOAD=1` turns it on for stdio, where it stays off by default so desktop clients start fast. The Docker image's health check now allows a 120 s start period.
+- `search_tools` finds the StatCan tools for Labour Force Survey questions.
+  "Labour Force Survey vector series unemployment" now ranks
+  `wds_get_data_from_vectors` and `wds_search_cubes` second and third (before:
+  neither in the top 20, behind ILO, World Bank and ABS tools), and "LFS
+  headline unemployment rate Alberta latest month" ranks
+  `statcan_indicators_get_indicators` first (before: fifth, behind ECB, ABS and
+  Eurostat). The docstrings of `wds_search_cubes`, `wds_get_data_from_vectors`
+  and `statcan_indicators_get_indicators` name the survey, in French too
+  (« Enquête sur la population active », EPA). The discovery benchmark is
+  unchanged except one French query that moved up.
+- `statcan_indicators_get_indicators` lists Canada before the provinces. The
+  feed's own order put Nunavut wholesale sales first in an unfiltered call and
+  Prince Edward Island first for "unemployment rate".
+- `plan_query`'s labour and inflation steps say what to pass to
+  `statcan_indicators_get_indicators` (`query='unemployment rate'`,
+  `query='consumer price index'`). Called without a query, the tool returned no
+  Labour Force Survey row.
+- The server instructions now tell agents that MapleStats data is for
+  information only, and to say an answer is not investment, tax, legal or
+  financial advice when it touches those decisions.
+- The StatCan reference reader keeps a downloaded PDF's bytes in the shared file
+  cache for 3 hours, so a second call (another language, or the OCR of its
+  scanned pages) does not download the file again.
+- `plan_query`: a plan leaves out steps the question does not need: Borealis, the 2001-2016 census
+  archive and the boundary maps unless the question asks for them; Alberta's dashboard unless the
+  question is about Alberta; occupation, wage, methods and Toronto building-score steps unless the
+  question uses their words; an Edmonton rent question no longer lists Edmonton Police, Transit
+  and EPCOR; a permit, licence, inspection or planning question that names a city lists only that
+  city's (or its province's) records. The plan's output is not larger on average than before.
+- `wds_get_series_as_of` and `plan_query` name the 16 tables that have revision history
+  (12-10-0163, 14-10-0220, 14-10-0223, 16-10-0012, 16-10-0013, 18-10-0256, 20-10-0003,
+  20-10-0056, 20-10-0067, 20-10-0076, 34-10-0035, 34-10-0036, 36-10-0018, 36-10-0103,
+  36-10-0104, 36-10-0434), so a model asks for a vintage only on those; the live chat
+  demo's 21 `wds_get_series_as_of` calls all failed because the table had none.
+- The README, website, agent skill, registry and ChatGPT listing descriptions now lead with provenance: each figure's citation, quality flags and licence, the not-published route, `check_answer` and `reproduce_code`, and the Maple Test result as a percentage. The server instructions now ask agents to keep StatCan quality flags with a value and to pass on the licence when the user will reuse the data.
+- `statcan_delta_list_real_time_tables`: the three tables WDS does not serve
+  now carry `bulk_csv_url` and `last_reference_period` (2025-05, 2025-05 and
+  2024-08, from the zips' metadata files), and the notes say that only the
+  metadata and vector routes are unavailable, that the series ended, and that
+  the CSVs are very large and not read row by row by this server.
+- Website: the home page says plainly that MapleStats is an MCP server an agent
+  calls, not a data portal, and that it keeps no copy of the data. The benchmarks
+  page states its limits first (the maintainer wrote and graded the questions;
+  half are on sources other servers do not cover), gives the core-question range
+  beside the headline score, and adds a section on the independent test planned
+  next. The FAQ and the connect page say a local copy has no limit of its own.
+- Website: the worked examples were captured again from the live sources.
+- `sdmx_get_data`, `sdmx_get_vector_data`, `sdmx_get_structure` and
+  `sdmx_get_key_for_dimension`: when StatCan's SDMX service answers with its
+  captcha (every request since 2026-11-18 from the networks checked), they read
+  the same series and codes from WDS and say so in provenance. A key that
+  covers more than 300 series is refused with the dimension to narrow.
+- `statcan_daily_get_releases`: with `subject="all"`, reads the latest releases
+  from The Daily's release archive when its RSS feed answers with the captcha.
+- `reproduce_code` writes scripts only where a script can work: StatCan's Web
+  Data Service. `wds_get_data_from_cube_coord` (without a transform) and the
+  other `wds_` tools now fetch their series through WDS instead of downloading
+  the whole table's zip. For a service StatCan blocks (SDMX, CIMT, The Daily's
+  RSS feeds, catalogue pages, www12) and for full-table zips, it returns no
+  script and says why. R scripts no longer use `get_cansim()`; the {cansim}
+  vector functions stay.
+- Scripts that download a StatCan file that still works (PUMF and LODE zips,
+  the Delta File) stop with a plain message if StatCan answers with its captcha.
+- `statcan_daily_get_release_calendar`: with `upcoming_only=False` the history now
+  includes every past Daily release matching the query (`kind: "daily_release"`,
+  from the full archive), not only key indicators and catalogue products. In the
+  Maple Test, "when were the provisional poverty estimates for 2025 released"
+  searched the calendar's history and found nothing, though The Daily released them
+  on 2026-11-04.
+- `wds_get_cube_metadata`: `release_time` now says it is the table's latest release
+  or revision, not when a reference period was first published, and points to
+  `statcan_daily_search_archive` for release dates. An answer gave a table's
+  November revision date as the date its year was first published (in May).
+- `statcan_reference_search_documents` and `statcan_surveys_get_survey_metadata`
+  say that their results hold titles, descriptions or metadata only, and point
+  to `statcan_reference_get_section_text` for a guide's text.
+- Errors from StatCan's blocked catalogue and publication pages now point to
+  ODESI on Borealis (`borealis_odesi_search_datasets`), which lists StatCan's
+  public use microdata files, and say that PUMF zips still download.
+- The FAQ and README explain StatCan's bot check, what still works and what
+  MapleStats does about it; the FAQ no longer says a blocked source always
+  returns an error, since a dated last good copy can come back instead.
+- Server instructions, Statistics Canada entry: each prefix now names what an
+  agent would route on. `wds_` adds revision history (`wds_get_series_as_of`);
+  `sdmx_space_` names the shared space's contents (interprovincial trade, rural,
+  PCEIP education, Quality of Life); `rdaas_` adds concordances;
+  `statcan_indicators_` gets a description; `statcan_pumf_` says it computes
+  weighted tables (`statcan_pumf_tabulate`); `statcan_geo_` names the spatial
+  layers (deprivation, housing need, roads) next to the census boundaries, and
+  under `MAPLE_GIS=0` drops "census boundaries", whose tools that profile hides.
+- Requests to `www150.statcan.gc.ca` (WDS, SDMX, CIMT) through the shared HTTP
+  helpers keep their connection open between calls; a retry still goes out on
+  a fresh connection so it can reach another backend. Measured from the hosted
+  container on 2026-11-09: median 20 ms per request instead of 109 ms.
+- StatCan WDS data results: a percentage change, or a contribution to one, in a
+  table "at annual rates" now gets a note that it is the change from the
+  previous quarter or month, not an annualized rate. 36-10-0104's "Chained
+  (2017) dollars percentage change" for GDP was 0.8 in 2026-Q2, which is
+  2,524,127 / 2,503,604 - 1. The note names the table's annualized member when
+  there is one ("Contributions to percent change, annualized").
+- StatCan WDS data results: a contribution to percent change on a "Less:" line
+  or one of its children (36-10-0104's "Less: imports of goods and services")
+  now gets a note that StatCan publishes it with the sign of the line's own
+  change, so it is subtracted when adding components up to the total. WDS sends
+  +0.364 (annualized) for 2026-Q2 while imports rose, and GDP's 3.316 is reached
+  only with it subtracted.
+- `wds_search_cubes`: a keyword search lists active tables before archived ones
+  (each group still in table-number order). Results were in table-number order, so
+  "job vacancy" showed four inactive tables ahead of the current monthly ones and
+  the seasonally adjusted 14-10-0432 ninth of 13; in the Maple Test one answer to
+  the August job vacancy rate used the unadjusted 14-10-0371. A listing with no
+  query keeps the inventory's order.
+
+### Fixed
+
+- `ab_economic_list_tables` reads the StatCan table number before a `_SQL` or
+  `_stage` suffix (`JobVacanciesQuaterly_14100398_SQL` is 14100398). Seven-digit
+  endings, which the dashboard truncated, are still left empty.
+- `arcgis_hub_query_feature_layer` with `return_geometry=True`: a result over the 200,000-byte response budget had its polygons cut, not its rows. On real layers (Ontario GeoHub, Manitoba and Niagara Region, 2026-11-17) every vertex first lost its second coordinate and then each ring was cut to its first part, so the shapes returned were not valid polygons. The budget now drops whole rows, as it already did for the other geometry tools, and `provenance.limits` says how many rows were kept (for example "the first 3 of 5 items in `rows`"). The budget itself is unchanged. As for `statcan_geo_query_layer`, a single row larger than the budget still comes back whole rather than empty.
+- `wds_get_data_from_cube_coord` (and the other WDS results with a ready citation): a cell of a table without vectors, such as the 98-10 census tables, cited "Vector v0". The citation now names the table alone: `Statistics Canada. Table 98-10-0061-01, <title>. Released 2023-03-29.`
+- The chat demo no longer doubts its own earlier answers in a follow-up. A conversation sends the
+  model only the text of its earlier replies, not the data lookups behind them, so on the live demo
+  a CMHC rent question asked after a census question added "my earlier figures were not retrieved
+  from Statistics Canada, treat them as unverified" to a correct, cited answer. The system prompt
+  now says earlier replies were built from tool results fetched at the time.
+- `check_answer` names both mistakes when a figure is in the table's scale
+  (thousands) and from the newer period. Alberta employment cited as 2660
+  persons for 2026-09 is 2,659.9 thousand, the 2026-10 value; it was reported
+  only as a wrong value.
+- CKAN DataStore queries can filter by a column that is not in the requested
+  output fields. Unknown filter columns are still checked against the full schema.
+- Python, R and Julia clients: `search_tools` (`ms_search_tools` in R) asks the server for `detail="full"`, so its `input_schema` column holds each tool's input schema again instead of `{}` against the compact search. The frame gains an `arguments` column, the one-line signature, filled with `detail="brief"`; the column a response does not carry is null (`NA`, `missing`). Against a server older than the compact search, which rejects `detail`, the clients repeat the search without it. The test fixtures are re-recorded against the hosted server.
+- `cmhc_get_table_data`: the total row of a cross-tab table (one row per
+  province or centre) came back with an empty `period`, because CMHC's CSV
+  export leaves that row's label cell blank. It is now labelled with the
+  requested geography's name ("Canada", or the province for a centre
+  breakdown), like every other row is with its own.
+- `cmhc_list_metropolitan_areas` searched by `name` now cites the province page
+  the match came from (Edmonton: `MetsByProvince/48`). Before, the result named
+  the `{province_id}` template, and `reproduce_code` fell back to whichever of
+  the 13 parallel province requests finished last: an Edmonton lookup cited
+  Saskatchewan's page (`/47`).
+- `cmhc_get_table_data` dropped the period a table refers to. CMHC states it on
+  the line under the export's title ("October 2025", "January 1990 to September
+  2026"), and a cross-tab's rows are provinces or centres, so the values came
+  back undated. The result now has a top-level `reference_period`, in CMHC's
+  words, and a `citation` line that carries it. `provenance.as_of` is set to the
+  first of the latest month when the period names a month. Brief mode keeps all
+  three.
+- A Rental Market Survey table fetched without a `dwelling_type_desc_en` filter
+  is CMHC's combined row and apartment figure (Edmonton's 2025 average rent:
+  $1,493, against $1,464 for apartments only), and nothing in the result said
+  so. `applied_filters` now includes CMHC's own defaults, `default_filters` names
+  the ones CMHC chose, and `filter_notes` gives, for each filter, the value
+  applied and the other values that can be passed.
+- `cmhc_get_table_data` refused `column_field="Bedroom Type"` on "% Change of
+  Average Rent", although "Average Rent ($)" accepts it: that table has a single
+  column breakdown, so HMIP lists no column labels for it. The label is now
+  accepted there when the table's own title names it, a column code HMIP lists
+  only in a link (`RENTQUARTILE`) is accepted as given, and a wrong label is
+  refused with the valid column and row labels and their codes listed
+  separately.
+- `cmhc_get_table_data` refused field codes that are words, such as Core Housing
+  Need's `column_field="HouseholdType"` and `row_field="Province"`, even though
+  `cmhc_get_table_options` lists exactly those codes. It treated only numbers and
+  `TIMESERIES` as codes and looked anything else up as a label. A value is now
+  matched against the table's own codes first (in any case, sent in HMIP's
+  spelling), then against its labels.
+- `wds_get_data_from_vectors` and `wds_get_data_by_reference_period_range`
+  with a `transform` or `frequency` sent one request per vector before
+  checking the 300-vector limit. The limit is checked first.
+- Daily and weekly series aggregated to a lower frequency (Bank of Canada,
+  StatCan) lost a complete last or first period when the observations sit
+  more than four days from its edge, as weekly Wednesday data do. The
+  tolerance now follows the spacing of the observations.
+- `statcan_reference_` searches, `statcan_surveys_search_rdc_holdings`,
+  `statcan_surveys_search_rtra_datasets` and `statcan_daily_get_releases`
+  kept a page that could not be parsed (a maintenance notice answered with
+  HTTP 200) in the cache, so they failed for up to a day after StatCan
+  recovered. Such a page is no longer cached. The Daily tools also treat an
+  HTTP 406 or 409 as an error, not as the page.
+- RDaaS tools let a reply that is not JSON out as an untyped error; it is now
+  an upstream error.
+- `sdmx_get_structure` reported "no such table" for any WDS fault; only a
+  table that does not exist says so now.
+- `statcan_pumf_tabulate` lost value labels when the data and the codebook
+  write a code differently (`01` and `1`).
+- `statcan_lode_list_files` failed when one file's link was dead; that file
+  now comes back with no size and a note.
+- `statcan_census_profile_search_geography`,
+  `statcan_census_profile_search_characteristic` and
+  `statcan_sdg_search_indicators` ignore accents: "montreal" finds
+  "Montréal". The SDG search also labelled every result as cached.
+- `statcan_census_profile_archive_get_download_link`: the description said
+  only CSV and TAB are covered; 2016 also offers IVT and XML.
+- `telecom_prices` tables: a data row whose values all fall between 1990 and
+  2100 was read as a year header, dropping the row and mislabelling the rows
+  after it.
+- `cer_query_file` ignored `start` and `end` on a file with no date or year
+  column; it now says so.
+- `electricity_quebec_get_facility_flows`: an `end` given as a date alone
+  dropped that day's hours after midnight.
+- `check_answer` read "per thousand" and "pour mille" as a scale of 1,000,
+  and rejected a typeset minus sign ("−3.1") or accounting parentheses as
+  not a number.
+- `reproduce_code` on a `calc_` tool or `check_answer` wrote a script for an
+  unrelated metadata request; it now declines. Generated Julia filters
+  matched empty cells as the text "missing", and a NUL character in an
+  argument broke generated Python and R scripts.
+- CKAN, ArcGIS Hub and Socrata searches and queries: two different requests
+  could share one cached answer when an argument held a colon.
+- A source with its own licence terms whose file sits on a statcan.gc.ca URL
+  (the transit agency list) was labelled with the Statistics Canada licence
+  and `commercial_use` "allowed".
+- CER and GC InfoBase CSV files with a trailing comma on a data row failed
+  with a shape error.
+- WFS sources: a blank error text from the server raised an untyped error.
+- Python client: a server-sent-events body holding U+2028 or U+0085 inside
+  JSON text failed to parse.
+- `gazette`, `cihi` and CMHC data-table tools let a malformed XML feed or
+  sitemap out as an untyped error (and `gazette` kept the bad feed cached for
+  an hour); it is now an upstream error and is not cached.
+- `tc_recalls`: a `make` or `model` of only dots (`..`) was normalised out of
+  the request path, returning every recall; it is rejected.
+- `earthquakes` search: `event_id` with any other filter silently ignored the
+  filter; the combination is refused.
+- `abs_get_data` dropped the series' unit multiplier, so a value in thousands
+  read as units; `unit_multiplier` now carries it.
+- `bc_environment`: an impossible date (`2024-13`, `2024-02-31`) passed as a
+  bound and silently matched the wrong rows or raised an untyped error; it is
+  rejected.
+- `oeb_query_dataset`: `year=202` matched 2020 to 2029 by prefix; `year` must
+  be a four-digit year.
+- `drivebc` events: a `bbox` missed a road segment crossing the box with no
+  vertex inside it.
+- `cwfis_get_fire_danger` no longer says a point in Canada is outside the grid
+  when the fire season has ended there. Outside the season regions drop off the
+  national fire danger map (on 2026-11-10 it covered Ottawa but not Kelowna,
+  Edmonton or Whitehorse); the error now says so, and that no current rating
+  does not mean no risk.
+- The CMHC docs said a `-` cell is a counted zero and that `++` means not applicable; CMHC defines `-` as no units in the universe for the category and `++` as a rent change not statistically different from zero.
+- A tool whose module failed to import on the server now answers
+  `[module_unavailable]`, naming the module and the import error, instead of
+  `Unknown tool: 'call_tool'`, and `/stats` counts it under that code.
+- `ckan_get_dataset` on the `federal` portal (open.canada.ca) now returns the portal's own dataset fields in `extras`, which were all dropped before: update `frequency` with a plain-words `frequency_label` (English or French), `date_published`, `date_modified`, `portal_release_date`, `time_period_coverage_start` and `_end`, `org_title_at_publication`, `jurisdiction`, `subject`, `audience`, `collection`, `data_series_name`, `data_series_issue_identification`, `program_page_url` and `maintainer_email`, plus each resource's `date_published`. The fields are kept in brief results.
+- CKAN `extras` now read bare `{"en", "fr"}` dicts in the requested language (English when that translation is blank), shorten midnight timestamps ("2017-09-07 00:00:00") to the date, and leave out the year-1 placeholder date some records carry.
+- Several readers checked a download's size only after the whole body was in
+  memory, or had no cap at all. `get_raw` now takes `max_bytes`: a declared
+  Content-Length over it is refused unread and a body that outgrows it is cut
+  off mid-stream. The existing caps are unchanged; they now apply before the
+  read in `cbsa_tariff` (the Access zip), `fed` (the release zips), the CBSA
+  border wait times file, `competition_bureau` pages, the ECB structure,
+  dataflow and series files, and the CIPO data dictionary.
+  `ourcommons` pages, XML and CSV files (16 MB) and `dfo_landings` CSV files
+  (40 MB) had no cap and now have one.
+- `transit_*` feeds: a deflate bomb inside one 4 MB range of a feed's
+  `stop_times.txt` was inflated whole (about 4 GB) before the 1 GB scan limit
+  was checked; the limit now applies while inflating. A host that ignored a
+  `Range` request and answered 200 with the whole feed had that feed read into
+  memory before the status was checked; it is no longer read. Redirects of
+  feed links are now checked like the other remote ZIP readers (same site or a
+  known file host, never plain http, an IP address or `localhost`).
+- `statcan_lode_*` previews: a host that answered a `Range` request with 200
+  and the whole archive (up to 1.67 GB) had it read into memory before the
+  status was checked. It is no longer read, and a range answer longer than the
+  range asked for is an error.
+- `ised_ip_horizons_get_dictionary`: the dictionary ZIP's workbook was inflated
+  whole whatever its size, so a 5 MB ZIP could hold gigabytes. The workbook is
+  capped at 20 MB inflated, the limit `remote_zip.read_member` puts on codebooks.
+- `cbsa_tariff` only follows an Access zip link on `www.cbsa-asfc.gc.ca` over
+  https; an absolute link to another host on the edition page is ignored.
+  `dfo_landings` only downloads catalogue links on `api-proxy.edh-cde.dfo-mpo.gc.ca`,
+  and reads a file with a byte Windows-1252 leaves undefined (0x81) instead of
+  failing on it.
+- `fed_*` parses a release in the file-parsing pool instead of a thread of the
+  default executor that DNS lookups share, so a 127 MB XML parse no longer
+  holds up name resolution.
+- Nine readers opened `.xlsx` workbooks with openpyxl directly and skipped the
+  unpacked-size check that the other readers apply (it refuses a workbook whose
+  ZIP parts unpack past 400 MB in all, or 32 MB for a part openpyxl loads whole,
+  before any of it is read). A small crafted file could hold a parsing worker for
+  tens of seconds. The check now covers the Manitoba and Saskatchewan election
+  results (`elections_provincial_*`), the historical federal results
+  (`elections_results_*`), `finance_canada_*` fiscal tables, the CIPO data
+  dictionary (`ised_ip_horizons_get_dictionary`), the NFD dictionary
+  (`nfd_describe_table`, which still answers without it), `nl_stats_read_file`,
+  the OEB workbooks (`oeb_*`) and the telecom price workbooks (`telecom_prices_*`).
+- `ircc_*`, `isc_*`, `elections_financial_returns_*` and the Saskatchewan and
+  British Columbia election files decoded UTF-8 and then strict Windows-1252, so a
+  file with one of the five bytes Windows-1252 leaves undefined (0x81, 0x8d,
+  0x8f, 0x90, 0x9d) failed with a decoding error. They now fall back to latin-1
+  as the other CSV readers do. `phac_infobase_*` does the same when a table's
+  declared encoding fails.
+- CSV files read through the shared CSV reader (CER, GC InfoBase, CDC, CGC,
+  NFD, Yukon, elections results) are read as UTF-16 when they start with a
+  UTF-16 byte-order mark; they were read as Windows-1252, which gave text full
+  of NUL characters and column names that matched nothing.
+- A CSV with a quote left open (the rest of the file becomes one field) failed
+  with a bare `_csv.Error`; the shared CSV reader and `phac_infobase_*` now
+  raise an upstream error that says so.
+- XML that declares entities (the "billion laughs" expansion) is refused by
+  defusedxml before anything is expanded, but four readers caught only the
+  parser's `ParseError`, so the refusal reached the client as an untyped error.
+  `ourcommons_*` (as "returned no XML"), `statcan_delta_*` (codeset and metadata
+  files) and the StatCan SDMX tools now report it like any unreadable XML, and
+  `oeb_*` XML files that are malformed or declare a DTD are an upstream error.
+- `statcan_delta_*` parsed the metadata XML of a Delta File (up to 80 MB) on the
+  server's event loop, and `recalls_*` decoded and read its open-data JSON file
+  (up to 64 MB) there too, so every other request waited for seconds while either
+  ran. Both now parse in the file-parsing pool. `statcan_cimt_*` code lists moved
+  from a thread of the default executor, which DNS lookups share, to the same pool.
+- `statcan_surveys_get_survey_metadata` with `lang="fr"`: `status` and `frequency` were always empty, because the French record labels them "Statut" and "Fréquence".
+- `statcan_indicators_get_indicators` says when an indicator has no level.
+  StatCan's own feeds (`ind-all.json`, `ind-econ.json`, `ind-hp.json`) send
+  `value` as an empty string for some indicators and fill only `growth`:
+  checked on 2026-11-16, 119 of 2,378 indicators in `all`, 26 of 230 in
+  `economic` and 3 of 116 in `homepage`, among them the Consumer Price Index
+  (`growth` "3.1%", 12-month change), its components, the price indexes and
+  real GDP. The empty text is upstream, not a parsing gap, but nothing said so
+  and a reader could take the empty `value` for a missing answer. Now
+  `provenance.limits` names the indicators of the result whose `value` is empty
+  (in English or French), says that only `growth` is given, and points to the
+  series behind them (`source_table`, with `wds_get_cube_metadata` and
+  `wds_get_data_from_cube_coord`, or `wds_get_data_from_vectors`; `v41690973`
+  for the all-items CPI of Canada). `value` is still a plain string, so the
+  output shape is unchanged; the tool's other notes in `limits` now end with a
+  full stop, like the other tools' notes.
+- `pmra_search_products` and `pmra_get_product`: the English product extract is now read
+  by column name, so a column Health Canada inserts before `Current / Historical` can no
+  longer shift status, ingredient or registrant values. A header that has the known first
+  column but lacks one of the 16 known names is refused. The French extract and the other
+  extracts are still read by position over the leading columns.
+- `arcgis_hub_get_dataset`: Kamloops' Photo Grid layer advertises CSV, shapefile,
+  GeoJSON and KML exports that all answered HTTP 404 (2026-11-16). The tool now returns
+  no links for that one layer and points to `arcgis_hub_query_feature_layer`.
+- `ons_get_series` without `dataset` now reads the dataset ONS released most
+  recently, not the first search hit. ONS search began ranking PGDP (last
+  released 2018) first for IHYQ, so a request for 2025 quarters found nothing.
+  The other datasets are still listed in `other_datasets`.
+- The modules smoke test reads AER's and CWFIS's `note` with `.get()`: brief
+  results leave out a null field.
+- `plan_query` leaves one city's tools out of a plan for other places. A
+  question about rents in Edmonton and Calgary listed RentSafeTO and Toronto's
+  short-term rentals, and one about restaurant inspections in Ottawa started
+  with Toronto's DineSafe. Toronto, Edmonton (`eps_`, `ets_`, `epcor_`) and
+  Vancouver tools stay when the question names that city, its province, or no
+  place.
+- `pmra_search_products` and `pmra_get_product`: every call
+  failed with "the product extract has 18 columns, expected 16" since Health Canada added
+  two columns (active ingredient concentration and CAS number) to the end of the product
+  extract. The first 16 columns are unchanged, so extra trailing columns are now ignored;
+  a header with fewer columns is still refused.
+- `reproduce_code`: for an SDMX call with a transform and an `end_period`, the generated
+  R, Python and Julia now stop on the last day of `end_period`, as the tool does
+  (`end_period="2024"` on a monthly series keeps 2024-12; the scripts stopped at 2024-01).
+- `aer_*` ST98 and `cihi_*` workbook readers now check a workbook's declared unpacked size
+  before loading it, as the other `.xlsx` readers do.
+- `.xlsx` size limit: the 32 MB per-part cap now applies only to the parts openpyxl loads
+  whole (shared strings, styles, workbook, theme). A large embedded image or pivot cache no
+  longer fails with a misleading "unpacks to ... XML" error; the total cap is unchanged.
+- `electricity_alberta_monthly_summary`: a month AESO has not published (or whose page has
+  no readable table) is remembered as missing for 5 minutes, so a range holding a
+  never-published month no longer re-requests it on every call; a late-posted month is
+  still picked up within minutes.
+- `wds_get_full_table_download` no longer refuses the three real-time vintage
+  tables 16-10-0118, 16-10-0119 and 20-10-0019 as unknown tables. They are
+  missing from WDS's table inventory and metadata, but their full-table CSV zips
+  exist (122, 134 and 270 MB; one row per vintage in the `Release` column), and
+  the link is returned.
+- `reproduce_code` no longer replays an arbitrary request for a tool that fans
+  out over ids. When a tool made several requests to one endpoint that differ
+  only in an id or a year (13 provinces' lists, one CSV per year) and its
+  result's URL names none of them, `reproduce_code` fell back to the last
+  request recorded, which depends on the order the parallel requests started in
+  and so changed from run to run. It now returns no script and a note: "This
+  result combines N requests to one endpoint family (...), so a script cannot
+  say which one to repeat. Call the tool again with an argument that selects
+  one of them, then reproduce that call." (also in French). A result that names
+  one of the requests, one request to the endpoint, and paging through one
+  endpoint behave as before.
+- `bc_lobbyists_search_registrations`, `bc_lobbyists_search_activity_reports`
+  and `bc_lobbyists_summarize_activity`: a `client` name no longer returns, along
+  with the clients it names, every record that has no client number. A client
+  number is compared only when `client` is all digits.
+- `bc_env_get_snow_readings` and `bc_env_get_streamflow`: an `end` earlier than
+  the current season (snow) or water year (streamflow) with no `start` no longer
+  reads only the current file and answers with an empty series, in the
+  streamflow case with a note blaming the station id. The call is now refused
+  with a message that asks for `start`, since reading the archives from their
+  first row would stop at the byte cap and return the oldest readings, not those
+  nearest `end`. A call with `start` is unchanged.
+- `bc_env_get_snow_station_data` and `bc_env_get_snow_readings`: with
+  `lang='fr'`, the error for a bad station id or variable now shows the value
+  received instead of the literal text `{station!r}` or `{variable!r}`.
+- `ab_economic_get_data`: a filter column named `table` is refused with a
+  message saying the name is reserved. It used to replace the validated table
+  name in the request while the result still reported the table asked for.
+- `electricity_alberta_get_pool_price`, `electricity_ontario_get_hourly_demand`,
+  `electricity_ontario_get_supply_by_fuel`, `electricity_quebec_get_demand`,
+  `electricity_quebec_get_generation` and `electricity_quebec_get_trade`: with
+  only an `end_date`, they now return the last `limit` rows up to that date
+  instead of the earliest rows of the window, which left out the end date's own
+  hours. A call with both dates, or with only a `start_date`, is unchanged.
+- `electricity_alberta_get_monthly_summary`: a month whose page AESO has not
+  posted yet (or whose page cannot be read) is no longer remembered as "not
+  published" for six hours. The next call asks AESO again, so a month appears
+  as soon as the page is up.
+- `electricity_ontario_get_hoep_history`: with no `year`, the default is now
+  2025, the last year of the HOEP series, rather than last calendar year. From
+  2027 the old default fell outside the allowed range and the call failed.
+- `eccc_query_items`: a `sortby` with several keys, such as
+  `STATION_NAME,-LATITUDE`, is no longer refused as one unknown property name;
+  each key is checked on its own.
+- `hc_drug_search_products`: a blank `schedule` or `atc` no longer counts as a
+  filter. A call with only a blank value is refused ("give at least one"), where
+  it used to return the whole product table as matches.
+- `hc_nhp_search_products`: `query` and `company` now find names and holders
+  whose accented letters differ in case from the text typed, such as
+  `échinacée` for "Échinacée Plus". The search reported no match before.
+- `ons_get_series` and `ons_get_indicator`: `start_period` and `end_period`
+  are now compared as dates, so a bound written in another form than the
+  series' periods filters correctly. Before, `start_period="2026-07"` on a
+  quarterly series kept `2026-Q1` and `2026-Q2`, `start_period="2026-Q3"` on a
+  monthly series dropped every 2026 month and ended in "no values", and
+  `end_period="2026-03"` on a quarterly series dropped `2026-Q1`. A period is
+  kept when it overlaps the window, so a month bound keeps the quarter that
+  contains it. A month that does not exist (`2026-13`) is now refused as not
+  a period.
+- `oeb_list_datasets`, `oeb_describe_dataset` and `oeb_query_dataset`: a
+  degraded answer from www.oeb.ca (a listing page with no datasets, or an open
+  data page with no yearbook links) is no longer cached, so one bad answer no
+  longer fails every call for the next six hours. A listing whose pager still
+  has a next page after the page limit now fails with an upstream error
+  instead of being cached as the whole catalogue.
+- `transit_get_route_summary`: a trip whose first stop departs at `00:00:00`
+  (with a blank arrival time) is no longer left out of the directions, the
+  hourly counts and the first and last departures while `trips_on_date` still
+  counted it.
+- `nrcan_geo_search_names`: `radius_km` is rounded up to the whole kilometre
+  the place-name service takes, not to the nearest (`0.4` and `2.5` were
+  searched as 1 and 2 km, so places between 2 and 2.5 km were missed). When
+  the radius is rounded, the result's limits say which radius was searched.
+- `nl_stats_read_file`: a date-only Excel cell now reads as `2026-01-01`
+  rather than `2026-01-01 00:00:00`; cells that carry a time keep it.
+- `socrata_query_dataset_rows` and `opendatasoft_vancouver_query_records`: two
+  queries whose free-text parameters differ only in where a `:` falls (for
+  example `select="a"`, `where="b:c"` and `select="a:b"`, `where="c"`) no
+  longer share a cache entry, so one is no longer answered with the other's
+  cached rows.
+- `sdmx_get_data`: with a transform, `end_period` now keeps the whole end period.
+  `end_period="2024"` on a monthly series cut the transformed points and the
+  observations at 2024-01; it now keeps through 2024-12 (and `"2024-Q1"` keeps
+  January to March).
+- `sdmx_get_data`: the note that the latest periods are not published ("..")
+  now sees the last published period, as `wds_` results do. A ".." gap inside
+  or at the start of a series was reported as the latest periods being
+  unpublished.
+- `statcan_pumf_` codebooks: a Stata value-label set attached to several
+  variables (`label values q1 yn`, `label values q2 yn`) now labels every one
+  of them, not only the first.
+- `reproduce_code` for `statcan_indicators_get_indicators`: the scripts now keep
+  the rows the tool keeps. They require every meaningful query word in the
+  title in any order (with the tool's alternatives, such as "inflation" for
+  "consumer price index"), read a province named in the query, and map a place
+  name, abbreviation or SGC code in `geo_code` to the feed's own code. Before,
+  `"unemployment rate Alberta"` gave an empty table, `geo_code=48` matched
+  nothing and `geo_code="AB"` failed; the Julia and Excel Power Query scripts
+  also failed to read the nested title. The scripts compare titles with their
+  accents, which the tool ignores, and their notes say so.
+- `reproduce_code`: a blank word filter no longer produces a script with an
+  empty filter (a syntax error in Python and Stata, an empty condition in
+  Power Query). The IRCC Express Entry `program` filter is now matched as one
+  phrase across the round's name and program, as the tool matches it, not word
+  by word.
+- `check_answer`: a Statistics Canada outage while re-reading a figure is now a
+  "not re-read" note, not "No value is published", "not a StatCan series" or
+  "cannot be computed". When the table's metadata does not answer, a note says
+  its geography, seasonal adjustment and unit were not checked, instead of
+  skipping them silently.
+- `check_answer`: a Bank of Canada figure cited for a year, quarter or month of
+  a daily rate now matches the period's average or total, as StatCan figures
+  do. A correct annual average was flagged and the fix said to use the last
+  day's value.
+- HTTP transport: a client over the per-client rate limit no longer holds up
+  everyone else. Its 429 response used to be sent while the limiter's shared
+  lock was held, so a client slow to read that response stalled the rate
+  check of every other request until it did.
+- `statcan_pumf_tabulate`: a table with bootstrap standard errors (EICS 2024,
+  CSWC 2024-2025) downloads the survey's ZIP once instead of twice. The data
+  file and the bootstrap weights are now extracted from the same download.
+- Hosted server: one module that fails to import no longer stops the startup
+  preload. The other modules still load before the port opens and the
+  `search_tools` index is still built; the broken module is logged and its
+  tools say it failed to load.
+- A tool whose module failed to import now fails at once on every later call,
+  with the same `[module_unavailable]` error. Each call used to re-run the
+  whole import on the server's event loop before failing, holding up every
+  other request meanwhile. A module whose resources or prompts fail to import
+  is remembered the same way, and its tools are reported as unavailable.
+- Tools that read published CSV files (CER, GC InfoBase and others) no longer
+  hold up the server while a large file is parsed. Decoding and splitting a
+  file of up to 40 MB now runs in the file-parsing pool, where Excel files
+  were already parsed.
+- Error codes and fix hints now follow the error a tool actually raised. An
+  invalid-argument error raised while handling an outage was coded
+  `[upstream_unavailable]` with a "the source is down, retry" hint, and
+  counted under that code in `/stats`; it is now `[invalid_input]`.
+- `boc_get_observations` with a `transform` (`diff`, `pct_change` and the
+  other changes) on a daily series no longer fails with a `ValueError` when
+  Valet returns no observations for the dates asked (for example a
+  `start_date` after the newest row). It now returns the series with no
+  transformed points.
+- `wds_get_changed_series_list` and `wds_get_changed_cube_list` no longer fail
+  when WDS sends an explicit `null` for an entry's `vectorId`, `coordinate` or
+  `releaseTime`: a null becomes `0` for the vector id and an empty string for
+  the others, as an absent field already did.
+- `calc_rank` and `calc_cagr` now work on bimonthly StatCan series (six
+  periods a year, WDS frequency code 7). Before, every `period`, `start` or
+  `end` was refused with "give a period of that frequency", which no form
+  could satisfy. Write a month (`2025-04`): it names the two-month period that
+  contains it (March and April, labelled `2025-03`). Any other form for a
+  bimonthly series (a year, a quarter, a day) is still refused.
+- Website: Open Alberta and the City of Toronto's portal were each listed, and
+  counted, twice among the sources: once as a CKAN catalogue and once for the
+  tools that read the same publisher. Each now has one row.
+- Website: the yield-curve chart ended with the month of its capture, averaged
+  over only part of that month. It now ends with the last full month, and the
+  home page names it.
+- Website and README: the census wording no longer reads as a contradiction.
+  The removed items are the 2006-2016 census data tables and the 2016 Census
+  Profile service; the archive tools only list the links to the 2001-2016 Census
+  Profile bulk files, now labelled as such.
+- `cmhc_get_table_data`: `table_name` no longer carries the trailing spaces CMHC
+  pads some table names with (for example "Historical Average Rents by Bedroom
+  Type  "); the name is stripped where it is read from the portal, so it and the
+  `citation` agree.
+- `jobbank_get_wages`: `provenance.coverage` now says how many of the published
+  cells are economic regions that repeat their province's wage
+  (`estimate_geography` "provincial"), so "3 with a published wage" for NOC 21211
+  in Alberta no longer reads as three separate estimates when Edmonton repeats
+  Alberta's wage and only Alberta and Calgary are distinct. `published_count`
+  keeps its meaning (cells with a published wage), and its schema description
+  now says it includes those repeats.
+- `plan_query`: a province's own tools (`bc_transit_*`, `drivebc_*`, `bc_env_*`,
+  `bc_lobbyists_*`, `ab_wildfire_*`, `aer_*`) no longer appear in the plan for a
+  question that names only places in other provinces: "transit alerts in
+  Calgary" listed BC Transit and DriveBC. Each city the planner knows is now
+  mapped to its province (`places.CITY_PROVINCES`). The tools stay when the
+  question names no place, names the province or one of its cities, or names a
+  place whose province is not on record.
+- A SoQL query that Socrata rejects now says why. An aggregate without a
+  `group` used to fail with a message cut off inside the dataset's internal
+  column list ("SELECT `permitnum`, `statuscurrent`, ..."), which read like a
+  complaint about unrelated columns. The error now gives Socrata's own reason
+  and code ("Column 'permittype' is not in group by
+  (query.soql.column-not-in-group-bys)") with a hint: list the other selected
+  columns in `group`, or, for an unknown column, use the `field_name` values
+  from `socrata_get_dataset`.
+- `reproduce_code` for a grouped `socrata_query_dataset_rows` call now carries
+  `$group` and `$having` into the script's URL, so the script returns the same
+  grouped counts as the tool instead of raw rows.
+- A Cloudflare challenge no longer counts toward opening a host's circuit
+  breaker (it still shows in `/stats`). StatCan challenges SDMX and CIMT on
+  www150 while WDS on the same host answers, so a few blocked calls in a row
+  used to refuse every WDS tool for a minute.
+- `statcan_surveys_*`, `statcan_reference_*`: Cloudflare's bot challenge on
+  www150.statcan.gc.ca (every automated request since at least 2026-11-17) is
+  reported as the typed "unavailable, do not answer from memory" error, like the
+  other StatCan modules, instead of "returned HTTP 403, retry once". These were the
+  only two modules reading through `get_with_retry`, which hands a 403 back unread.
+  `statcan_surveys_search_surveys` now falls back to IMDB's alphabetical index on
+  www23, which still answers, so survey search works during the challenge; before,
+  the bare 403 skipped that fallback and the tool failed.
+- `statcan_daily_search_archive`: the query matched only as one phrase, so "gross
+  domestic product by industry provinces" missed "Gross domestic product by
+  industry: Provinces and territories", and a year in the query missed a release
+  whose year is its reference period. Every word of the query now has to appear in
+  the title or reference period, in any order, accents ignored, with question words
+  ("when did", "publish") and short connecting words left out. When no release
+  holds every word, the releases matching the most words come back with a `note`
+  saying so (at least half of the words, and two).
+- `statcan_reference_get_section_text` and `statcan_reference_get_publication`
+  read the bilingual pages of 15-203-X (Provincial Gross Domestic Product by
+  Industry), printed with English and French side by side, a column at a time,
+  and keep only the column in `lang`: pages 188 to 196 (the gross output and
+  selected factor incomes approaches) now read as clean English, or as clean
+  French with `lang="fr"`, instead of lines of both interleaved with accented
+  words split ("constitu ées"). Such a page is laid out again with pypdf's
+  layout mode to find the gutter; a table across the page stays as it was, and
+  one-column PDFs are read as before. The result says how many pages had a
+  column dropped. Extracting all 277 pages takes about 4 s longer (13 s
+  instead of 9 s, measured on a busy machine).
+- PDF section headings: a table's labels and wrapped cells ("Vanity
+  Industries", "NFLD. - T.-N.", "Government Business Total") are no longer
+  taken for headings, since a heading must now be followed by running text;
+  headings with one word in lower case ("Approach based on Selected Factor
+  Incomes", "Perspective on the use of the Income and Expenditure Accounts")
+  and, on two-column pages, French headings in sentence case are.
+- A query whose words are stems ("gross" is searched as "gros") now gets its
+  phrase bonus, counted five times at most, so the "Gross Output Approach"
+  heading on page 192 of 15-203-X ranks above the statistical tables that repeat
+  "gross output" in every row.
+- 13-017-X's 2008 edition links the PDF of the whole edition from its side menu
+  only; it is now found (`pdf_url`). When a query reads the 40-page cap of an
+  edition with more pages than that and such a PDF, the PDF (one download,
+  every page) is searched too: matches on pages already read stay cited by
+  their HTML page, the others by their PDF page (`#page=N`). The provenance
+  says so. Queries that stop early are unchanged ("supplementary labour
+  income" reads 5 pages, "provincial allocation" about 30).
+- `statcan_reference_get_section_text`'s description no longer says a query
+  searches every page of the edition; it says up to 40 pages, then the whole
+  PDF where there is one.
+- `statcan_reference_search_documents`, `statcan_reference_search_analysis` and
+  `statcan_reference_search_data` no longer fail with "missing #ndm-results" when a
+  search matches nothing. StatCan's catalogue answers a zero-match search with a
+  "found no results" page that has no results list; that page is now an empty result,
+  and `provenance.limits` explains that every word of the keyword must match and
+  suggests fewer or broader words.
+- `sdmx_get_data` now says which requested members came back with no series. A key
+  such as Ontario and Canada by mortgage interest cost in table 18-10-0004-01 used to
+  return the Canada series alone, with no sign that Ontario was dropped;
+  `provenance.limits` now names each missing member (or each missing combination when
+  several members per dimension are crossed). A key that matches no series at all is
+  a NotFound that names the members asked for, flags ids the table does not have,
+  says which members the combination is published for (mortgage interest cost: Canada
+  only), and points to `sdmx_get_structure` to check the available members.
+- StatCan WDS data results: a series whose latest periods are ".." (status 1,
+  "not available for a specific reference period") now gets a note naming those
+  periods and saying StatCan has not published them, instead of only the status
+  text on each null value. Only trailing periods count, since rows before a
+  series starts are ".." too. For 36-10-0711's current-dollar "All industries"
+  series, ".." for 2024 and 2025 in every province and territory while the
+  chained-dollar series has both years, the note points to 36-10-0222-01, which
+  publishes current-price GDP for those years at market prices rather than basic
+  prices.
+- StatCan WDS data results: an unadjusted series in a table whose title says
+  "seasonally adjusted" (14-10-0287, "seasonally adjusted and trend-cycle") now
+  gets a note naming its own Data type member ("Unadjusted"), since the title is
+  in every citation. A "Trend-cycle" series gets a note that it is a smoothed
+  version of the seasonally adjusted one, which is the headline.
+
+### Security
+
+- `statcan_pumf_tabulate` checked that `url` is a Statistics Canada ZIP link
+  only after its first request, so any HTTPS URL was fetched once. The check
+  now runs before any request, as it already did for the other PUMF tools.
+- `statcan_lode_preview_member` capped the compressed bytes it read but not
+  what they inflate to; a small, highly compressed member could fill memory.
+  It now stops at 64 MB inflated and reports the preview as partial.
+- File tools that take `header_row` (CKAN, Alberta, ECCC Datamart, NWT)
+  reject a value above 1,000 before reading; a huge value used to hold the
+  whole sheet in memory first.
+- ArcGIS service links read from a portal catalogue are checked by host, not
+  by a substring: an IP address, `localhost`, a link with credentials, or
+  `/rest/services/` only in the query string is refused.
+- `statcan_pumf_tabulate`: the microdata download now checks every redirect
+  like the PUMF listing and codebook reads do, and refuses with an error a
+  redirect to plain http, an IP address, localhost, or a host that is neither
+  the publisher's own site nor a known file host. It used to follow a
+  redirect to any host.
+- Excel workbooks whose ZIP parts unpack to more XML than the server will load
+  (400 MB in all, or 32 MB for a part read whole, such as the shared strings)
+  are refused before they are opened, with an error that says to download the
+  file from the portal instead. A small crafted file could otherwise hold a
+  parsing worker for tens of seconds where no time limit could stop it.
+- The error a caller sees when a module fails to load gives the exception type
+  and a message with server file paths removed; the full text stays in the
+  server log.
+- Python scripts from `reproduce_code` now identify themselves as "MapleStats MCP
+  reproduction script" with the project's address, instead of a browser-like
+  User-Agent (`Mozilla/5.0 (compatible; research script)`). No MapleStats code
+  poses as a web browser. The old value is kept, unused, in
+  `reproduce/render.py` as a record.
+
 ## [0.5.0] - 2026-11-08
 
 The largest release so far: 457 tools in 89 modules (399 in 78 for 0.4.8). New international comparators (OECD, Eurostat, ILOSTAT, UK ONS, ABS, Federal Reserve Board, ECB), Bank of Canada survey and projection tools, cross-series `calc_` tools, R, Python and Julia clients, Alberta energy (AER ST98, AESO) and fisheries (DFO) data, City of Toronto tools, StatCan Daily release tables, and LFS standard errors and CVs with SAS, SPSS and Stata files in PUMF tabulation. The hosted server now offers PUMF tabulation. No tool from 0.4.8 was removed.

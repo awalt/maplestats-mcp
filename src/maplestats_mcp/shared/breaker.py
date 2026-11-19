@@ -3,18 +3,20 @@
 Every client shared/http.py creates sends through it, so a host that keeps
 failing stops costing each caller its full timeout. After
 MAPLE_BREAKER_FAILURES failures in a row within MAPLE_BREAKER_WINDOW_SECONDS
-(timeouts, connection errors, 5xx answers, Cloudflare challenges) the host's
-breaker opens: requests to it raise CircuitOpen at once, without being sent.
-After MAPLE_BREAKER_COOLDOWN_SECONDS one request goes through as a probe;
+(timeouts, connection errors, 5xx answers) the host's breaker opens:
+requests to it raise CircuitOpen at once, without being sent. After
+MAPLE_BREAKER_COOLDOWN_SECONDS one request goes through as a probe;
 an answer closes the breaker, a failure opens it for another cooldown.
 
 What does not count: a 4xx answer (the caller's input, or a rate limit the
-host answered), and a second failure inside one logical call. The retrying
-helpers in shared/http.py and shared/retrying.py run each call in
-`one_call()`, so a call whose three attempts all time out is one failure,
-not three. Any answer that is not a failure resets the count, so a host
-that fails now and then (geo.statcan.gc.ca answered 6 of 10 requests on
-2026-09-27) is never cut off by its bad moments alone.
+host answered), a Cloudflare challenge (counted in /stats only: publishers
+challenge some paths of a host and not others), and a second failure inside
+one logical call. The retrying helpers in shared/http.py and
+shared/retrying.py run each call in `one_call()`, so a call whose three
+attempts all time out is one failure, not three. Any answer that is not a
+failure resets the count, so a host that fails now and then
+(geo.statcan.gc.ca answered 6 of 10 requests on 2026-09-27) is never cut off
+by its bad moments alone.
 
 The state is per process and in memory. It holds host names only, never
 paths, query strings or anything a caller typed beyond the host its tool
@@ -160,6 +162,14 @@ class CircuitBreaker:
                 if call is not None:
                     call.counted.add(host)
             if not config.get_breaker_enabled():
+                return
+            if kind == "cloudflare":
+                # Counted for /stats, never toward opening: a challenge is a quick answer
+                # for one path, not a host that is down. StatCan challenges its SDMX and
+                # CIMT paths on www150 while WDS on the same host answers (checked live
+                # 2026-11-18); opening www150's breaker would cut WDS off too.
+                if probe:
+                    entry.probing = False
                 return
             now = self._clock()
             # A failed probe, or any failure while a probe is due, reopens at once.

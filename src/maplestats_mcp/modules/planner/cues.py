@@ -102,6 +102,9 @@ SIDE_TRIPS: dict[str, tuple[str, ...]] = {
     "borealis_search_ivt": OLDER_CENSUS,
     "statcan_census_profile_archive_": OLDER_CENSUS,
     "statcan_geo_list_services": BOUNDARIES,
+    # Census geography lookups (codes, UIDs, small areas): the steps name their cue words.
+    "statcan_geosuite_": (),
+    "rdaas_get_classification_categories_detailed": (),
     # A guide's or reference paper's own text answers a definition or a method question.
     "statcan_reference_": (),
     "boc_search_groups": (),
