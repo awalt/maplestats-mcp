@@ -48,6 +48,17 @@ WATER = (
     "eau",
     "eau potable",
 )
+# Calgary's civic census by community (1968-2019).
+CIVIC_CENSUS = (
+    "civic census",
+    "municipal census",
+    "community population*",
+    "neighbourhood population*",
+    "population by community",
+    "recensement municipal",
+    "population par quartier",
+    "population des quartiers",
+)
 ENERGY = (
     "energy",
     "oil",

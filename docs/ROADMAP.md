@@ -4,7 +4,7 @@ Source coverage plan for MapleStats MCP. This is the authoritative list of
 what the package will cover — scoped by Daniel on 2026-09-14, superseding
 any narrower or broader source list implied elsewhere.
 
-**State at 2026-11-19:** 488 tools in 92 modules. Every source in the tables below is
+**State at 2026-11-19:** 491 tools in 93 modules. Every source in the tables below is
 `Shipped`, `Covered`, or has a recorded reason it is not built (`Blocked`, `Out of scope`,
 `Not built`). Local coverage is 86 ArcGIS Hub portals, 5 Socrata, 10 CKAN and one
 Opendatasoft. What is left is launch work (blog post, client releases to CRAN, PyPI and the Julia
@@ -143,7 +143,7 @@ portal is confirmed to exist and be reachable.
 | Victoria | Shipped | opendata.victoria.ca (VicMap), ArcGIS Hub: `arcgis_hub_*` (`portal="victoria"`), 3 tools, same shape. English-only. |
 | Surrey | Shipped | opendata-surrey.hub.arcgis.com (City of Surrey Open Data Catalog), ArcGIS Hub: `arcgis_hub_*` (`portal="surrey"`), 3 tools, same shape. [Details](findings/municipal-sources.md#surrey) |
 | Vancouver | Shipped | opendata.vancouver.ca, Opendatasoft (Explore API V2): `opendatasoft_vancouver_*`, 3 tools (dataset search, dataset detail with fields/download links, direct record queries with ODSQL filtering/sorting). [Details](findings/municipal-sources.md#vancouver) |
-| Calgary | Shipped | data.calgary.ca, Socrata (SODA): `socrata_*` (`portal="calgary"`), 5 tools, same shape as Nova Scotia/New Brunswick's. English-only. 413 datasets confirmed live. |
+| Calgary | Shipped | data.calgary.ca, Socrata (SODA): `socrata_*` (`portal="calgary"`), 5 tools, same shape as Nova Scotia/New Brunswick's. English-only. 413 datasets confirmed live. 2026-11-19 (issue #266): named tools in `modules/calgary/` (`calgary_*`, 3 tools) for building permits (list and grouped counts, housing units and estimated cost; every application since 1999, daily) and civic census community populations (1968-2019; the City held no civic census after 2019), through the Socrata client. Open Government Licence - City of Calgary 2.1. No Calgary Police Service crime tool: its community crime and disorder datasets (78gh-n26t, h3h6-kgme) redirect to a login page and left the catalogue, checked live 2026-11-19. |
 | Edmonton | Shipped | data.edmonton.ca, Socrata (SODA): `socrata_*` (`portal="edmonton"`), 5 tools, same shape. English-only. 1,421 datasets confirmed live — the largest Socrata catalogue this server covers. |
 | Ottawa | Shipped | open.ottawa.ca, ArcGIS Hub: `arcgis_hub_*` (`portal="ottawa"`), 3 tools, same shape as the other ArcGIS Hub municipal modules (migrated off CKAN per the city's own 2023/24 announcement). English-only. 241 datasets confirmed live. |
 | Winnipeg | Shipped | data.winnipeg.ca, Socrata (SODA): `socrata_*` (`portal="winnipeg"`), 5 tools, same shape. English-only. 235 datasets confirmed live. |
