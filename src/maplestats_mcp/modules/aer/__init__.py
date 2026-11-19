@@ -29,10 +29,10 @@ statistical reports are ST96 (Pipeline Approval and Disposition Daily
 List) and ST100 (Pipeline Construction Notification List), neither
 pursued in this pass; this module does not claim pipeline coverage.
 
-ST3's `.xlsx` files stay link-resolution-only (confirmed existence via
-HEAD). ST98's executive-summary workbooks are parsed into tidy rows
-(st98.py): each holds a few hundred values, where an ST3 workbook is a
-full monthly production file better downloaded whole.
+ST3's workbooks are read into tidy monthly rows (st3.py) for every year
+the ST3 page links, 2017 to the current year (read live 2026-11-19);
+`aer_get_production_volumes_link` still returns the current file's link.
+ST98's executive-summary workbooks are parsed into tidy rows (st98.py).
 
 ST98 is AER's annual Alberta Energy Outlook: history to the year before
 the edition and AER's forecast for the next ten years, flagged per row.
@@ -42,8 +42,9 @@ MODULE_NAME = "aer"
 MODULE_DESCRIPTION = (
     "Alberta Energy Regulator (AER) statistical reports (www.aer.ca): ST1 "
     "daily well-licence lists (raw report text) and monthly/yearly archive "
-    "links, ST3 monthly production-volume/price XLSX download links "
-    "(butane, ethane, gas, NGL, oil, propane, sulphur, oil prices), and the "
+    "links, ST3 monthly production-volume/price XLSX download links and "
+    "monthly supply, disposition and price rows from 2017 (butane, ethane, "
+    "gas, NGL, oil, propane, sulphur, oil prices), and the "
     "ST98 Alberta Energy Outlook data (2022 to the latest edition) as tidy "
     "rows: reserves, prices, capital expenditure, energy production, demand "
     "and removals, crude oil and bitumen supply, and drilling, with AER's "
@@ -54,8 +55,9 @@ MODULE_DESCRIPTION_FR = (
     "Rapports statistiques de l'Alberta Energy Regulator (AER, www.aer.ca) : "
     "listes quotidiennes ST1 des permis de puits (texte brut) et liens "
     "d'archives mensuelles/annuelles, liens de téléchargement XLSX ST3 des "
-    "volumes de production mensuels et des prix (butane, éthane, gaz, LGN, "
-    "pétrole, propane, soufre, prix du pétrole), et données ST98 des "
+    "volumes de production mensuels et des prix, et lignes mensuelles "
+    "d'offre, d'utilisation et de prix depuis 2017 (butane, éthane, gaz, "
+    "LGN, pétrole, propane, soufre, prix du pétrole), et données ST98 des "
     "perspectives énergétiques de l'Alberta (de 2022 à la dernière édition) "
     "en lignes ordonnées : réserves, prix, dépenses en immobilisations, "
     "production, demande et sorties d'énergie, offre de pétrole brut et de "
