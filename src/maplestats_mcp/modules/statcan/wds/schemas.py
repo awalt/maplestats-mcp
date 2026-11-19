@@ -463,17 +463,50 @@ class LeafMembers(BaseModel):
     provenance: Provenance
 
 
+class TableRebuild(BaseModel):
+    """What rebuilding a table through WDS takes."""
+
+    series_in_table: int = Field(description="Series in the whole table (nbSeriesCube).")
+    combinations: int = Field(
+        description="Member combinations the script asks for; WDS answers only the published "
+        "ones, so this is at least the number of series kept."
+    )
+    periods_per_series: int = Field(description="Periods asked for per series (latestN).")
+    wds_calls: int = Field(description="WDS calls the script makes (about one a second).")
+    within_limit: bool = Field(
+        description="False when wds_calls is over the limit: keep fewer members or a later "
+        "start_period."
+    )
+
+
 class FullTableDownloadLink(BaseModel):
     product_id: int
     format: str  # "csv" or "sdmx"
     language: str  # "en" or "fr"
     download_url: str
+    file_check: Literal["downloadable", "blocked", "not_checked"] = Field(
+        default="not_checked",
+        description="What StatCan answered when MapleStats asked for the file's first bytes just "
+        "now: 'downloadable' (the file came back), 'blocked' (StatCan's captcha, which only a "
+        "person in a web browser can pass) or 'not_checked'. Either way no script relies on "
+        "the file: StatCan announced in November 2026 that it blocks automated full-table "
+        "downloads.",
+    )
+    notes: list[str] = Field(
+        default_factory=list,
+        description="StatCan's block on full-table files, and how the table is rebuilt through "
+        "WDS instead. Pass these on to the user.",
+    )
+    rebuild: TableRebuild | None = Field(
+        default=None,
+        description="CSV only: the size of rebuilding the table (or the members and periods "
+        "asked for) through WDS, which StatCan still serves to scripts.",
+    )
     scripts: list[Script] = Field(
         default_factory=list,
-        description="CSV only: Python and R scripts that download the zipped CSV to "
-        "data/raw/, keep the members and periods asked for, and print a short summary "
-        "(size, each column's values, the first and last rows) instead of the rows. Run "
-        "one and read its output rather than fetching the table's rows into the conversation.",
+        description="CSV only, and only when the rebuild is within its limit: a Python script "
+        "that rebuilds the table through WDS and writes the CSV StatCan publishes (same columns, "
+        "order and values) to data/raw/. Offer it; run it only if the user agrees.",
     )
     provenance: Provenance
 

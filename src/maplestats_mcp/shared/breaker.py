@@ -3,9 +3,9 @@
 Every client shared/http.py creates sends through it, so a host that keeps
 failing stops costing each caller its full timeout. After
 MAPLE_BREAKER_FAILURES failures in a row within MAPLE_BREAKER_WINDOW_SECONDS
-(timeouts, connection errors, 5xx answers, Cloudflare challenges) the host's
-breaker opens: requests to it raise CircuitOpen at once, without being sent.
-After MAPLE_BREAKER_COOLDOWN_SECONDS one request goes through as a probe;
+(timeouts, connection errors, 5xx answers) the host's breaker opens:
+requests to it raise CircuitOpen at once, without being sent. After
+MAPLE_BREAKER_COOLDOWN_SECONDS one request goes through as a probe;
 an answer closes the breaker, a failure opens it for another cooldown.
 
 A Cloudflare challenge is different from a timeout or a 5xx: it is a policy block
@@ -21,12 +21,14 @@ and when they began, which /stats, docs://status, the error messages and the pla
 recognises one and says so.
 
 What does not count: a 4xx answer (the caller's input, or a rate limit the
-host answered), and a second failure inside one logical call. The retrying
-helpers in shared/http.py and shared/retrying.py run each call in
-`one_call()`, so a call whose three attempts all time out is one failure,
-not three. Any answer that is not a failure resets the count, so a host
-that fails now and then (geo.statcan.gc.ca answered 6 of 10 requests on
-2026-09-27) is never cut off by its bad moments alone.
+host answered), a Cloudflare challenge (counted in /stats only: publishers
+challenge some paths of a host and not others), and a second failure inside
+one logical call. The retrying helpers in shared/http.py and
+shared/retrying.py run each call in `one_call()`, so a call whose three
+attempts all time out is one failure, not three. Any answer that is not a
+failure resets the count, so a host that fails now and then
+(geo.statcan.gc.ca answered 6 of 10 requests on 2026-09-27) is never cut off
+by its bad moments alone.
 
 The state is per process and in memory. It holds host names only, never
 paths, query strings or anything a caller typed beyond the host its tool
@@ -228,6 +230,14 @@ class CircuitBreaker:
                     entry.cause, entry.cause_since = kind, self._wall()
             if not config.get_breaker_enabled():
                 return
+            if kind == "cloudflare":
+                # Counted for /stats, never toward opening: a challenge is a quick answer
+                # for one path, not a host that is down. StatCan challenges its SDMX and
+                # CIMT paths on www150 while WDS on the same host answers (checked live
+                # 2026-11-18); opening www150's breaker would cut WDS off too.
+                if probe:
+                    entry.probing = False
+                return
             now = self._clock()
             # A failed probe, or any failure while a probe is due, reopens at once.
             if probe or entry.state == "half_open":
@@ -345,7 +355,7 @@ class CircuitBreaker:
         """The hosts that are not closed because they answer with a Cloudflare challenge.
 
         The planner and search_tools read this: a timeout's pause lasts a minute and a retry
-        may well work, but a challenge is a block that lasts hours.
+        may well work, but a challenge is a block that a retry in a minute does not clear.
         """
         return {block.host: block for block in self.open_blocks() if block.cause == "challenge"}
 
@@ -449,13 +459,13 @@ def render_status(breaker: CircuitBreaker | None = None) -> str:
         if block.cause == "challenge":
             lines.append(
                 "  A Cloudflare challenge on automated clients is a block, not an outage: it "
-                "usually lasts hours, so the probes are spaced 1, 5, 15 and then 30 minutes "
+                "a retry in a minute does not clear, so the probes are spaced 1, 5, 15 and then 30 minutes "
                 f"apart. Do not retry.{still_working(host, False)}"
             )
             lines.append(
                 french_spacing(
                     "  Un défi Cloudflare envers les clients automatisés est un blocage, non une "
-                    "panne : il dure en général des heures ; les sondages sont donc espacés de 1, "
+                    "panne : un nouvel essai dans une minute ne le règle pas ; les sondages sont donc espacés de 1, "
                     "5, 15 puis 30 minutes. Ne réessayez pas."
                     f"{still_working(host, True)}"
                 )

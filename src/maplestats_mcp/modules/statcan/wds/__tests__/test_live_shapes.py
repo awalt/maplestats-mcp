@@ -52,6 +52,18 @@ def _clear_cache():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _no_rebuild(request, monkeypatch):
+    """The link tests mock the link alone; the WDS rebuild has its own tests
+    (test_table_rebuild.py)."""
+    if "download_link" in request.node.name:
+
+        async def none(*args):
+            return None, []
+
+        monkeypatch.setattr(client, "_rebuild", none)
+
+
 def _cube(pid: int, cansim: str, en: str, fr: str = "") -> dict:
     return {
         "productId": pid,
@@ -273,9 +285,58 @@ async def test_download_link_for_a_known_table(httpx_mock):
             "object": "https://www150.statcan.gc.ca/n1/tbl/csv/18100004-eng.zip",
         },
     )
+    httpx_mock.add_response(
+        url="https://www150.statcan.gc.ca/n1/tbl/csv/18100004-eng.zip",
+        status_code=206,
+        content=b"PK\x03\x04",
+    )
     link = await client.get_full_table_download_csv("18-10-0004-01")
     assert link.product_id == 18100004
     assert link.download_url.endswith("18100004-eng.zip")
+    # Live 2026-11-18 from a cloud host: the zip still downloads, but StatCan has
+    # announced the block, so the note says what to do if a script meets it.
+    assert link.file_check == "downloadable"
+    assert "no script relies on download_url" in link.notes[0]
+    assert "still served the file" in link.notes[1]
+
+
+async def test_download_link_behind_statcans_captcha_says_so(httpx_mock, cloudflare_challenge):
+    # Reported 2026-11-18 by the {cansim} maintainer: full-table zips answer with
+    # Cloudflare's challenge, while the getFullTableDownloadCSV link still answers.
+    _mock_cubes(httpx_mock)
+    httpx_mock.add_response(
+        url=f"{BASE}getFullTableDownloadCSV/18100004/en",
+        json={
+            "status": "SUCCESS",
+            "object": "https://www150.statcan.gc.ca/n1/tbl/csv/18100004-eng.zip",
+        },
+    )
+    httpx_mock.add_response(
+        url="https://www150.statcan.gc.ca/n1/tbl/csv/18100004-eng.zip", **cloudflare_challenge
+    )
+    link = await client.get_full_table_download_csv("18-10-0004-01")
+    assert link.file_check == "blocked"
+    assert "no script relies on download_url" in link.notes[0]
+    assert "captcha, not the file" in link.notes[1]
+
+
+async def test_download_link_check_that_fails_leaves_the_link_unchecked(httpx_mock):
+    _mock_cubes(httpx_mock)
+    httpx_mock.add_response(
+        url=f"{BASE}getFullTableDownloadCSV/18100004/en",
+        json={
+            "status": "SUCCESS",
+            "object": "https://www150.statcan.gc.ca/n1/tbl/csv/18100004-eng.zip",
+        },
+    )
+    httpx_mock.add_response(
+        url="https://www150.statcan.gc.ca/n1/tbl/csv/18100004-eng.zip",
+        status_code=404,
+        is_reusable=True,
+    )
+    link = await client.get_full_table_download_csv("18-10-0004-01")
+    # The StatCan note, then (rebuild mocked away) why there is no WDS script.
+    assert link.file_check == "not_checked" and len(link.notes) == 2
 
 
 async def test_download_link_for_a_bulk_only_real_time_table(httpx_mock):
@@ -288,9 +349,14 @@ async def test_download_link_for_a_bulk_only_real_time_table(httpx_mock):
             "object": "https://www150.statcan.gc.ca/n1/tbl/csv/16100118-eng.zip",
         },
     )
+    httpx_mock.add_response(
+        url="https://www150.statcan.gc.ca/n1/tbl/csv/16100118-eng.zip",
+        status_code=206,
+        content=b"PK\x03\x04",
+    )
     link = await client.get_full_table_download_csv(16100118)
     assert link.download_url.endswith("16100118-eng.zip")
-    assert len(httpx_mock.get_requests()) == 1  # the link request only
+    assert len(httpx_mock.get_requests()) == 2  # the link request and its check
 
 
 @pytest.mark.parametrize("fmt", ["csv", "sdmx"])

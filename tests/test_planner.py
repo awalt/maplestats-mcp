@@ -475,3 +475,16 @@ def test_a_place_without_a_known_province_keeps_province_tools(monkeypatch):
     )
     assert "bc_transit_get_stop_predictions" in _topic_tools("transit alerts in Calgary")
     assert "bc_transit_get_stop_predictions" not in _topic_tools("transit alerts in Toronto")
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Is StatCan blocking scripts right now?",
+        "statcan 403 cloudflare captcha on my download",
+        "Statistique Canada bloque-t-il les scripts?",
+    ],
+)
+def test_a_question_about_statcans_block_plans_the_access_check(question):
+    plan = client.plan(question)
+    assert "statcan_access" in {t.topic for t in plan.topics}

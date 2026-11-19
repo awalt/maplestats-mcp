@@ -87,14 +87,14 @@ def challenge_fix(host: str, french: bool) -> str:
         who = "l'hôte de Statistique Canada" if host in STATCAN_HOSTS else "cet hôte"
         return (
             f" Solution : ne réessayez pas ; {who} {host} bloque les clients automatisés, ce "
-            "qui dure en général des heures et non des minutes. Dites que la donnée n'a pas pu "
+            "qu'un nouvel essai dans une minute ne règle pas. Dites que la donnée n'a pas pu "
             "être lue à la source et pourquoi ; ne répondez pas de mémoire."
             f"{still_working(host, True)}"
         )
     who = "StatCan's host" if host in STATCAN_HOSTS else "the host"
     return (
         f" Fix: do not retry; {who} {host} is challenging automated clients, which usually "
-        "lasts hours, not minutes. Say the figure could not be read from its source and why; "
+        "a retry in a minute does not clear. Say the figure could not be read from its source and why; "
         "do not answer from memory."
         f"{still_working(host, False)}"
     )

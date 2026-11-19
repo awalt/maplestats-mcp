@@ -63,7 +63,7 @@ from maplestats_mcp.shared.errors import (
     UpstreamUnavailable,
 )
 from maplestats_mcp.shared.executor import run_parse
-from maplestats_mcp.shared.http import new_client
+from maplestats_mcp.shared.http import new_client, raise_if_cloudflare_challenge
 from maplestats_mcp.shared.ocr import parse_pages
 from maplestats_mcp.shared.rate_limiter import get_limiter
 from maplestats_mcp.shared.retrying import get_with_retry
@@ -82,8 +82,15 @@ _warmed: set[tuple[str, str]] = set()
 # statcan.gc.ca answers HTTP 429 when its catalogue pages are hit in quick
 # succession (seen in the live smoke run of 2026-09-30); the shared retrying
 # GET waits and retries, honouring Retry-After.
+#
+# www150 has answered every automated request with Cloudflare's bot challenge
+# (HTTP 403, Cf-Mitigated: challenge; seen live 2026-11-17 from two networks).
+# get_with_retry hands that 403 back like any other, so it is named here: a
+# caller gets "unavailable, do not retry" instead of a bare "HTTP 403".
 async def _get(url: str, params: dict[str, str] | None = None) -> httpx.Response:
-    return await get_with_retry(_client, url, params=params)
+    response = await get_with_retry(_client, url, params=params)
+    raise_if_cloudflare_challenge(response)
+    return response
 
 
 def _base_url(catalogue: str, lang: str) -> str:
@@ -516,6 +523,7 @@ async def _fetch(url: str, tool: str, *, ttl: int, missing: str) -> tuple[dict[s
                         "sous peu.",
                     )
                 ) from exc
+            raise_if_cloudflare_challenge(response)
             if response.is_redirect:
                 location = response.headers.get("location", "")
                 current = _checked_url(urljoin(current, location), tool)

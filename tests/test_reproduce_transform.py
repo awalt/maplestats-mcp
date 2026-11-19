@@ -41,7 +41,9 @@ def test_routing_with_and_without_a_transform():
     assert builders.argument_only("wds_get_data_from_vectors", {"vector_ids": [1]})
     assert not builders.argument_only("wds_get_data_from_vectors", ARGS)
     plain = {"product_id": 18100004, "coordinate": "2.2"}
-    assert builders.builder_for("wds_get_data_from_cube_coord", plain) is builders._table
+    # Without a transform too: the vectors through WDS, not the full-table zip that
+    # StatCan blocks for scripts since November 2026.
+    assert builders.builder_for("wds_get_data_from_cube_coord", plain) is builders._cube_coord
     assert (
         builders.builder_for("wds_get_data_from_cube_coord", {**plain, "transform": "diff"})
         is builders._cube_coord

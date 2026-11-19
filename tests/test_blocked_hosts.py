@@ -1,6 +1,6 @@
 """A host that challenges automated clients is reported as a block, not as an outage.
 
-StatCan's www150 answered every automated client with a Cloudflare managed challenge from
+StatCan's www150 answered automated clients with a Cloudflare managed challenge from
 about 18:25 UTC on 2026-11-17 (HTTP 403, Cf-Mitigated: challenge, a page titled
 "Vérification de sécurité / Security Check"). The wording each place gives the caller is
 checked here in English and in French: no "retry in a minute", a "blocked since" time, and

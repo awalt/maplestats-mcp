@@ -227,13 +227,12 @@ async def test_missing_ckan_resource_and_valet_series_raise(monkeypatch):
 # H5: SDMX scripts read the key's series ------------------------------------------------
 
 
-async def test_sdmx_scripts_replay_the_data_url_with_the_default_last_n():
+async def test_sdmx_data_gets_no_script_while_statcan_blocks_sdmx():
+    # Live 2026-11-18: StatCan answers every SDMX request from a script with its
+    # captcha, so a script replaying the SDMX URL would fail; none is written.
     result = await client.reproduce("sdmx_get_data", {"product_id": 18100004, "key": "2.2"})
-    base = "https://www150.statcan.gc.ca/t1/wds/sdmx/statcan/rest/data/DF_18100004/2.2"
-    assert result.source_url == f"{base}?lastNObservations=24"
-    assert not result.method.startswith("exact: full table")
-    code = _code(result)
-    assert set(code) == {"r", "python", "stata", "julia", "excel"}
+    assert result.scripts == []
+    assert any("No script: Statistics Canada blocks" in note for note in result.notes)
     with pytest.raises(InvalidInput):
         await client.reproduce(
             "sdmx_get_data", {"product_id": 18100004, "key": "2.2", "start_period": "2020-01",

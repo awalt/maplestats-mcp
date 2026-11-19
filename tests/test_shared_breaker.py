@@ -197,7 +197,34 @@ async def test_cloudflare_challenges_count(httpx_mock, two_failures, cloudflare_
         with pytest.raises(CloudflareChallenge):
             await api_get(URL)
     assert _host()["errors"]["cloudflare"] == 2
-    assert _host()["state"] == "open"
+    # Counted, but never toward opening: a challenge is one path's answer.
+    assert _host()["state"] == "closed"
+
+
+async def test_challenged_path_does_not_cut_off_the_rest_of_the_host(
+    httpx_mock, two_failures, cloudflare_challenge
+):
+    # Live 2026-11-18: StatCan challenges SDMX on www150 while WDS on the same host answers.
+    sdmx = f"https://{HOST}/t1/wds/sdmx/statcan/rest/data/DF_18100004/2.2"
+    for _ in range(4):
+        httpx_mock.add_response(url=sdmx, **cloudflare_challenge)
+        with pytest.raises(CloudflareChallenge):
+            await api_get(sdmx)
+    httpx_mock.add_response(url=URL, json={"ok": True})
+    assert await api_get(URL) == {"ok": True}
+
+
+async def test_a_challenge_on_the_probe_lets_the_next_request_probe(
+    httpx_mock, two_failures, clock, cloudflare_challenge
+):
+    await _open(httpx_mock)
+    clock.now += 61
+    httpx_mock.add_response(url=URL, **cloudflare_challenge)
+    with pytest.raises(CloudflareChallenge):
+        await api_get(URL)
+    httpx_mock.add_response(url=URL, json={"ok": True})
+    assert await api_get(URL) == {"ok": True}
+    assert _host()["state"] == "closed"
 
 
 async def test_cloudflare_challenge_without_its_header_counts_once(

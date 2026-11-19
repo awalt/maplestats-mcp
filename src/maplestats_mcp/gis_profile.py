@@ -155,6 +155,8 @@ INSTRUCTION_CUTS: tuple[Cut, ...] = (
     Cut("nrcan_geo_ (geocoding, place names), "),
     Cut("nrcan_nbac_\n  (burned areas), "),
     Cut("bcgw_ (BC Geographic\n  Warehouse), "),
+    # The census-boundary tools are PURE; the spatial layers after them are HYBRID.
+    Cut("census boundaries; "),
 )
 
 # Module descriptions (docs://catalogue), by module folder and language. A module that is

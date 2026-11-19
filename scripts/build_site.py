@@ -1006,6 +1006,10 @@ FAMILIES: dict[str, tuple[str, str]] = {
     "ised/corporations": ("Federal corporations", "Sociétés fédérales"),
     "ised/ip_horizons": ("Patents and IP bulk data", "Brevets et données de PI"),
     "ised/spectrum": ("Spectrum licences", "Licences de spectre"),
+    "statcan/access": (
+        "Which StatCan services answer scripts",
+        "Services de StatCan qui répondent aux scripts",
+    ),
     "statcan/cimt": ("Merchandise trade by commodity", "Commerce de marchandises par produit"),
     "statcan/census_profile": ("2021 Census Profile", "Profil du recensement de 2021"),
     "statcan/census_profile_archive": (
@@ -1023,6 +1027,10 @@ FAMILIES: dict[str, tuple[str, str]] = {
     "statcan/geo": (
         "Geography: census boundaries, road network and map layers",
         "Géographie : limites du recensement, réseau routier et couches cartographiques",
+    ),
+    "statcan/geosuite": (
+        "Census GeoSuite: geography tables 1996-2021",
+        "GéoSuite du recensement : tables géographiques 1996-2021",
     ),
     "statcan/indicators": ("Indicators", "Indicateurs"),
     "statcan/lode": (
@@ -3399,7 +3407,7 @@ def finale_context(counts: dict[str, Any], modules: list[ModuleDoc], lang: Lang)
             "Statistics Canada tables" if en else "tableaux de Statistique Canada",
         ),
         (
-            counts["statcan_reference_search_data"]["product_count"],
+            counts["borealis_odesi_search_datasets"]["total_matched"],
             "microdata files" if en else "fichiers de microdonnées",
         ),
         (
@@ -3477,7 +3485,7 @@ def case_context(lang: Lang, modules: list[ModuleDoc]) -> dict[str, str]:
         context.update(builders[key](case, lang))
         context[f"how_{key}"] = how_block(case, key, lang)
     counts = {call["name"]: call["response"] for call in load_case("counts")["calls"]}
-    context["count_pumf"] = number(counts["statcan_reference_search_data"]["product_count"], lang)
+    context["count_pumf"] = number(counts["borealis_odesi_search_datasets"]["total_matched"], lang)
     context["count_ircc"] = number(counts["ircc_monthly_list_tables"]["returned_count"], lang)
     context["count_tables"] = number(counts["wds_search_cubes"]["total_count"], lang)
     context["count_series"] = number(counts["boc_search_series"]["total_count"], lang)
@@ -3513,13 +3521,17 @@ STATCAN_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         ("census_profile", "census_profile_archive"),
     ),
     ("Microdata", "Microdonnées", ("pumf",)),
-    ("Geography and open databases", "Géographie et bases de données ouvertes", ("geo", "lode")),
+    (
+        "Geography and open databases",
+        "Géographie et bases de données ouvertes",
+        ("geo", "geosuite", "lode"),
+    ),
     ("Classifications", "Classifications", ("rdaas",)),
     ("Indicators", "Indicateurs", ("indicators", "sdg")),
     (
         "Releases, catalogues and methods",
         "Diffusions, catalogues et méthodes",
-        ("daily", "reference", "surveys"),
+        ("daily", "reference", "surveys", "access"),
     ),
 )
 

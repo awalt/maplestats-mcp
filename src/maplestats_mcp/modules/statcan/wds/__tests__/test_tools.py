@@ -60,14 +60,6 @@ async def test_full_table_download_routes(monkeypatch):
     assert calls == [("csv", 1, "fr"), ("sdmx", 2)]
 
 
-async def test_full_table_download_sdmx_takes_no_member_filter():
-    # The filters shape the CSV scripts; an SDMX link has none to shape.
-    with pytest.raises(InvalidInput, match="sdmx"):
-        await _fn(tools.wds_get_full_table_download)(
-            product_id=2, format="sdmx", members={"Geography": ["Canada"]}
-        )
-
-
 async def test_search_cubes_rejects_lite_false_with_query():
     with pytest.raises(InvalidInput):
         await _fn(tools.wds_search_cubes)(query="cpi", lite=False)

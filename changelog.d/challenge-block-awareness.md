@@ -1,8 +1,8 @@
 ### Changed
 
 - A Cloudflare challenge is reported as a block, not an outage. On 2026-11-17, from about 18:25 UTC,
-  Statistics Canada's `www150.statcan.gc.ca` host answered every automated client with a managed
-  challenge (HTTP 403, `Cf-Mitigated: challenge`, a page titled "Vérification de sécurité / Security
+  Statistics Canada's `www150.statcan.gc.ca` host answered automated clients with a managed
+  challenge on every path first tried (HTTP 403, `Cf-Mitigated: challenge`, a page titled "Vérification de sécurité / Security
   Check"), and every `wds_*`, `sdmx_*`, `cimt_*`, `statcan_daily_*` and similar tool failed with a
   message that said to "retry once in a minute". The error now says, in English and French, not to
   retry, that the host is challenging automated clients, since what time (UTC), and which sources

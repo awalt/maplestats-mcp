@@ -72,6 +72,7 @@ from maplestats_mcp.modules.statcan.lang import say, use_lang
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import (
+    CloudflareChallenge,
     InvalidInput,
     NotFound,
     UpstreamError,
@@ -176,7 +177,14 @@ async def get_releases(
             ) from exc
 
     cache_key = f"statcan-daily:releases:{code}:{suffix}"
-    body, was_cached = await cached_fetch(cache_key, constants.CACHE_TTL_SECONDS, fetch)
+    try:
+        body, was_cached = await cached_fetch(cache_key, constants.CACHE_TTL_SECONDS, fetch)
+    except CloudflareChallenge:
+        # StatCan put its RSS feeds behind its captcha (checked live 2026-11-18); the
+        # release archive JSON still answers, but it has no subjects.
+        if subject != "all":
+            raise
+        return await _releases_from_archive(lang, limit)
 
     try:
         root = DefusedET.fromstring(body)
@@ -276,6 +284,59 @@ async def _load_archive(lang: str) -> tuple[list[Any], bool, str]:
         )
 
     return payload, was_cached, url
+
+
+async def _releases_from_archive(lang: str, limit: int) -> DailyReleaseList:
+    """The latest published releases from the archive JSON, when the RSS feed is challenged."""
+    payload, was_cached, url = await _load_archive(lang)
+    today = datetime.now(ZoneInfo(constants.CALENDAR_TIMEZONE)).date()
+    published: list[tuple[date, dict[str, Any]]] = []
+    for item in payload:
+        if not isinstance(item, dict) or not item.get("url"):
+            continue
+        day = _parse_archive_entry_date(item.get("date"))
+        if day is not None and day <= today:
+            published.append((day, item))
+    published.sort(key=lambda pair: pair[0], reverse=True)
+    releases = [
+        DailyRelease(
+            title=item.get("title") or "",
+            url=f"{_ARCHIVE_HOST}{item['url']}",
+            # The Daily publishes at 8:30 a.m. Eastern.
+            published_at=datetime(
+                day.year, day.month, day.day, 8, 30, tzinfo=ZoneInfo(constants.CALENDAR_TIMEZONE)
+            ),
+            summary=item.get("description") or None,
+        )
+        for day, item in published[:limit]
+    ]
+    return DailyReleaseList(
+        subject="all",
+        releases=releases,
+        returned_count=len(releases),
+        total_in_feed=len(published),
+        truncated=len(published) > len(releases),
+        provenance=make_provenance(
+            source=constants.RATE_LIMIT_SOURCE,
+            url=url,
+            cached=was_cached,
+            schema_name="statcan_daily.DailyReleaseList",
+            limits=say(
+                "Statistics Canada now answers automated requests to The Daily's RSS feeds "
+                "with a Cloudflare check only a person in a browser can pass (since November "
+                "2026), so these releases come from The Daily's release archive instead: "
+                "titles, dates (8:30 a.m. Eastern) and article links, with the reference "
+                "period as the summary. statcan_daily_get_article reads an article's text.",
+                "Statistique Canada répond désormais aux requêtes automatisées vers les fils "
+                "RSS du Quotidien par une vérification Cloudflare que seule une personne dans "
+                "un navigateur peut passer (depuis novembre 2026) ; ces diffusions viennent "
+                "donc de l'archive des diffusions du Quotidien : titres, dates (8 h 30, heure "
+                "de l'Est) et liens vers les articles, avec la période de référence comme "
+                "résumé. statcan_daily_get_article lit le texte d'un article.",
+            ),
+            lang=lang,
+        ),
+    )
 
 
 async def search_archive(

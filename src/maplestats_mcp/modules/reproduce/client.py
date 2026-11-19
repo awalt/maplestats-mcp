@@ -38,6 +38,7 @@ from maplestats_mcp.modules.reproduce.schemas import (
 )
 from maplestats_mcp.modules.reproduce.spec import Spec
 from maplestats_mcp.modules.statcan.lang import use_lang
+from maplestats_mcp.shared import challenge_notes
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import (
     DataLocked,
@@ -179,6 +180,17 @@ async def _require_registered(tool: str, lang: str) -> None:
 
 
 async def _spec(tool: str, args: dict[str, Any], lang: str = "en") -> Spec:
+    """The spec for a tool, or no script where StatCan blocks the source for scripts."""
+    spec = await _source_spec(tool, args, lang)
+    refusal = challenge_notes.script_refusal(spec.url) if spec.kind != "none" else None
+    if refusal is None:
+        return spec
+    return Spec(
+        kind="none", url=spec.url, file_name="", method="none", notes=[_say(lang, *refusal)]
+    )
+
+
+async def _source_spec(tool: str, args: dict[str, Any], lang: str = "en") -> Spec:
     # The PUMF builder's url check words its error through StatCan's call language.
     use_lang(lang)
     builder = builders.builder_for(tool, args)
