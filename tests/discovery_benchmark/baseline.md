@@ -325,6 +325,8 @@ cases lost); a lower BM25 `b` moved MRR by less than 0.005.
 Floors raised with this record: overall R@1 0.60, R@5 0.86, R@10 0.91, MRR 0.71; French
 R@5 0.87; `boc` R@5 0.90; `ambiguity` R@5 0.65.
 
+Re-recorded 2026-11-20 after merging main's place-aware ranking (502 tools): search R@1 0.682, R@5 0.922, R@10 0.961, MRR 0.783, French R@5 0.962, `statcan` R@5 0.96; plan R@5 0.876, MRR 0.675.
+
 ## Regression floors
 
 `tests/test_discovery_benchmark.py` fails below: `search_tools` R@1 0.53, R@5 0.83, R@10 0.88,
