@@ -61,6 +61,7 @@ from maplestats_mcp.shared import search_places
 from maplestats_mcp.shared.search import (
     NATIONAL_FACTOR,
     NATIONAL_WORDS,
+    NO_PLACE_FACTOR,
     PLACE_MISMATCH_FACTOR,
     apply_boosts,
     apply_place_factors,
@@ -1504,6 +1505,7 @@ def build_index(modules: list[ModuleDoc]) -> dict[str, Any]:
             "national": sorted(NATIONAL_WORDS),
             "mismatch": PLACE_MISMATCH_FACTOR,
             "nationalFactor": NATIONAL_FACTOR,
+            "noPlace": NO_PLACE_FACTOR,
         },
         "post": postings,
     }

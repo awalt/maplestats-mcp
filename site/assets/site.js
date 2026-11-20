@@ -164,6 +164,7 @@
             : provinces.has(place[1]);
         if (provinces.size && !named) factor = places.mismatch;
         else if (national) factor = places.nationalFactor;
+        else if (!provinces.size) factor = places.noPlace;
       }
       scores[i] *= factor;
     });

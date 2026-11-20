@@ -469,18 +469,47 @@ PROVINCE_TOOLS: tuple[tuple[str, str], ...] = (
 # Another country's publisher, and the words that name it or its place: a query with
 # one of them asks for that publisher (folded as tokenize folds them).
 FOREIGN_TOOLS: tuple[tuple[str, frozenset[str]], ...] = (
-    ("fed_", frozenset({"fed", "federal", "reserve", "fomc", "us", "usa", "united", "state"})),
-    ("ecb_", frozenset({"ecb", "bce", "euro", "eurozone", "europe", "european", "eu"})),
-    ("eurostat_", frozenset({"eurostat", "euro", "europe", "european", "eu", "union"})),
-    ("ons_", frozenset({"ons", "uk", "united", "kingdom", "britain", "england", "royaume"})),
-    ("abs_", frozenset({"abs", "australia", "australian", "australie"})),
-    ("cdc_", frozenset({"cdc", "us", "usa", "united", "state"})),
+    # English, then French as tokenize folds it ("européenne" is "europeenne").
+    (
+        "fed_",
+        frozenset(
+            {"fed", "federal", "reserve", "fomc", "us", "usa", "united", "state"}
+            | {"etat", "unis", "americain", "americaine"}
+        ),
+    ),
+    (
+        "ecb_",
+        frozenset(
+            {"ecb", "bce", "euro", "eurozone", "europe", "european", "eu"}
+            | {"europeen", "europeenne", "zone"}
+        ),
+    ),
+    (
+        "eurostat_",
+        frozenset(
+            {"eurostat", "euro", "europe", "european", "eu", "union"}
+            | {"europeen", "europeenne", "ue"}
+        ),
+    ),
+    (
+        "ons_",
+        frozenset(
+            {"ons", "uk", "united", "kingdom", "britain", "england", "british"}
+            | {"royaume", "uni", "britannique", "angleterre"}
+        ),
+    ),
+    ("abs_", frozenset({"abs", "australia", "australian", "australie", "australien"})),
+    ("cdc_", frozenset({"cdc", "us", "usa", "united", "state", "etat", "unis", "americain"})),
 )
 PLACE_MISMATCH_FACTOR = 0.5
 # A query about Canada as a whole ("Production de pétrole au Canada") that names no
 # province: one province's tools still answer part of it, so they are scaled less.
 NATIONAL_WORDS = frozenset({"canada", "canadian", "canadien", "canadienne", "national"})
 NATIONAL_FACTOR = 0.7
+# A query that names no place at all is most often about Canada too: one province's
+# or city's tools are scaled a little, enough to break a near tie ("GDP by industry
+# monthly" had BC Stats 0.1% above wds_search_cubes, 2026-11-19), not to bury them.
+NO_PLACE_FACTOR = 0.9
 
 
 def tool_place(name: str) -> list[str]:
@@ -527,6 +556,8 @@ def place_factors(query: str, names: Sequence[str]) -> dict[int, float]:
             factors[i] = PLACE_MISMATCH_FACTOR
         elif national:
             factors[i] = NATIONAL_FACTOR
+        elif not provinces:
+            factors[i] = NO_PLACE_FACTOR
     return factors
 
 

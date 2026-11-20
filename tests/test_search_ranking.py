@@ -236,8 +236,10 @@ def test_one_places_tools_rank_lower_for_another_place():
 def test_a_national_query_scales_one_provinces_tools_less():
     national = _scaled("Production de pétrole au Canada")
     assert national["ab_opendata_get_activity_index"] == search.NATIONAL_FACTOR
-    # A query that names no place leaves the provincial tools alone.
-    assert "ab_opendata_get_activity_index" not in _scaled("activity index")
+    # A query that names no place scales them only a little, and the query's own
+    # province leaves them alone.
+    assert _scaled("activity index")["ab_opendata_get_activity_index"] == search.NO_PLACE_FACTOR
+    assert "ab_opendata_get_activity_index" not in _scaled("Alberta activity index")
 
 
 @pytest.mark.parametrize(
