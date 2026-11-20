@@ -2412,7 +2412,22 @@ repeated in the script.
 
 ## CRA individual tax statistics and benefit statistics
 
-**Status:** Covered (via `ckan_*` + `ckan_read_resource`).
+**Status:** Shipped 2026-11-19 as `modules/cra_tax_stats/` (T1 Final Basic
+Tables and FSA tables); benefit statistics stay covered via `ckan_*` +
+`ckan_read_resource`.
+
+Rechecked 2026-11-19 before building: the T1 editions that still read are tax
+years 2018 to 2024 (2024 adds separate English and French files and drops Table
+5); every CSV link of tax years 2015, 2016 and 2017 answers 404 on www.canada.ca,
+2012 too, and 2014 points to the retired cra-arc.gc.ca host. Table 1 is in
+millions of dollars to 2021 and thousands from 2022; Table 3 changed in 2022 from
+line items by source to sources by province. The FSA series ("Individual Tax
+Statistics by Forward Sortation Area", separate from ITSA, which is by census
+geography) covers tax years 2017 to 2021, in dollars to 2020 and thousands in
+2021. Some resources link the wrong file (2021 Table 2 for Alberta and Quebec are
+PDFs; 2024's French Nova Scotia Table 2 is the English file), so the module
+matches files by name. Not built: ITSA by CMA, CD and CSD (tax years 2010 to
+2024), still read with `ckan_read_resource`.
 
 Checked 2026-09-25. Individual Income Tax Return Statistics (formerly T1
 Final Statistics) appear as one dataset per tax year, 2011 to 2022, each

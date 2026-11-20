@@ -196,3 +196,60 @@ def test_a_changed_or_new_tool_has_no_vector_until_the_rebuild():
     assert rows == [None, None, 0]
     # Only tools with a fresh vector are ranked semantically.
     assert index.ranking("anything", rows, depth=5) == [2]
+
+
+# Place preference (2026-11-19): a tool for another province, city or country than the
+# query names ranks lower.
+_PLACE_NAMES = [
+    "boc_search_series",
+    "fed_get_indicator",
+    "ecb_get_indicator",
+    "ab_opendata_get_activity_index",
+    "calgary_list_building_permits",
+    "toronto_get_councillors",
+]
+
+
+def _scaled(query: str) -> dict[str, float]:
+    return {_PLACE_NAMES[i]: f for i, f in search.place_factors(query, _PLACE_NAMES).items()}
+
+
+def test_another_countrys_publisher_ranks_lower_unless_the_query_names_it():
+    assert _scaled("Interest rates in Canada")["fed_get_indicator"] == search.PLACE_MISMATCH_FACTOR
+    assert "fed_get_indicator" not in _scaled("Federal Reserve funds rate")
+    assert "fed_get_indicator" not in _scaled("US unemployment rate")
+    assert "ecb_get_indicator" not in _scaled("euro area inflation")
+    assert "boc_search_series" not in _scaled("Interest rates in Canada")
+
+
+def test_one_places_tools_rank_lower_for_another_place():
+    manitoba = _scaled("Manitoba government open data on school divisions")
+    assert manitoba["ab_opendata_get_activity_index"] == search.PLACE_MISMATCH_FACTOR
+    assert manitoba["toronto_get_councillors"] == search.PLACE_MISMATCH_FACTOR
+    # A city counts for its province: Edmonton keeps the Alberta tools, not Calgary's.
+    edmonton = _scaled("building permits in Edmonton")
+    assert "ab_opendata_get_activity_index" not in edmonton
+    assert edmonton["calgary_list_building_permits"] == search.PLACE_MISMATCH_FACTOR
+    assert "calgary_list_building_permits" not in _scaled("Calgary building permits")
+
+
+def test_a_national_query_scales_one_provinces_tools_less():
+    national = _scaled("Production de pétrole au Canada")
+    assert national["ab_opendata_get_activity_index"] == search.NATIONAL_FACTOR
+    # A query that names no place scales them only a little, and the query's own
+    # province leaves them alone.
+    assert _scaled("activity index")["ab_opendata_get_activity_index"] == search.NO_PLACE_FACTOR
+    assert "ab_opendata_get_activity_index" not in _scaled("Alberta activity index")
+
+
+@pytest.mark.parametrize(
+    ("query", "above", "below"),
+    [
+        ("Interest rates in Canada", "boc_search_series", "fed_get_indicator"),
+        ("USD to CAD exchange rate for the last 30 days", "boc_get_series", "fed_get_indicator"),
+    ],
+)
+async def test_search_tools_prefers_the_canadian_publisher(query: str, above: str, below: str):
+    names = await _search(query)
+    assert above in names
+    assert below not in names or names.index(above) < names.index(below)

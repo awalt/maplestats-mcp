@@ -453,6 +453,10 @@ class AnnotatedBM25SearchTransform(BM25SearchTransform):
                 ranking = self._semantic.ranking(query, self._semantic_rows, semantic.FUSION_DEPTH)
                 scores = semantic.fuse(scores, ranking)
         scores = search.apply_boosts(scores, boosts)
+        # A tool for another province, city or country than the query names ranks lower.
+        scores = search.apply_place_factors(
+            scores, search.place_factors(query, [t.name for t in self._indexed])
+        )
         # The catalog is deduplicated by name; resolve the current version's schema.
         by_name = {t.name: t for t in tools}
         top = [
@@ -785,7 +789,7 @@ Sources, by tool-name prefix:
   (NL Statistics Agency workbooks), yukon_stats_ (Yukon Bureau of
   Statistics tables), nwt_stats_ (NWT Bureau of Statistics workbooks),
   ab_economic_ (Alberta Economic Dashboard), ab_opendata_ (Open Alberta
-  Excel and CSV files).
+  Excel and CSV files; Alberta Activity Index, population projections).
 - Borealis (Canadian Dataverse): borealis_ (Beyond 20/20 tables from
   university libraries; ODESI DDI metadata, public files only).
 - Bank of Canada Valet: boc_ (also business and consumer survey results,
@@ -825,6 +829,8 @@ Sources, by tool-name prefix:
   ircc_backlog_ (backlog percentages, actual and projected),
   jobbank_ (Job Bank wages by occupation and region, ESDC),
   cra_digital_economy_registry_, cra_charities_ (registered charities, directors),
+  cra_tax_stats_ (T1 income tax statistics by year, province, income class, age;
+  by postal FSA),
   gc_infobase_ (federal spending, FTEs), disclosure_ (proactive disclosure:
   contracts over $10,000, grants and contributions, ministers' and senior
   officials' travel and hospitality; search and totals),
@@ -853,7 +859,8 @@ Sources, by tool-name prefix:
   AQHI, snow, groundwater wells, provincial streamflow), bcgw_ (BC Geographic
   Warehouse), bc_lobbyists_ (BC Registrar of Lobbyists), drivebc_ (BC
   highway road events and closures), nl_opendata_,
-  opendatasoft_vancouver_, eps_ (Edmonton police occurrences), ets_
+  opendatasoft_vancouver_, calgary_ (Calgary building permits, civic census
+  community populations), eps_ (Edmonton police occurrences), ets_
   (Edmonton real-time transit), bc_transit_ (BC Transit real-time:
   Victoria, Kelowna and ten more systems), epcor_ (Edmonton water quality),
   toronto_ (City of Toronto: councillors, wards and their neighbourhoods,

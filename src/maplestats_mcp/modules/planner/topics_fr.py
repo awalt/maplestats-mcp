@@ -1440,6 +1440,9 @@ FR: dict[str, str] = {
         "statistiques de l'ARC : portal='federal', fq='organization:cra-arc', query='T1 final "
         "statistics' (désormais intitulées Individual Income Tax Return Statistics)"
     ),
+    "a T1 table line item over tax years 2018-2024; by FSA: cra_tax_stats_get_fsa_table": (
+        "un poste (item) d'une table T1 sur 2018-2024; par RTA : cra_tax_stats_get_fsa_table"
+    ),
     "find a registered charity by name, city or business number, then "
     "cra_charities_get_charity or cra_charities_get_directors": (
         "trouver un organisme de bienfaisance enregistré par nom, ville ou numéro "
@@ -1525,11 +1528,12 @@ FR: dict[str, str] = {
         "mises en chantier, logements en construction et achèvements de la SCHL par RMR, "
         "mensuels : product_id=34100154"
     ),
-    "permit records for Calgary, Edmonton and Winnipeg: portal='calgary' "
-    "dataset_id='c2es-76ed' ('8ced-xbvn' holds inspections), portal='edmonton' "
+    "Calgary building permits by community, class or month": (
+        "permis de bâtir de Calgary par quartier, catégorie ou mois"
+    ),
+    "permit records for Edmonton and Winnipeg: portal='edmonton' "
     "dataset_id='24uj-dj8v', portal='winnipeg' dataset_id='it4w-cpf4'": (
-        "registres de permis de Calgary, d'Edmonton et de Winnipeg : portal='calgary' "
-        "dataset_id='c2es-76ed' ('8ced-xbvn' contient les inspections), portal='edmonton' "
+        "registres de permis d'Edmonton et de Winnipeg : portal='edmonton' "
         "dataset_id='24uj-dj8v', portal='winnipeg' dataset_id='it4w-cpf4'"
     ),
     "Vancouver issued building permits: dataset_id='issued-building-permits'": (
@@ -1839,6 +1843,9 @@ FR: dict[str, str] = {
     "Quebec City": "Ville de Québec",
     "Trois-Rivieres": "Trois-Rivières",
     "Edmonton Police Service occurrences": "événements signalés au service de police d'Edmonton",
+    "Calgary civic census population by community, 1968-2019": (
+        "population des quartiers de Calgary au recensement municipal, 1968-2019"
+    ),
     "Edmonton Transit": "transport en commun d'Edmonton (Edmonton Transit)",
     "EPCOR drinking water quality": "qualité de l'eau potable d'EPCOR",
     "City of Vancouver open data": "données ouvertes de la Ville de Vancouver",

@@ -267,6 +267,22 @@ parks fire-ban markers (`provincial_parks_fire_ban_markers`) were not checked.
 
 **Status:** Shipped 2026-10-02 (`modules/ab_opendata/`, 5 tools).
 
+Named Treasury Board and Finance tools (#266), checked live on 2026-11-19:
+`ab_opendata_get_activity_index` reads `alberta-activity-index-data-tables` (one
+XLSX, sheet "AAX", header in row 1 over a blank date column, 548 months from
+January 1981 to August 2026; the header guess takes the first month as the
+header, so row 1 is passed). `ab_opendata_get_population_projection` and
+`ab_opendata_get_population_projection_summary` read
+`alberta-population-projections-<first year>-2051` (the 2024, 2025 and 2026
+editions use this slug; 2023's does not): 17 XLSX files picked by resource title,
+the provincial one with Low, Med and High Scenario sheets, each sub-provincial one
+medium only with one sheet per area (census division codes, CMA names); title rows
+over Year, Gender (Women +, Men +, All), Total and ages 0 to 100, then notes. All
+three are OGLA. The budget fiscal plan tables
+(`alberta-budget-fiscal-plan-tables-economic-outlook-and-tax-plan-2026`, XLSX,
+OGLA) exist, but `package_show` and the file both answered HTTP 500 that evening,
+so no tool reads them yet (the Economic Outlook publication is a PDF; its tables are in that workbook).
+
 open.alberta.ca is searchable through `ckan_*` (`portal="ab"`) but nothing there could read
 the files. It has 3,018 datasets of type `opendata`; about 700 have an XLSX resource, 221 a
 CSV and 120 an XLS, and the DataStore has no active resources, so the files are the only

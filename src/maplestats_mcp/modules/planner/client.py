@@ -88,6 +88,7 @@ _PLACE_WORDS = {"British Columbia": ("British Columbia", "BC ")}
 # #265). A question that names no place keeps them.
 _CITY_TOOLS = {
     "toronto_": ("Toronto", "Ontario"),
+    "calgary_": ("Calgary", "Alberta"),
     "eps_": ("Edmonton", "Alberta"),
     "ets_": ("Edmonton", "Alberta"),
     "epcor_": ("Edmonton", "Alberta"),

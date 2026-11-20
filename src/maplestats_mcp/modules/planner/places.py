@@ -192,7 +192,17 @@ CITIES: dict[str, tuple[str, tuple[PlanStep, ...]]] = {
     "longueuil": ("Longueuil", (_qc_city("ville-de-longueuil"),)),
     "sherbrooke": ("Sherbrooke", (_qc_city("ville-de-sherbrooke"),)),
     "trois-rivieres": ("Trois-Rivieres", (_qc_city("ville-de-trois-rivieres"),)),
-    "calgary": ("Calgary", (_socrata("calgary"),)),
+    "calgary": (
+        "Calgary",
+        (
+            _socrata("calgary"),
+            PlanStep(
+                "calgary_get_community_populations",
+                "Calgary civic census population by community, 1968-2019",
+                cues=cues.CIVIC_CENSUS,
+            ),
+        ),
+    ),
     "edmonton": (
         "Edmonton",
         (
