@@ -49,11 +49,12 @@ async def ecb_get_indicator(
     last_n: int | None = None,
     lang: Lang = "en",
 ) -> SeriesData:
-    """Get a European Central Bank headline series to compare with Canada.
+    """Get a European Central Bank headline series: euro area rates, the
+    euro, inflation, money, credit and yields.
 
     Use for: the ECB deposit facility, main refinancing and marginal
-    lending rates beside the Bank of Canada's policy rate, €STR beside
-    CORRA, the euro in Canadian dollars (EUR/CAD reference rate) or US
+    lending rates, €STR (beside CORRA), the euro in Canadian dollars
+    (EUR/CAD reference rate) or US
     dollars, euro area HICP inflation (headline and core), M3 growth,
     household loan growth, mortgage rates and the euro area 10-year
     yield. Each result names the Canadian series to set beside it.
@@ -62,11 +63,11 @@ async def ecb_get_indicator(
     Rows are tidy: date, value, unit, frequency, series id.
     Keywords: European Central Bank, ECB, euro area, eurozone, ECB
     interest rates, deposit facility rate, EUR/CAD exchange rate, euro
-    reference rate, HICP inflation, comparison with Canada.
+    reference rate, HICP inflation, euro area comparison.
     Mots-clés : Banque centrale européenne, BCE, zone euro, taux
     directeurs de la BCE, taux de la facilité de dépôt, taux de change
-    euro dollar canadien, taux de référence de l'euro, inflation IPCH,
-    comparaison avec le Canada.
+    de l'euro, taux de référence de l'euro, inflation IPCH, comparaison
+    avec la zone euro.
     """
     return await client.get_indicator(
         indicator, start_period=start_period, end_period=end_period, last_n=last_n, lang=lang

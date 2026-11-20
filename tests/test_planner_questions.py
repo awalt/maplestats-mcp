@@ -333,6 +333,7 @@ NOT_SOURCES = {
     "calc_count_changes",
     "docs_list_resources",
     "docs_read_resource",
+    "feedback_draft_issue",
 }
 
 

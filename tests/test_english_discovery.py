@@ -26,8 +26,12 @@ TOP_N = 3
 # Where a case may sit with the 14 PURE tools out of the BM25 index. Dropping documents
 # shifts the IDF of every word they hold: "CPI-common" ranked boc_search_series third
 # with them and fourth without (measured 2026-11-17). The default profile still asks for
-# the top 3; this is the one case the opt-in profile reads one place wider.
-STATS_ONLY_TOP_N = {"CPI-common": 4}
+# the top 3; these are the cases the opt-in profile reads one place wider. "latest CPI
+# inflation Canada" joined on 2026-11-20, when the Fed and ECB indicator tools stopped
+# saying "Canada" in their descriptions (they outranked Bank of Canada tools on Bank of
+# Canada questions): "Canada" weighs more since, and in this profile a Bank of Canada
+# tool ties with wds_get_data_from_vectors for third, which comes fourth.
+STATS_ONLY_TOP_N = {"CPI-common": 4, "latest CPI inflation Canada": 4}
 
 CASES = [
     ("What is Canada's current unemployment rate?", "statcan_indicators_get_indicators"),

@@ -55,11 +55,12 @@ async def fed_get_indicator(
     last_n: int | None = None,
     lang: Lang = "en",
 ) -> SeriesData:
-    """Get a US Federal Reserve headline series to compare with Canada.
+    """Get a US Federal Reserve headline series: US rates, yields, the US
+    dollar, output and credit.
 
-    Use for: the US federal funds rate beside the Bank of Canada's policy
-    rate, US Treasury 2- and 10-year yields beside Canadian bond yields,
-    the Canadian dollar per US dollar (Fed H.10 noon rate), the broad
+    Use for: US figures to set beside Canadian ones: the US federal funds
+    rate, US Treasury 2- and 10-year yields, the US dollar against the
+    loonie (Fed H.10 noon rate), the broad
     dollar index, the Fed's interest on reserve balances, the US prime
     rate, US industrial production and capacity utilization (G.17), M2
     money stock, US consumer credit and the household debt service ratio.
@@ -69,11 +70,11 @@ async def fed_get_indicator(
     unit, frequency, series id.
     Keywords: Federal Reserve, Fed, United States, US interest rates,
     federal funds rate, Treasury yields, USD/CAD exchange rate, industrial
-    production, capacity utilization, comparison with Canada.
+    production, capacity utilization, US comparison.
     Mots-clés : Réserve fédérale, Fed, États-Unis, taux d'intérêt
     américains, taux des fonds fédéraux, rendements du Trésor, taux de
-    change dollar canadien dollar américain, production industrielle,
-    utilisation des capacités, comparaison avec le Canada.
+    change du dollar américain (H.10), production industrielle,
+    utilisation des capacités, comparaison avec les États-Unis.
     """
     return await client.get_indicator(
         indicator, start_date=start_date, end_date=end_date, last_n=last_n, lang=lang
