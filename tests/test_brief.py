@@ -118,10 +118,14 @@ def test_brief_keeps_values_citations_flags_and_caveats():
     for dropped in ("queried_at", "freshness", "cached", "schema_name", "reproduce", "lang"):
         assert dropped not in provenance
     assert "detail='full'" in brief["detail"]
-    for series in full["series"]:
-        assert series["context"]["citation"] in text
+    # What every series shares (table, unit, the citation with its vector slot) is
+    # stated once in series_common; expanding puts each series' own back.
+    expanded = expand_tables(brief)
+    for whole, series in zip(expanded["series"], full["series"], strict=True):
+        assert whole["context"]["citation"] == series["context"]["citation"]
         assert series["context"]["series_title"] in text
-    rows = expand_tables(brief)["series"][0]["observations"]
+    assert "v{vector_id}" in brief["series_common"]["context"]["citation"]
+    rows = expanded["series"][0]["observations"]
     assert [r["ref_period"] for r in rows] == [
         o["ref_period"] for o in full["series"][0]["observations"]
     ]
@@ -131,7 +135,8 @@ def test_brief_keeps_values_citations_flags_and_caveats():
     assert "status_code" not in brief["series"][0]["observations"]["csv"]
     context = brief["series"][0]["context"]
     assert "members" not in context and "table_title" not in context
-    assert context["unit"] == "Percent" and context["scale"] == "units"
+    assert brief["series_common"]["context"]["unit"] == "Percent"
+    assert expanded["series"][0]["context"]["scale"] == "units"
     assert len(text) < len(json.dumps(full)) / 2
 
 
@@ -337,7 +342,8 @@ def test_metadata_brief_keeps_one_language_and_caps_long_dimensions():
     # A value every member shares is stated once.
     assert dimension["members_common"] == {"parent_member_id": 2}
     # Long footnotes are cut to their first sentence, and the result says so.
-    assert [n["text_en"] for n in brief["footnotes"]] == [
+    # The two footnotes share their cut text, which is stated once (footnotes_common).
+    assert [n["text_en"] for n in expand_tables(brief)["footnotes"]] == [
         "The CPI is not a cost-of-living index. ..."
     ] * 2
     assert "same_text_ids" not in brief["footnotes"][0]
@@ -430,7 +436,9 @@ def test_catalogue_search_brief_keeps_update_frequency():
     assert [r["update_frequency"] for r in rows] == ["monthly", *["yearly"] * 6]
     one = shape({**payload, "packages": packages[1:3]}, "brief", tool="ckan_search_datasets")
     assert one is not None
-    assert all(p["update_frequency"] == "yearly" for p in one["packages"])
+    # Two packages with one frequency state it once, in packages_common.
+    assert one["packages_common"]["update_frequency"] == "yearly"
+    assert all(p["update_frequency"] == "yearly" for p in expand_tables(one)["packages"])
 
 
 def test_catalogue_searches_are_shaped_other_searches_keep_their_format():
@@ -446,3 +454,150 @@ async def test_metadata_tools_exist():
 
     names = {tool.name for tool in await mcp._list_tools()}
     assert METADATA_TOOLS <= names
+
+
+# ---- token savings added 2026-11-20 -------------------------------------------------
+
+
+def test_series_state_shared_fields_and_the_citation_once():
+    full = _payload()
+    brief = shape(full, "brief")
+    assert brief is not None
+    common = brief["series_common"]
+    assert common["product_id"] == 14100287
+    assert common["context"]["table_id"] == "14-10-0287-01"
+    assert common["context"]["citation"].count("v{vector_id}") == 1
+    # Each series keeps only what is its own.
+    own = brief["series"][0]
+    assert own["vector_id"] == 2062815 and "product_id" not in own
+    assert "citation" not in own["context"] and "table_id" not in own["context"]
+    # Values never move into the common block.
+    assert "observations" not in common
+
+
+def test_series_that_differ_beyond_the_vector_keep_their_own_citations():
+    full = _payload()
+    full["series"][1]["context"]["citation"] = full["series"][1]["context"]["citation"].replace(
+        "Released 2026-11-06", "Released 2026-11-07"
+    )
+    brief = shape(full, "brief")
+    assert brief is not None
+    assert "citation" not in brief["series_common"]["context"]
+    assert "v{vector_id}" not in json.dumps(brief)
+    assert [s["context"]["citation"] for s in brief["series"]] == [
+        s["context"]["citation"] for s in full["series"]
+    ]
+
+
+def test_sql_rows_become_one_csv_block():
+    payload = {
+        "sql": "SELECT geography, year, avg(value) FROM obs GROUP BY ALL",
+        "columns": ["geography", "year", "avg_rate"],
+        "column_types": ["VARCHAR", "BIGINT", "DOUBLE"],
+        "rows": [["Canada", 2020 + i, 6.5 + i / 10] for i in range(7)],
+        "row_count": 7,
+        "truncated": False,
+        "provenance": {"source": "statcan-wds"},
+    }
+    brief = shape(payload, "brief")
+    assert brief is not None
+    for dropped in ("columns", "column_types", "row_count", "truncated"):
+        assert dropped not in brief
+    block = brief["rows"]
+    assert is_csv_block(block) and block["csv"].startswith("year,avg_rate\n")
+    assert block["same"] == {"geography": "Canada"}
+    assert csv_rows(block)[0] == {"geography": "Canada", "year": 2020, "avg_rate": 6.5}
+    # Short results keep their lists, which cost less than objects.
+    short = shape({**payload, "rows": payload["rows"][:3], "row_count": 3}, "brief")
+    assert short is not None and short["rows"] == payload["rows"][:3]
+
+
+def test_csv_states_constant_columns_and_label_maps_once():
+    rows = [
+        {
+            "geo": geo,
+            "geo_label": label,
+            "time": f"2026-{m:02d}",
+            "freq": "M",
+            "value": 1000.0 + m,
+            "flag": None,
+        }
+        for geo, label in (("DE", "Germany"), ("FR", "France"))
+        for m in range(1, 7)
+    ]
+    brief = shape({"rows": rows}, "brief")
+    assert brief is not None
+    block = brief["rows"]
+    assert block["same"] == {"freq": "M"}
+    assert block["labels"] == {
+        "geo_label": {"of": "geo", "values": {"DE": "Germany", "FR": "France"}}
+    }
+    header = block["csv"].splitlines()[0]
+    assert header == "geo,time,value"  # flag is empty in every row: left out
+    assert "1001\n" in block["csv"] or ",1001" in block["csv"]  # 1001.0 written as 1001
+    back = csv_rows(block)
+    assert back[0] == {
+        "geo": "DE",
+        "geo_label": "Germany",
+        "time": "2026-01",
+        "freq": "M",
+        "value": 1001,
+    }
+    assert [r["geo_label"] for r in back] == [r["geo_label"] for r in rows]
+
+
+def test_a_label_that_does_not_follow_its_code_stays_a_column():
+    rows = [{"geo": "DE", "geo_label": f"Germany {i}", "value": i} for i in range(7)]
+    block = shape({"rows": rows}, "brief")["rows"]  # type: ignore[index]
+    assert "labels" not in block
+    assert csv_rows(block)[3]["geo_label"] == "Germany 3"
+
+
+def test_fitness_notes_come_in_their_short_form_and_full_keeps_them_whole():
+    from maplestats_mcp.shared.fitness_rules import BRIEF_NOTES, RULES
+
+    rule = RULES[0]
+    payload = {"value": 1, "provenance": {"source": "x", "caveats": [rule.note_en, "Other."]}}
+    brief = shape(payload, "brief")
+    assert brief is not None
+    assert brief["provenance"]["caveats"] == [BRIEF_NOTES[rule.key][0], "Other."]
+    assert "whole caveats" in brief["detail"]
+    full = shape(payload, "full")
+    assert full is None  # nothing to change: the full note stays as it was
+
+
+def test_one_language_of_a_bilingual_pair_and_dates_without_midnight():
+    payload = {
+        "series_title_en": "Canada;All-items",
+        "series_title_fr": "Canada;Ensemble",
+        "cube_start_date": "1995-01-01T05:00:00Z",
+        "release_time": "2026-11-16T13:30:00Z",
+        "provenance": {"source": "x"},
+    }
+    english = shape(payload, "brief", lang="en")
+    french = shape(payload, "brief", lang="fr")
+    assert english is not None and french is not None
+    assert "series_title_fr" not in english and english["series_title_en"] == "Canada;All-items"
+    assert "series_title_en" not in french
+    assert english["cube_start_date"] == "1995-01-01"
+    assert english["release_time"] == "2026-11-16T13:30:00Z"  # a time of day stays
+
+
+def test_chat_demo_reads_brief_results_like_the_server():
+    """chat/results.py keeps its own copy of the reader: both must expand the same way."""
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "chat" / "results.py"
+    spec = importlib.util.spec_from_file_location("chat_results_copy", path)
+    assert spec is not None and spec.loader is not None
+    chat = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(chat)
+    rows = [
+        {"geo": g, "geo_label": n, "freq": "M", "time": f"2026-{m:02d}", "value": m + 0.5}
+        for g, n in (("DE", "Germany"), ("FR", "France"))
+        for m in range(1, 7)
+    ]
+    for payload in (_payload(), {"rows": rows, "provenance": {"source": "x"}}):
+        brief = shape(payload, "brief")
+        assert chat.expand_tables(brief) == expand_tables(brief)

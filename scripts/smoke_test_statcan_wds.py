@@ -225,6 +225,35 @@ async def main() -> int:
             not result.is_error and "rows" in json.loads(text), "server call wds_query_series"
         )
 
+    # wds_query_table: the CPI table's full-table CSV (15 MB zipped) streamed and
+    # filtered to all-items, one month; Canada summed with a province is refused.
+    provinces = await tools.wds_query_table(
+        18100004,
+        "SELECT geography, value FROM obs WHERE geography IN ('Canada', 'Ontario') "
+        "ORDER BY geography",
+        members={"Products and product groups": ["All-items"]},
+        start_period="2025-01",
+        end_period="2025-01",
+    )
+    ok &= check(
+        provinces.source in ("full-table file", "WDS by coordinate")
+        and [row[0] for row in provinces.rows] == ["Canada", "Ontario"]
+        and provinces.citation.startswith("Statistics Canada. Table 18-10-0004-01,"),
+        "SQL over the CPI table's slice (all-items, 2025-01)",
+        (provinces.source, provinces.rows),
+    )
+    ok &= await raises(
+        InvalidInput,
+        "SQL summing Canada with Ontario is refused",
+        tools.wds_query_table(
+            18100004,
+            "SELECT sum(value) FROM obs WHERE geography IN ('Canada', 'Ontario')",
+            members={"Products and product groups": ["All-items"]},
+            start_period="2025-01",
+            end_period="2025-01",
+        ),
+    )
+
     # wds_get_changed_series_list / wds_get_changed_series_data
     try:
         changed = await client.get_changed_series_list()
@@ -280,10 +309,14 @@ async def main() -> int:
     ok &= await raises(
         NotFound, "unknown table has no download", client.get_full_table_download_csv(99999999)
     )
-    # No script for a full table (StatCan blocks automated full-table downloads);
-    # the notes say why and name the WDS tools a script can use.
+    # The link is for a browser (StatCan said in November 2026 that it blocks
+    # automated full-table downloads; some networks get its captcha): the first note
+    # says so, and another says how the WDS rebuild script gets the table. The step
+    # looked for wds_get_data_from_cube_coord in the first note, which 0.7.0 reworded.
     ok &= check(
-        bool(csv.notes) and "wds_get_data_from_cube_coord" in csv.notes[0],
+        bool(csv.notes)
+        and "captcha" in csv.notes[0]
+        and any("WDS" in note for note in csv.notes[1:]),
         "full-table notes say why there is no script",
     )
 

@@ -650,6 +650,7 @@ SOURCES: dict[str, Source] = {
         "ACFC",
         domain="money",
     ),
+    "feedback": Source("Bug reports", "Signalement de bogues", "utility"),
     "finance_canada": Source(
         "Department of Finance Canada",
         "Ministère des Finances Canada",

@@ -62,9 +62,9 @@ async def ilo_compare_countries(
     worked). `compare_with` takes "G7", "WORLD", "EU27" or ISO 3 codes
     ("USA", "GBR", "AUS", "MEX"; "US", "UK" also work). `sex` splits
     by sex; `frequency` is annual, or quarterly/monthly for survey series
-    (not seasonally adjusted). The result ranks Canada (1 = highest) and
-    gives the ILO citation. Statistics Canada's Labour Force Survey is
-    better for Canada's own latest monthly figures.
+    (not seasonally adjusted). The result gives the rank (1 = highest)
+    and the ILO citation. For Canada's own latest monthly figures use the
+    wds_ tools (Labour Force Survey).
     Keywords: ILO, ILOSTAT, International Labour Organization,
     international comparison, unemployment rate, labour force
     participation, employment rate, youth unemployment, NEET, hours

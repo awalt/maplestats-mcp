@@ -48,7 +48,7 @@ async def abs_get_indicator(
     participation and employment-to-population rates, quarterly GDP
     growth, Wage Price Index growth, population growth. Periods are
     `2026`, `2026-Q3` or `2026-09`; without them the recent values come
-    back. The result names the Statistics Canada table to pair with and
+    back. The result names the Canadian table (wds_) to pair with and
     how the measures differ, and gives the ABS citation.
     Keywords: Australia, Australian, ABS, Australian Bureau of
     Statistics, Australian inflation, trimmed mean, Australian

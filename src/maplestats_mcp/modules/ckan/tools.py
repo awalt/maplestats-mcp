@@ -54,13 +54,11 @@ async def ckan_list_portals(lang: Lang = "en") -> PortalList:
     Columbia), ab (Alberta), qc (Québec, Données Québec), nt (Northwest
     Territories), yt (Yukon), montreal, toronto, regina, niagara
     (Niagara Region and its municipalities).
-    Keywords: CKAN, open data portal, catalogue, federal, provincial,
-    territorial, municipal, city, list portals.
-    Mots-clés : CKAN, portail de données ouvertes, catalogue de données,
-    liste des portails, Portail du gouvernement ouvert, ouvert.canada.ca,
-    Catalogue de données de l'Ontario, Données Québec, données ouvertes de
-    Montréal, Colombie-Britannique, Territoires du Nord-Ouest, Yukon,
-    fédéral, provincial, territorial, municipal, ville.
+    Keywords: CKAN, list portals, portal key, which catalogues, supported
+    portals, available portals, portal directory, coverage, DataStore support.
+    Mots-clés : CKAN, liste des portails, clé de portail, catalogues
+    offerts, portails pris en charge, portails disponibles, répertoire des
+    portails, couverture.
     """
     return client.list_portals(lang)
 
@@ -81,7 +79,7 @@ async def ckan_search_datasets(
     Use for: finding a dataset by topic on open.canada.ca (portal
     "federal", ~48,000 datasets incl. CRA, OSFI, Health Canada, ESDC,
     Elections Canada), Ontario, BC, Alberta, Québec, NWT, Yukon,
-    Montréal, Toronto, or Regina. Empty `query` matches everything;
+    Montréal, Toronto, Regina or Niagara. Empty `query` matches everything;
     narrow with Solr `fq`, e.g. "organization:statcan" or
     "res_format:CSV". `rows` ≤ 100; page with `start`. `sort` e.g.
     "metadata_modified desc". `lang` picks French titles on bilingual
@@ -95,7 +93,9 @@ async def ckan_search_datasets(
     development applications.
     Mots-clés : CKAN, données ouvertes, recherche de jeux de données,
     trouver un jeu de données, catalogue de données, gouvernement ouvert,
-    ouvert.canada.ca, Données Québec, Ville de Montréal,
+    ouvert.canada.ca, Données Québec, Ville de Montréal, données ouvertes
+    de l'Ontario, de la Colombie-Britannique, de l'Alberta, du Québec,
+    des Territoires du Nord-Ouest, du Yukon, de Toronto, de Regina,
     fédéral, provincial, municipal, découvrir, parcourir, filtre, permis
     d'affaires, inspections des restaurants, demandes d'aménagement.
     """

@@ -22,6 +22,7 @@ from maplestats_mcp.modules.statcan.wds import (
     fallback,
     leaves,
     query,
+    table_query,
     transforms,
     vintage,
 )
@@ -37,6 +38,7 @@ from maplestats_mcp.modules.statcan.wds.schemas import (
     LeafMembers,
     SeriesInfo,
     SeriesQueryResult,
+    TableQueryResult,
     VectorData,
     VectorDataSet,
     VintageSeries,
@@ -732,12 +734,13 @@ if config.get_query_series_enabled():
         `obs` columns: vector_id, product_id, table_id, coordinate, ref_period
         (DATE), value (unscaled: times scale_multiplier for the full figure),
         scale_multiplier, decimals, status, symbol, release_time, series_title,
-        table_title, unit, scale, frequency, geography. Example: SELECT
-        vector_id, year(ref_period) AS year, avg(value) FROM obs GROUP BY ALL
-        ORDER BY ALL. Only one SELECT (or WITH ... SELECT) runs, with no file,
-        URL or extension access, in a time and memory limit; at most 500 rows
-        and 1,000,000 characters come back. Quote `series` citations with the
-        result.
+        table_title, unit, scale, frequency, geography, adjustment, quality
+        (E/F/x). Example: SELECT vector_id, year(ref_period) AS year,
+        avg(value) FROM obs GROUP BY ALL ORDER BY ALL. A query that mixes units
+        or adjustments, or sums a total with its own parts, is refused with
+        the reason. One read-only SELECT runs in a sandbox (no files, URLs or
+        extensions; time and memory limits); at most 500 rows come back. Quote
+        the `series` citations and any `warnings` with the result.
         Keywords: statcan, SQL, query, compute, calculate, aggregate, sum,
         average, annual average, mean, group by, ranking, rank, top, maximum,
         minimum, peak, compare series, DuckDB, analysis, vectors, server-side.
@@ -753,6 +756,44 @@ if config.get_query_series_enabled():
             start_ref_period=start_ref_period,
             end_ref_period=end_ref_period,
             latest_n=latest_n,
+        )
+
+
+if config.get_query_series_enabled():
+
+    @tool
+    async def wds_query_table(
+        product_id: ProductId,
+        sql: str,
+        members: dict[str, list[str]] | None = None,
+        start_period: str | None = None,
+        end_period: str | None = None,
+        lang: Lang = "en",
+    ) -> TableQueryResult:
+        """Run one read-only SQL query over a whole StatCan table, or a slice of
+        it, on the server, and get back only its result.
+
+        Use for: questions across many series of one table that
+        wds_query_series (20 vectors) cannot hold: every province by
+        industry, all age groups, a ranking across a table's breadth. The
+        server reads the table's full-table CSV as it downloads (tables up to
+        200 MB zipped), keeps the rows of `members` ({"Geography":
+        ["Alberta"]}, names as in wds_get_cube_metadata) and of
+        `start_period` to `end_period` (REF_DATE's form: 2020, 2020-01), and
+        runs `sql` with DuckDB over them as the table `obs`: the columns of
+        wds_query_series plus one per dimension (`dimension_columns` names
+        them, e.g. labour_force_characteristics). A query that mixes units
+        or adjustments, or sums a total with its own parts, is refused with
+        the reason. At most 300,000 rows load and 500 come back. Quote the
+        `citation` and any `warnings` with the result.
+        Keywords: statcan, SQL, whole table, full table, query table,
+        aggregate, group by, ranking, slice, DuckDB, all members, breadth.
+        Mots-clés : Statistique Canada, requête SQL, tableau complet, tableau
+        entier, agréger, regrouper, classement, tranche, tous les membres.
+        """
+        client.use_lang(lang)
+        return await table_query.query_table(
+            product_id, sql, members=members, start_period=start_period, end_period=end_period
         )
 
 

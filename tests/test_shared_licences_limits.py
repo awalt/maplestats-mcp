@@ -28,6 +28,7 @@ MODULES = Path(__file__).resolve().parents[1] / "src" / "maplestats_mcp" / "modu
 NO_UPSTREAM = {
     "example",
     "maplestats-docs",
+    "maplestats-feedback",
     "maplestats-planner",
     "maplestats-reproduce",
     "maplestats-workbook",

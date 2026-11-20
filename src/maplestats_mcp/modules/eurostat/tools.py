@@ -50,7 +50,7 @@ async def eurostat_compare(
     country names or codes (DE, FR, EL for Greece); the default is EU27,
     euro area and the four largest economies. Status flags (provisional,
     estimated, break in series) are decoded. canada_counterpart names the
-    Canadian series to pair with: Canada is not in Eurostat.
+    series to pair with (Eurostat has no Canadian data).
     Keywords: Eurostat, European Union, euro area, eurozone, EU comparison,
     HICP inflation, unemployment rate Europe, GDP growth EU, government
     debt Maastricht, house prices Europe, Germany, France.

@@ -1475,6 +1475,24 @@ STEPS: list[Step] = [
         },
         lambda data: [p["check"] for p in data["problems"]] == ["not_published"],
     ),
+    # Bug-report drafts: no upstream; checks the live server fills in the bug form,
+    # removes an email address and keeps the link within the length GitHub accepts.
+    Step(
+        "feedback",
+        "feedback_draft_issue",
+        {
+            "tool": "wds_get_data_from_vectors",
+            "symptom": "smoke test, not a real report",
+            "what_came_back": "nothing wrong; written by smoke_test_modules.py (me@example.com)",
+        },
+        lambda data: (
+            data["title"].startswith("wds_get_data_from_vectors: ")
+            and data["removed"] == ["an email address"]
+            and data["issue_url"].startswith(
+                "https://github.com/dsanchezp18/maplestats-mcp/issues/new?template=bug_report.yml"
+            )
+        ),
+    ),
     # Server documentation: no upstream, but the call runs through the live
     # server's resource providers (lazy module loading included).
     Step(

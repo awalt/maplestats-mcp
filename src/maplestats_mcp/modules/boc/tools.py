@@ -62,16 +62,16 @@ async def boc_search_series(
     (hyphens optional). With no series holding every query word, a
     ranked partial match comes back, said in provenance.coverage.
     Keywords: bank of canada, boc, valet, series, search, find, exchange
-    rate, interest rate, policy rate, prime rate, five-year mortgage
-    rate, bond yield, cpi, inflation, core inflation, commodity price,
-    discover, list, inventory, all series, catalogue, full list,
-    discontinued series, legacy series, noon rate.
+    rate, USD/CAD, Canadian dollar, interest rate, policy rate, prime
+    rate, five-year mortgage rate, bond yield, cpi, core inflation,
+    discover, list, all series, catalogue, discontinued series, legacy
+    series, noon rate.
     Mots-clés : Banque du Canada, valet, série, recherche, trouver, taux
-    de change, taux d'intérêt, taux directeur, taux préférentiel, taux
-    hypothécaire, rendement des obligations, IPC, inflation, inflation
+    de change, dollar canadien, taux d'intérêt, taux directeur de la
+    Banque du Canada, taux préférentiel, taux hypothécaire, rendement des obligations, IPC, inflation
     fondamentale, IPC-tronq, IPC-méd, IPC-comm, prix des matières
-    premières, découvrir, liste, inventaire, toutes les séries,
-    catalogue, liste complète, parcourir, série abandonnée, taux à midi.
+    premières, découvrir, liste, toutes les séries, catalogue, parcourir,
+    série abandonnée, taux à midi.
     """
     if query is not None:
         return await client.search_series(
@@ -181,46 +181,35 @@ async def boc_get_observations(
     optionally as a computed change, growth rate, index or monthly,
     quarterly or annual aggregate.
 
-    Use for: fetching exchange rate history, interest rate history,
-    CPI/inflation history, or commodity price history for one or more
-    named series in a single call (observations for several series at
-    once: series_names accepts multiple codes, e.g. ["FXUSDCAD", "FXEURCAD"]), and computing from them a
+    Use for: the history of exchange rates (USD/CAD, EUR/CAD: the
+    Canadian dollar against the US dollar, the euro and other
+    currencies), interest rates (policy rate, prime rate, bond yields),
+    CPI and inflation, or commodity prices, for several series in one call
+    (series_names=["FXUSDCAD", "FXEURCAD"]); and from them a
     year-over-year change, a monthly average exchange rate or the change
-    in the policy rate.
-    `start_date`/`end_date` (each "YYYY-MM-DD") and
-    `recent`/`recent_weeks`/`recent_months`/`recent_years` are mutually
-    exclusive - Valet rejects mixing them. Series requested together
-    are merged into one row per date only when they share the same
-    publication frequency; mixing frequencies (e.g. a daily FX rate
-    with monthly CPI) returns separate rows, each carrying only its own
-    series - check each row's `values` keys rather than assuming every
-    requested series appears in every row. With no window, only the 30
-    most recent dates come back (pass start_date or recent_* for more);
-    provenance.limits says how many dates were left out. A value Valet
-    sends as text that is not a number is null in `values`, with the
-    text in the row's `non_numeric`. Each entry in `series` carries
-    `status` (discontinued for a legacy series such as the noon rate
-    IEXE0101, ended 2017-04-28), `last_observation` and `successor`; FX*
-    rates add a caveat: indicative daily averages, not transactional rates.
-    `transform` (diff, pct_change, yoy_diff, yoy_pct_change,
-    annualized_pct_change, index, moving_average: trailing average over
-    `window` periods; `window` with a change averages the change) and
-    `frequency` with `aggregation`
-    compute from the published levels (a daily series needs `frequency`
-    for a year-over-year change); a series in percent gets
-    percentage-point changes. `transformed` holds the computed values
-    with their formula.
-    Keywords: bank of canada, boc, valet, observations, data, exchange
-    rate, interest rate, policy rate, prime rate, cpi, inflation,
-    commodity price, time series, history, recent, date range,
-    year-over-year, percent change, monthly average, annual average,
-    moving average, rolling average, several series at once, multiple
-    series in one call.
-    Mots-clés : Banque du Canada, valet, observations, données, taux de
-    change, taux d'intérêt, taux directeur, taux préférentiel, IPC,
-    inflation, prix des matières premières, série chronologique,
-    historique, plage de dates, variation annuelle, variation en
-    pourcentage, moyenne mensuelle, moyenne annuelle, moyenne mobile.
+    in the policy rate. Pass `start_date`/`end_date` ("YYYY-MM-DD") or one
+    `recent*` window, not both; with neither, the 30 most recent dates
+    come back (provenance.limits says how many were left out). Series of
+    different frequencies come back in separate rows: read each row's
+    `values` keys. A non-numeric value is null, with its text in
+    `non_numeric`. Each `series` entry has `status`, `last_observation`
+    and `successor` (the noon rate IEXE0101 ended 2017-04-28); FX* rates
+    are indicative daily averages, not transactional rates. `transform`
+    (diff, pct_change, yoy_diff, yoy_pct_change, annualized_pct_change,
+    index, moving_average over `window` periods) and `frequency` with
+    `aggregation` compute from the published levels (a daily series needs
+    `frequency` for a year-over-year change; a series in percent gets
+    percentage-point changes); `transformed` holds them with the formula.
+    Keywords: bank of canada, boc, valet, observations, exchange rate,
+    USD/CAD, EUR/CAD, Canadian dollar, US dollar, euro, interest rate,
+    policy rate, prime rate, cpi, inflation, commodity price, time
+    series, history, year-over-year, monthly average, moving average,
+    several series at once.
+    Mots-clés : Banque du Canada, valet, observations, taux de change,
+    dollar canadien, dollar américain, euro, taux d'intérêt, taux
+    directeur de la Banque du Canada, taux préférentiel, IPC, inflation, prix des matières
+    premières, série chronologique, historique, variation annuelle,
+    moyenne mensuelle, moyenne mobile.
     """
     return await client.get_observations(
         series_names,

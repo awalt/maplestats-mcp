@@ -63,10 +63,9 @@ async def oecd_compare_countries(
     composite leading indicator. `compare_with` takes "G7" or OECD codes
     ("USA", "GBR", "AUS", "OECD"; "US" also works). Periods are SDMX
     (`2020`, `2020-Q1`, `2020-01`); without them the recent years come
-    back, Economic Outlook projections included. The result gives
-    Canada's rank (1 = highest) and the citation the OECD asks for.
-    StatCan and the Bank of Canada are better for Canada's own latest
-    figures.
+    back, Economic Outlook projections included. The result gives the
+    rank (1 = highest) and the citation the OECD asks for. For Canada's
+    own latest figures use the wds_ and boc_ tools.
     Keywords: OECD, international comparison, peer countries, G7,
     economic outlook, projections, forecast, productivity, unit labour
     costs, purchasing power parity, tax-to-GDP, house prices, leading

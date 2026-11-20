@@ -16,6 +16,12 @@ CODE_SETS = {
     "object": {
         "scalar": [
             {"scalarFactorCode": 0, "scalarFactorDescEn": "units", "scalarFactorDescFr": "unités"},
+            # LFS employment's scale, checked live 2026-11-20.
+            {
+                "scalarFactorCode": 3,
+                "scalarFactorDescEn": "thousands",
+                "scalarFactorDescFr": "milliers",
+            },
             {
                 "scalarFactorCode": 6,
                 "scalarFactorDescEn": "millions",
@@ -51,6 +57,12 @@ CODE_SETS = {
             {"memberUomCode": 17, "memberUomEn": "2002=100", "memberUomFr": "2002=100"},
             {"memberUomCode": 81, "memberUomEn": "Dollars", "memberUomFr": "Dollars"},
             {"memberUomCode": 239, "memberUomEn": "Percent", "memberUomFr": "Pourcent"},
+            # LFS employment (v2063945), checked live 2026-11-20.
+            {
+                "memberUomCode": 428,
+                "memberUomEn": "Persons in thousands",
+                "memberUomFr": "Personnes en milliers",
+            },
         ],
         "securityLevel": [
             {

@@ -326,6 +326,44 @@ class SeriesQueryResult(BaseModel):
     failed: list[FailedVector] = Field(
         default_factory=list, description="Vectors WDS could not serve; they are not in `obs`."
     )
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="What the query does with the numbers that is easy to misread, measured "
+        "on the data (nulls skipped, E/F values, an unweighted average of rates, a sum of "
+        "rates, values in thousands): say these with the result.",
+    )
+    provenance: Provenance
+
+
+class TableQueryResult(BaseModel):
+    """The result of one read-only SQL query over a slice of a whole StatCan table."""
+
+    sql: str = Field(description="The SQL as run against the table `obs`.")
+    columns: list[str] = Field(description="Result column names, in order.")
+    column_types: list[str] = Field(description="DuckDB type of each result column.")
+    rows: list[list[QueryCell]] = Field(
+        description="Result rows (dates as YYYY-MM-DD), at most the row cap in provenance.limits."
+    )
+    row_count: int = Field(description="Rows in `rows`.")
+    truncated: bool = Field(description="True when the query returned more rows than the cap.")
+    input_rows: int = Field(description="Rows of the table loaded into `obs` (the slice).")
+    rows_read: int = Field(description="Rows of the table read to find the slice.")
+    product_id: int
+    table_id: str
+    table_title: str
+    citation: str = Field(description="Quote it with the result, with the reference periods used.")
+    dimension_columns: dict[str, str] = Field(
+        description="Each table dimension and the `obs` column that holds its member names."
+    )
+    source: str = Field(
+        description="'full-table file' (StatCan's CSV, read as it downloads) or 'WDS by "
+        "coordinate' (when the file answered with StatCan's captcha)."
+    )
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="What the query does with the numbers that is easy to misread, measured "
+        "on the data: say these with the result.",
+    )
     provenance: Provenance
 
 

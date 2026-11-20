@@ -36,22 +36,25 @@ from tests.gis_profiles import DEFAULT, PROFILES, profile_env, server_for
 # review, not by a change to discovery (baseline.md, "Regression floors"): boc search R@5 and
 # statcan plan anywhere.
 SEARCH_FLOORS: dict[tuple[str, str], dict[str, float]] = {
+    # Raised on 2026-11-20 with the description rules (baseline.md, "Description rules"):
+    # measured R@1 0.643, R@5 0.899, R@10 0.953, MRR 0.751; French R@5 0.925; boc R@5
+    # 1.00; ambiguity R@5 0.75.
     ("overall", "all"): {
-        "recall_at_1": 0.53,
-        "recall_at_5": 0.83,
-        "recall_at_10": 0.88,
-        "mrr": 0.66,
+        "recall_at_1": 0.60,
+        "recall_at_5": 0.86,
+        "recall_at_10": 0.91,
+        "mrr": 0.71,
     },
     ("by_lang", "en"): {"recall_at_5": 0.84},
-    ("by_lang", "fr"): {"recall_at_5": 0.81},
+    ("by_lang", "fr"): {"recall_at_5": 0.87},
     ("by_category", "statcan"): {"recall_at_5": 0.90},
-    ("by_category", "boc"): {"recall_at_5": 0.65},
+    ("by_category", "boc"): {"recall_at_5": 0.90},
     ("by_category", "cmhc"): {"recall_at_5": 0.90},
     ("by_category", "ckan_federal"): {"recall_at_5": 0.65},
     ("by_category", "ckan_provincial"): {"recall_at_5": 0.65},
     ("by_category", "municipal"): {"recall_at_5": 0.90},
     ("by_category", "multi_source"): {"recall_at_5": 0.90},
-    ("by_category", "ambiguity"): {"recall_at_5": 0.50},
+    ("by_category", "ambiguity"): {"recall_at_5": 0.65},
 }
 PLAN_FLOORS: dict[tuple[str, str], dict[str, float]] = {
     ("overall", "all"): {

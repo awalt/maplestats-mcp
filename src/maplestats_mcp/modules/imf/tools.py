@@ -32,8 +32,8 @@ async def imf_search_datasets(query: str, limit: int = 10, lang: Lang = "en") ->
     Use for: finding which International Monetary Fund dataset holds a
     series for a country, before listing its series. `query` is
     English (the IMF names datasets in English only). An IMF figure is not
-    a Statistics Canada figure; use it for comparison or when the Canadian
-    source is out.
+    an official Canadian statistic; use it for comparison or when the
+    Canadian source is out.
     Keywords: IMF, International Monetary Fund, data.imf.org, datasets,
     dataflows, SDMX, World Economic Outlook, WEO, international statistics.
     Mots-clés : FMI, Fonds monétaire international, jeux de données, flux
@@ -76,7 +76,7 @@ async def imf_search_series(
     in an IMF dataset: every series with its labels, frequency, newest
     period and value. `query` keeps the series whose labels hold every
     word (English, or French with lang="fr"). Then pass the key to
-    imf_get_data. IMF figures, not Statistics Canada's.
+    imf_get_data. IMF figures, not official Canadian statistics.
     Keywords: IMF, series for a country, country series, newest value,
     series key, International Monetary Fund, IMF API, SDMX series, IMF
     country data.
@@ -103,7 +103,7 @@ async def imf_get_data(
     per dimension in the order imf_describe_dataset gives, codes joined by
     `+`, an empty part for all; a short key is a prefix. Periods are SDMX
     (`2026`, `2026-Q1`, `2026-M09`); `last_n` keeps the last N per series.
-    IMF figures, not Statistics Canada's.
+    IMF figures, not official Canadian statistics.
     Keywords: IMF, time series, SDMX key, observations, International
     Monetary Fund, World Economic Outlook, international data, tidy data.
     Mots-clés : FMI, séries chronologiques, clé SDMX, observations, Fonds

@@ -77,9 +77,8 @@ async def worldbank_get_indicator(indicator: str, lang: Lang = "en") -> Indicato
     Use for: checking what a World Development Indicators code measures
     and who compiles it (e.g. NY.GDP.PCAP.PP.KD is GDP per capita at
     constant PPP dollars from the World Bank's national accounts;
-    SL.UEM.TOTL.ZS is the ILO modelled unemployment rate, not
-    Statistics Canada's Labour Force Survey rate) before comparing Canada
-    with other countries.
+    SL.UEM.TOTL.ZS is the ILO modelled unemployment rate, not the Labour
+    Force Survey rate) before comparing Canada with other countries.
     Keywords: world bank, WDI, indicator definition, methodology, source
     organization, metadata, ILO modelled estimate, purchasing power
     parity, international data.
@@ -111,8 +110,8 @@ async def worldbank_get_canada_series(
     (all 38) or ISO3 codes of OECD members ("USA", "AUS"); other
     countries are refused. Years: `start_year`/`end_year`, or
     `most_recent` (the last N years with a value). With comparisons the
-    result gives Canada's rank (1 = highest). Canadian sources (StatCan,
-    Bank of Canada) are better for Canada's own latest figures.
+    result gives the rank (1 = highest). For Canada's own latest figures
+    use the wds_ and boc_ tools.
     Keywords: world bank, Canada compared, international comparison, G7
     comparison, OECD comparison, peer countries, cross-country, ranking,
     GDP per capita, annual series, Canada vs United States.

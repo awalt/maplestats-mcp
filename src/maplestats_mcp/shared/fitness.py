@@ -19,7 +19,7 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-from maplestats_mcp.shared.fitness_rules import RULES, FitnessRule
+from maplestats_mcp.shared.fitness_rules import BRIEF_NOTES, RULES, FitnessRule
 from maplestats_mcp.shared.i18n import french_text, normalize_lang
 
 # Argument names that hold a StatCan product id, across the wds_, sdmx_ and
@@ -121,3 +121,14 @@ def note_text(rule: FitnessRule, lang: str) -> str:
 def notes_for(tool: str, arguments: Mapping[str, Any], lang: str) -> list[str]:
     """Fitness-for-use notes for one tool call; [] when no rule applies."""
     return [note_text(rule, lang) for rule in rules_for(tool, arguments)]
+
+
+def short_notes() -> dict[str, str]:
+    """Each rule's full note, in both languages as notes_for() writes them, mapped to
+    its short form (fitness_rules.BRIEF_NOTES), for brief results."""
+    shorts: dict[str, str] = {}
+    for rule in RULES:
+        brief_en, brief_fr = BRIEF_NOTES[rule.key]
+        shorts[rule.note_en] = brief_en
+        shorts[french_text(rule.note_fr)] = french_text(brief_fr)
+    return shorts

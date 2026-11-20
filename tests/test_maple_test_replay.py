@@ -17,6 +17,8 @@ from datetime import date
 import pytest
 from pytest_httpx import HTTPXMock
 
+from maplestats_mcp.shared.brief import expand_tables
+from maplestats_mcp.shared.fitness import short_notes
 from tests.maple_test.replay import (
     CASES,
     Case,
@@ -83,7 +85,14 @@ async def test_brief_result_keeps_what_the_answer_needs(case: Case, httpx_mock: 
     provenance = full["provenance"]
     series = full.get("series")
     citations = [s["context"]["citation"] for s in series] if isinstance(series, list) else []
-    kept = [*citations, *provenance["caveats"], provenance["url"]]
+    # Citations shared but for the vector are stated once with a slot (series_common);
+    # expanding the result gives each series its own back.
+    expanded = expand_tables(structured)
+    if isinstance(series, list):
+        assert [s["context"]["citation"] for s in expanded["series"]] == citations
+    # Fitness-for-use notes come in their short form (fitness_rules.BRIEF_NOTES).
+    shorts = short_notes()
+    kept = [shorts.get(c, c) for c in provenance["caveats"]] + [provenance["url"]]
     kept += [provenance[k] for k in ("limits", "coverage") if provenance.get(k)]
     for needed in kept:
         assert json.dumps(needed, ensure_ascii=False)[1:-1] in text, needed

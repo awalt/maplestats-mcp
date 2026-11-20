@@ -25,7 +25,9 @@ async def statcan_indicators_get_indicators(
 
     Use for: quick current-value lookups for named indicators (e.g.
     "population", "consumer price index", "GDP", "unemployment rate",
-    the Labour Force Survey headline)
+    employment level and jobs, average weekly earnings, the provisional
+    poverty rate, median after-tax income, crime rates; the Labour Force
+    Survey headline; checked in the live feed on 2026-11-20)
     -- the same feeds that power My StatCan, statcan.gc.ca's home
     page, and The Daily's own indicator widgets. dataset="economic"
     is a curated subset of major economic indicators; "homepage" is
@@ -35,13 +37,15 @@ async def statcan_indicators_get_indicators(
     and a link to the Daily article that released it. geo_code filters
     to one geography using the feed's own numbering: 0 Canada, 1 NL,
     2 PEI, 3 NS, 4 NB, 5 QC, 6 ON, 7 MB, 8 SK, 9 AB, 10 BC, 11 YT,
-    12 NT, 13 NU; SGC codes (48), "AB" and "Alberta" are mapped. Keywords: StatCan, indicator, current value, latest
-    statistics, growth rate, population, CPI, GDP, unemployment,
-    headline, LFS, Labour Force Survey, employment.
+    12 NT, 13 NU; SGC codes (48), "AB" and "Alberta" are mapped.
+    Keywords: StatCan, indicator, current value, latest statistics,
+    growth rate, population, CPI, GDP, unemployment, headline, LFS, Labour
+    Force Survey, employment, jobs, earnings, poverty rate, income.
     Mots-clés : Statistique Canada, indicateur, valeur actuelle, chiffre actuel,
     dernières statistiques, taux de croissance, population, IPC, PIB,
-    taux de chômage, emploi, inflation, indice des prix à la
-    consommation, EPA, Enquête sur la population active.
+    taux de chômage, emploi, nombre d'emplois, rémunération, taux de
+    pauvreté, revenu, inflation, indice des prix à la consommation, EPA,
+    Enquête sur la population active.
     """
     use_lang(lang)
     return await client.get_indicators(dataset, query, geo_code=geo_code, lang=lang, limit=limit)

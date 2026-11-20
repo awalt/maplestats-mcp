@@ -908,7 +908,8 @@ contradicts its provenance or the source, a response that does not match
 its description), tell the user and offer to draft a report for the
 maintainers, who appreciate them; the user need not write or file it: you
 can submit it to GitHub once they have read and approved the exact text.
-docs://report-issue has the template and steps.
+feedback_draft_issue writes it (version filled in, private details removed)
+with a prefilled GitHub link; docs://report-issue has the rules.
 Never file anything before the user approves the final text.
 """.strip()
 
@@ -926,8 +927,10 @@ is temporarily down and returned the typed upstream-unavailable error.
 Ask once, in a sentence: "That looks like a bug in the server. Want me to
 report it to the maintainers? You won't need to write or file anything
 yourself; I'll draft it, show you the exact text, and submit it to GitHub
-only after you approve it." On a yes, fill in the template below from what
-you know about the failed call. The conversation may hold personal details,
+only after you approve it." On a yes, call feedback_draft_issue (through
+call_tool) with what you know about the failed call: it fills in the template
+below, adds the server version and removes keys, tokens, email addresses and
+home-folder paths. Without it, fill in the template yourself. The conversation may hold personal details,
 file paths or keys: leave out anything the report does not need.
 
 Then show the complete final title and body in one short block and STOP.
@@ -943,9 +946,11 @@ approval of the text.
    "<tool name>: <short symptom>" --body-file <file>`). Search open issues
    first (`gh issue list --search "<tool name>"`) and comment on a matching
    one instead of opening a duplicate. File the approved text unchanged.
-2. Otherwise give the user one prefilled link to click:
+2. Otherwise give the user feedback_draft_issue's `issue_url`, which opens the
+   bug form with the approved text filled in (when `prefilled` is false it
+   fills in the title only: give the body to paste). Without that tool, give
    https://github.com/dsanchezp18/maplestats-mcp/issues/new?template=bug_report.yml&title=<url-encoded title>
-   and the body text to paste. Never put the report in the URL beyond the title.
+   and the body text to paste.
 3. Return the issue link. If filing fails, say so and fall back to step 2.
 
 The user's approval covers this one report only. Never file, comment or post
@@ -965,7 +970,8 @@ page if it was checked>
 **Why it looks wrong:** <the evidence: provenance as-of date versus the
 source, a field that is null or missing, a count that does not match>
 
-**Version:** <output of `uvx maplestats-mcp --version`, or the server version>
+**Version:** <feedback_draft_issue fills it in; otherwise the output of
+`uvx maplestats-mcp --version`>
 
 ## Before sending
 

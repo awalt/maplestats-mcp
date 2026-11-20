@@ -243,7 +243,11 @@ def periods_to_ask(metadata: dict[str, Any], start_period: str | None) -> int:
     """The script's latestN: periods back from the table's last one to `start_period`."""
     from datetime import date
 
-    first = date.fromisoformat((start_period or str(metadata["cubeStartDate"]))[:7] + "-01")
+    # REF_DATE's forms: 2020, 2020-01 or 2020-01-15. A bare year read as "2020-01"
+    # (its first seven characters plus "-01" gave "2020-01", not a date) and raised
+    # ValueError from wds_get_full_table_download until 2026-11-20.
+    since = start_period or str(metadata["cubeStartDate"])
+    first = date.fromisoformat((since[:7] if len(since) >= 7 else f"{since[:4]}-01") + "-01")
     last = date.fromisoformat(str(metadata["cubeEndDate"])[:10])
     code = int(metadata.get("frequencyCode") or 0)
     if code == 1:
