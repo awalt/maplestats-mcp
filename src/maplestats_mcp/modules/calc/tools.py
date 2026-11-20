@@ -146,8 +146,8 @@ async def calc_count_changes(
     before, after), with the series' citation.
 
     Use for: how many times a rate was cut or raised in a year, how often a
-    published series moved, instead of counting by hand. The policy rate is
-    Valet 'V39079' (target for the overnight rate). `series` is a Bank of
+    published series moved, instead of counting by hand (the policy rate
+    is Valet 'V39079'). `series` is a Bank of
     Canada `boc_series` or a StatCan `vector_id` or `product_id` +
     `coordinate`. `start` and `end` are periods or dates (2024, 2024-06,
     2024-06-05; `end` defaults to today). Each value is compared with the

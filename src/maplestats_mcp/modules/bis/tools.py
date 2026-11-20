@@ -54,13 +54,12 @@ async def bis_compare_countries(
     household or government debt as a share of GDP, real house price
     growth, policy rate, inflation or effective exchange rate compares
     with the United States, the United Kingdom, Australia, the euro area
-    or the G7. `indicator` is one of the preset names; Canada is always
-    first. `compare_with` takes "G7", "EURO_AREA" or two-letter BIS area
+    or the G7. `indicator` is one of the preset names. `compare_with` takes "G7", "EURO_AREA" or two-letter BIS area
     codes ("US", "GB", "AU", "NZ", "SE", "NO"). Periods are SDMX
     (`2020`, `2020-Q1`, `2020-01`); without them the last 5 years come
-    back. The result gives Canada's rank (1 = highest) in the period most
-    of them report. Bank of Canada Valet and StatCan are better for
-    Canada's own latest figures.
+    back. The result lists Canada first, with its rank (1 = highest) in
+    the period most of them report. For Canada's own latest figures use
+    the boc_ and wds_ tools.
     Keywords: BIS, Bank for International Settlements, international
     comparison, debt service ratio, household debt, credit-to-GDP gap,
     house prices, policy rates, central banks, G7, peer countries,

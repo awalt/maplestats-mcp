@@ -51,7 +51,7 @@ async def ons_get_indicator(
     total pay growth, job vacancies, public sector net debt (% of GDP),
     retail sales volume. Periods are `2026`, `2026-Q3` or `2026-09`;
     without them the recent values come back. The result names the
-    Statistics Canada table to pair with and how the definitions differ,
+    Canadian table (wds_) to pair with and how the definitions differ,
     the next release date and the ONS citation.
     Keywords: United Kingdom, UK, Britain, ONS, Office for National
     Statistics, UK inflation, CPIH, UK GDP, UK unemployment, UK pay,

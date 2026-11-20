@@ -415,6 +415,16 @@ script to run by hand after editing a page's links.
   `sdmx_*`, `rdaas_*`).
 - Docstrings on tools always have `Use for:`, `Keywords:`, and
   `Mots-clés :` lines.
+- `search_tools` ranks tools by the words of their descriptions, so every word
+  pulls questions toward the tool. A tool for a foreign source points to Canadian
+  tools by prefix (`boc_`, `wds_`), never by agency name, and says "Canada" at
+  most twice; a `*_list_*` tool describes the listing and leaves place names to the
+  search tool it serves; a pointer to another table names it by number, not by the
+  topic words of the questions it should not take; and a Canadian source carries
+  the everyday words people use for its own series, in both languages
+  (`tests/test_tool_descriptions.py`; tests/discovery_benchmark/baseline.md,
+  "Description rules"). Keep a description near the catalogue's average length (about
+  160 words): a long one loses on every question it should win.
 - Comments explain *why*, not *what* — especially for anything ported
   from or verified against a live API response; state what was
   confirmed and how, so a future edit doesn't silently regress a

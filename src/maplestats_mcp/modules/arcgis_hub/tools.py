@@ -51,10 +51,11 @@ async def arcgis_hub_list_portals(lang: Lang = "en") -> PortalList:
     Hamilton and Central Lake Ontario conservation authorities, Quinte
     Conservation, Ontario GeoHub (Land Information Ontario) and Parks
     Canada.
-    Keywords: ArcGIS Hub, open data portal, municipal, city, region,
-    province, GIS, geospatial, list portals.
-    Mots-clés : ArcGIS Hub, portail de données ouvertes, municipal,
-    ville, région, province, SIG, géospatial, liste des portails.
+    Keywords: ArcGIS Hub, list portals, portal key, which catalogues,
+    municipal portals, available portals, portal directory, coverage, GIS.
+    Mots-clés : ArcGIS Hub, liste des portails, clé de portail,
+    catalogues offerts, portails municipaux, portails disponibles,
+    répertoire des portails, couverture, SIG.
     """
     return client.list_portals(lang)
 

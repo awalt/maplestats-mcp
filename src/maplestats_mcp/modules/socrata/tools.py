@@ -32,12 +32,11 @@ async def socrata_list_portals(lang: Lang = "en") -> PortalList:
 
     Use for: finding the `portal` key other socrata_ tools need — Nova
     Scotia (ns), New Brunswick (nb), Calgary, Edmonton, Winnipeg.
-    Keywords: Socrata, SODA, open data portal, Nova Scotia, New
-    Brunswick, Calgary, Edmonton, Winnipeg, list portals.
-    Mots-clés : Socrata, SODA, portail de données ouvertes,
-    Nouvelle-Écosse, Nouveau-Brunswick, Ville de Calgary, Ville
-    d'Edmonton, Ville de Winnipeg, données municipales, données
-    provinciales, liste des portails.
+    Keywords: Socrata, SODA, list portals, portal key, which catalogues,
+    available portals, portal directory, coverage.
+    Mots-clés : Socrata, SODA, liste des portails, clé de portail,
+    catalogues offerts, portails disponibles, répertoire des portails,
+    couverture.
     """
     return client.list_portals(lang)
 

@@ -58,9 +58,8 @@ async def fed_get_indicator(
     """Get a US Federal Reserve headline series: US rates, yields, the US
     dollar, output and credit.
 
-    Use for: US figures to set beside Canadian ones: the US federal funds
-    rate, US Treasury 2- and 10-year yields, the US dollar against the
-    loonie (Fed H.10 noon rate), the broad
+    Use for: US figures: the US federal funds rate, US Treasury 2- and
+    10-year yields, the Fed's H.10 noon exchange rates, the broad
     dollar index, the Fed's interest on reserve balances, the US prime
     rate, US industrial production and capacity utilization (G.17), M2
     money stock, US consumer credit and the household debt service ratio.

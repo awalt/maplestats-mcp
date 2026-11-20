@@ -276,6 +276,55 @@ These are what the numbers and the returned lists show. None is a diagnosis.
   only for this pair of runs.
 - Live pass (`scripts/discovery_benchmark_live.py`) not rerun for this baseline.
 
+## Description rules (2026-11-20)
+
+`baseline.json` was re-recorded on 2026-11-20 (490 tools, the same 129 reviewed questions)
+after the tool descriptions were reworded under four rules. Before the rewording the
+catalogue had grown from 374 to 489 tools and search MRR had slid from 0.690 to 0.665,
+0.005 above its floor: each new tool tipped one near-tie. Measuring which tools ranked
+above the expected answer showed four causes, each fixed for every tool it covers, never
+for one question:
+
+1. **Foreign sources named Canadian ones.** The Fed, ECB, BIS, OECD, ILO, World Bank,
+   IMF, ONS and ABS descriptions said "compare with Canada", "beside the Bank of
+   Canada's policy rate" or "StatCan and the Bank of Canada are better for...": a
+   sentence pointing away from a tool still puts the other source's words in its
+   index. They now point by tool prefix (`boc_`, `wds_`) and say Canada at most twice
+   (`tests/test_tool_descriptions.py`).
+2. **List tools out-ranked the search tools they serve.** `ckan_list_portals`'s
+   keywords named every place in both languages and took 11 questions ("Données
+   ouvertes du Québec sur...") from `ckan_search_datasets`; Socrata's and ArcGIS Hub's
+   lists did the same. The lists now describe the listing; the search tools carry the
+   places (`ckan_search_datasets` gained the French place names and Niagara).
+3. **Pointers to other tables used those tables' topic words.** Job Bank's wage tool
+   said "for ... average weekly earnings by industry use SEPH"; it now names the
+   tables by number.
+4. **Canadian sources lacked the words people use for their own series.** The Bank of
+   Canada tools had no "USD/CAD", "dollar canadien" or "taux directeur de la Banque du
+   Canada", and `boc_get_observations` was 401 words long (average 161); the headline
+   indicators tool had no "jobs", "earnings" or "poverty rate", though its feed carries
+   those indicators (checked live). Both now do, and `boc_get_observations` is shorter.
+
+| search_tools | 2026-10-27 | before (2026-11-20) | after |
+|---|---|---|---|
+| R@1 | 0.558 | 0.543 | 0.643 |
+| R@5 | 0.868 | 0.837 | 0.899 |
+| R@10 | 0.915 | | 0.953 |
+| MRR | 0.690 | 0.665 | 0.753 |
+| French R@5 | 0.868 | | 0.925 |
+
+Against the start of the rewording, Bank of Canada questions went from 9 of 12 to 12 of
+12 in the top five, provincial portals from MRR 0.415 to 0.620, municipal from 0.803 to
+0.906 and the ambiguous questions from 0.522 to 0.647; two questions lost one rank. The
+English and French discovery tests (261 and 195 questions outside this benchmark, each
+needing the tool in the top three) passed throughout. Two changes to the index itself
+were measured and dropped: indexing only a description's summary, "Use for" sentence
+and keywords (MRR 0.645, 23 English cases lost) and English stop words (MRR 0.704, five
+cases lost); a lower BM25 `b` moved MRR by less than 0.005.
+
+Floors raised with this record: overall R@1 0.60, R@5 0.86, R@10 0.91, MRR 0.71; French
+R@5 0.87; `boc` R@5 0.90; `ambiguity` R@5 0.65.
+
 ## Regression floors
 
 `tests/test_discovery_benchmark.py` fails below: `search_tools` R@1 0.53, R@5 0.83, R@10 0.88,
