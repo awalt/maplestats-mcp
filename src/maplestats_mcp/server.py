@@ -453,6 +453,10 @@ class AnnotatedBM25SearchTransform(BM25SearchTransform):
                 ranking = self._semantic.ranking(query, self._semantic_rows, semantic.FUSION_DEPTH)
                 scores = semantic.fuse(scores, ranking)
         scores = search.apply_boosts(scores, boosts)
+        # A tool for another province, city or country than the query names ranks lower.
+        scores = search.apply_place_factors(
+            scores, search.place_factors(query, [t.name for t in self._indexed])
+        )
         # The catalog is deduplicated by name; resolve the current version's schema.
         by_name = {t.name: t for t in tools}
         top = [

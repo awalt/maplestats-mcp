@@ -57,7 +57,19 @@ from maplestats_mcp.modules.planner import client as planner
 from maplestats_mcp.modules.reproduce import french as reproduce_french
 from maplestats_mcp.modules.socrata.constants import PORTALS as SOCRATA_PORTALS
 from maplestats_mcp.server import MODULES_ROOT, ModuleProvider, mcp
-from maplestats_mcp.shared.search import apply_boosts, boosts_for, identifier_kinds, tokenize
+from maplestats_mcp.shared import search_places
+from maplestats_mcp.shared.search import (
+    NATIONAL_FACTOR,
+    NATIONAL_WORDS,
+    PLACE_MISMATCH_FACTOR,
+    apply_boosts,
+    apply_place_factors,
+    boosts_for,
+    identifier_kinds,
+    place_factors,
+    tokenize,
+    tool_place,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "site"
@@ -1482,6 +1494,17 @@ def build_index(modules: list[ModuleDoc]) -> dict[str, Any]:
         "tools": [[t.name, t.module, t.summary] for t in docs],
         # The identifiers each tool takes, for the identifier boosts (shared/search.py).
         "ids": [t.ids for t in docs],
+        # Where each tool's data is, and the place names a query is read for, for
+        # shared/search.py's place preference (shared/search_places.py's lists).
+        "where": [tool_place(t.name) for t in docs],
+        "places": {
+            "provinces": search_places.PROVINCE_NAMES,
+            "codes": search_places.PROVINCE_CODES,
+            "cities": {name: list(pair) for name, pair in search_places.CITY_NAMES.items()},
+            "national": sorted(NATIONAL_WORDS),
+            "mismatch": PLACE_MISMATCH_FACTOR,
+            "nationalFactor": NATIONAL_FACTOR,
+        },
         "post": postings,
     }
 
@@ -1505,6 +1528,7 @@ def rank(index: dict[str, Any], query: str) -> list[int]:
             scores[i] += idf * numerator / denominator
     entries = [(tool[0], ids) for tool, ids in zip(index["tools"], index["ids"], strict=True)]
     scores = apply_boosts(scores, boosts_for(query, entries))
+    scores = apply_place_factors(scores, place_factors(query, [tool[0] for tool in index["tools"]]))
     ranked = sorted(range(n), key=lambda i: scores[i], reverse=True)
     return [i for i in ranked if scores[i] > 0]
 

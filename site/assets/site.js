@@ -75,6 +75,7 @@
       }
     }
     applyBoosts(scores, boosts(index, query));
+    applyPlaces(scores, index, query);
     const hits = [];
     for (let i = 0; i < n; i++) if (scores[i] > 0) hits.push(i);
     return hits.sort((a, b) => scores[b] - scores[a] || a - b);
@@ -117,6 +118,55 @@
     for (const s of scores) if (s > best) best = s;
     const top = best > 0 ? best : 1.0;
     for (const [i, weight] of found) scores[i] += weight * top;
+  }
+
+  // A tool for another province, city or country than the query names ranks lower
+  // (shared/search.py's place_factors, with shared/search_places.py's names).
+  function normalizePlace(text) {
+    const plain = text.toLowerCase().normalize("NFKD").replace(/\p{M}/gu, "");
+    return plain.replace(/[^a-z0-9-]+/g, " ").trim().split(/\s+/).join(" ");
+  }
+
+  function placesIn(places, query) {
+    const text = " " + normalizePlace(query) + " ";
+    const cities = new Set();
+    const provinces = new Set();
+    for (const [name, [city, province]] of Object.entries(places.cities)) {
+      if (text.includes(" " + name + " ")) {
+        cities.add(city);
+        provinces.add(province);
+      }
+    }
+    for (const [name, province] of Object.entries(places.provinces)) {
+      if (text.includes(" " + name + " ")) provinces.add(province);
+    }
+    for (const code of query.replace(/\./g, "").match(/\b[A-Z]{2}\b/g) || []) {
+      if (places.codes[code]) provinces.add(places.codes[code]);
+    }
+    return [cities, provinces];
+  }
+
+  function applyPlaces(scores, index, query) {
+    const places = index.places;
+    const [cities, provinces] = placesIn(places, query);
+    const words = new Set(tokenize(query));
+    for (const w of query.match(/\b[A-Za-z]{2,3}\b/g) || []) words.add(w.toLowerCase());
+    const national = !provinces.size && places.national.some((w) => words.has(w));
+    index.where.forEach((place, i) => {
+      if (!place.length) return;
+      let factor = 1;
+      if (place[0] === "f") {
+        if (!place.slice(1).some((cue) => words.has(cue))) factor = places.mismatch;
+      } else {
+        const named =
+          place[0] === "c"
+            ? cities.has(place[1]) || (!cities.size && provinces.has(place[2]))
+            : provinces.has(place[1]);
+        if (provinces.size && !named) factor = places.mismatch;
+        else if (national) factor = places.nationalFactor;
+      }
+      scores[i] *= factor;
+    });
   }
 
   // Under node there is no page: hand over the search and stop.

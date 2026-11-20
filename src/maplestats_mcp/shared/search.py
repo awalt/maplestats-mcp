@@ -25,6 +25,8 @@ from typing import Any
 from fastmcp.server.transforms.search import serialize_tools_for_output_json
 from fastmcp.tools.base import Tool
 
+from maplestats_mcp.shared.search_places import places_in
+
 _WORD = re.compile(r"[^\W_]{2,}")
 
 # French function words, without accents. Every Mots-clés line is full of
@@ -431,3 +433,107 @@ def serialize_tools_brief(tools: Sequence[Tool]) -> list[dict[str, Any]]:
             result["annotations"] = full["annotations"]
         results.append(result)
     return results
+
+
+# Place preference. BM25 reads words, not places: "Interest rates in Canada" put the US
+# Federal Reserve's tools above the Bank of Canada's, the USD/CAD rate put the Fed and
+# the ECB first, and "Manitoba school divisions" put an Alberta tool first (discovery
+# benchmark, 2026-11-19). A tool whose data covers one province or city, or another
+# country, keeps its score when the query names that place and is scaled down when the
+# query names other places (or, for another country's publisher, names no place of it).
+# Scaling keeps the order within each group, so a query that names a tool still finds it.
+# One city's tools (the city, then its province) and one province's tools. A city's
+# tools stay up when the query names that city, or names its province and no city.
+CITY_TOOLS: tuple[tuple[str, str, str], ...] = (
+    ("calgary_", "Calgary", "Alberta"),
+    ("eps_", "Edmonton", "Alberta"),
+    ("ets_", "Edmonton", "Alberta"),
+    ("epcor_", "Edmonton", "Alberta"),
+    ("toronto_", "Toronto", "Ontario"),
+    ("opendatasoft_vancouver_", "Vancouver", "British Columbia"),
+)
+PROVINCE_TOOLS: tuple[tuple[str, str], ...] = (
+    ("ab_", "Alberta"),
+    ("aer_", "Alberta"),
+    ("on_fir_", "Ontario"),
+    ("oeb_", "Ontario"),
+    ("bc_", "British Columbia"),
+    ("bcer_", "British Columbia"),
+    ("bcgw_", "British Columbia"),
+    ("drivebc_", "British Columbia"),
+    ("isq_", "Quebec"),
+    ("nl_", "Newfoundland and Labrador"),
+    ("nwt_", "Northwest Territories"),
+    ("yukon_", "Yukon"),
+)
+# Another country's publisher, and the words that name it or its place: a query with
+# one of them asks for that publisher (folded as tokenize folds them).
+FOREIGN_TOOLS: tuple[tuple[str, frozenset[str]], ...] = (
+    ("fed_", frozenset({"fed", "federal", "reserve", "fomc", "us", "usa", "united", "state"})),
+    ("ecb_", frozenset({"ecb", "bce", "euro", "eurozone", "europe", "european", "eu"})),
+    ("eurostat_", frozenset({"eurostat", "euro", "europe", "european", "eu", "union"})),
+    ("ons_", frozenset({"ons", "uk", "united", "kingdom", "britain", "england", "royaume"})),
+    ("abs_", frozenset({"abs", "australia", "australian", "australie"})),
+    ("cdc_", frozenset({"cdc", "us", "usa", "united", "state"})),
+)
+PLACE_MISMATCH_FACTOR = 0.5
+# A query about Canada as a whole ("Production de pétrole au Canada") that names no
+# province: one province's tools still answer part of it, so they are scaled less.
+NATIONAL_WORDS = frozenset({"canada", "canadian", "canadien", "canadienne", "national"})
+NATIONAL_FACTOR = 0.7
+
+
+def tool_place(name: str) -> list[str]:
+    """Where a tool's data is: ["c", city, province], ["p", province], ["f", *cues] or []."""
+    for prefix, city, province in CITY_TOOLS:
+        if name.startswith(prefix):
+            return ["c", city, province]
+    for prefix, province in PROVINCE_TOOLS:
+        if name.startswith(prefix):
+            return ["p", province]
+    for prefix, cues in FOREIGN_TOOLS:
+        if name.startswith(prefix):
+            return ["f", *sorted(cues)]
+    return []
+
+
+def query_words(query: str) -> set[str]:
+    """The query's tokens and its two- and three-letter words (us, eu, uk) for the cues."""
+    short = {w.lower() for w in re.findall(r"\b[A-Za-z]{2,3}\b", query)}
+    return set(tokenize(query)) | short
+
+
+def place_factors(query: str, names: Sequence[str]) -> dict[int, float]:
+    """Positions of tools to scale down for `query`, and the factor to scale them by."""
+    # shared/search_places.py, not the planner: search must not import a module
+    # before one of its tools is called (tests/test_tool_catalogue.py).
+    cities, provinces = places_in(query)
+    words = query_words(query)
+    national = not provinces and bool(words & NATIONAL_WORDS)
+    factors: dict[int, float] = {}
+    for i, name in enumerate(names):
+        place = tool_place(name)
+        if not place:
+            continue
+        if place[0] == "f":
+            if not words & set(place[1:]):
+                factors[i] = PLACE_MISMATCH_FACTOR
+            continue
+        if place[0] == "c":
+            named = place[1] in cities or (not cities and place[2] in provinces)
+        else:
+            named = place[1] in provinces
+        if provinces and not named:
+            factors[i] = PLACE_MISMATCH_FACTOR
+        elif national:
+            factors[i] = NATIONAL_FACTOR
+    return factors
+
+
+def apply_place_factors(scores: list[float], factors: dict[int, float]) -> list[float]:
+    if not factors:
+        return scores
+    scaled = list(scores)
+    for i, factor in factors.items():
+        scaled[i] *= factor
+    return scaled
