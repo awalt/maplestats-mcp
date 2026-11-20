@@ -33,7 +33,7 @@ from __future__ import annotations
 from typing import Any
 
 from maplestats_mcp import config
-from maplestats_mcp.modules.statcan.wds import client, constants, context
+from maplestats_mcp.modules.statcan.wds import client, constants, context, query_checks
 from maplestats_mcp.modules.statcan.wds.schemas import (
     QueryCell,
     QuerySeries,
@@ -65,9 +65,16 @@ OBS_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("scale", "VARCHAR", "scalar factor text, e.g. 'thousands'"),
     ("frequency", "VARCHAR", "e.g. 'Monthly'"),
     ("geography", "VARCHAR", "Geography member, when the table has one"),
+    (
+        "adjustment",
+        "VARCHAR",
+        "'seasonally adjusted', 'unadjusted' or 'trend-cycle', when the series or table says",
+    ),
+    ("quality", "VARCHAR", "'E' (use with caution), 'F' (too unreliable) or 'x' (suppressed)"),
 )
 
 OBS_COLUMN_NAMES = ", ".join(name for name, _, _ in OBS_COLUMNS)
+query_checks.set_obs_columns(name for name, _, _ in OBS_COLUMNS)
 
 _EXAMPLE = (
     "SELECT vector_id, year(ref_period) AS year, avg(value) AS annual_average "
@@ -194,6 +201,10 @@ def _columns(series: list[VectorSeries]) -> list[list[Any]]:
                 ctx.scale if ctx else None,
                 ctx.frequency if ctx else None,
                 ctx.geography if ctx else None,
+                query_checks.adjustment(
+                    ctx.series_title if ctx else None, ctx.table_title if ctx else None
+                ),
+                query_checks.quality(o.status_code, o.security_level_code),
             )
             for column, value in zip(columns, row, strict=True):
                 column.append(value)
@@ -276,15 +287,65 @@ def _sandbox_error(error: duck_sandbox.SandboxError, seconds: float) -> InvalidI
     )
 
 
-async def _run(
-    series: list[VectorSeries], sql: str, row_cap: int, seconds: float
-) -> tuple[list[str], list[str], list[list[QueryCell]], bool]:
-    """Load `obs` and run `sql` in a capped child process (shared/duck_sandbox.py)."""
-    table = duck_sandbox.Table(
+def _table(series: list[VectorSeries]) -> duck_sandbox.Table:
+    return duck_sandbox.Table(
         name="obs",
         columns=[(name, kind) for name, kind, _ in OBS_COLUMNS],
         values=_columns(series),
     )
+
+
+async def _hierarchy(series: list[VectorSeries]) -> query_checks.Hierarchy:
+    """Each table's member parents; a table whose metadata cannot be read is left out."""
+    cubes: dict[int, dict[str, Any] | None] = {}
+    for product_id in dict.fromkeys(s.product_id for s in series):
+        try:
+            cubes[product_id] = (await client.cube_metadata_raw(product_id))[0]
+        except Exception:  # noqa: BLE001 - a check without metadata is skipped, not an error
+            cubes[product_id] = None
+    return query_checks.hierarchy_from(cubes)
+
+
+async def _checks(series: list[VectorSeries], sql: str, seconds: float) -> query_checks.Findings:
+    """Refuse a query whose result would be wrong; the warnings for one that runs.
+
+    See query_checks.py. A diagnostic that fails to run is skipped: the checks
+    never stop a query that the sandbox would run.
+    """
+    table = _table(series)
+    values = {
+        name: set(column)
+        for (name, _, _), column in zip(OBS_COLUMNS, table.values, strict=True)
+        if name in query_checks.TEXT_COLUMNS
+    }
+    planned = query_checks.plan(sql)
+    query_checks.check_literals(planned.literals, values)
+    if not planned.diagnostic_sql:
+        return query_checks.Findings()
+    try:
+        result = await duck_sandbox.run_query(
+            [table],
+            planned.diagnostic_sql,
+            seconds=seconds,
+            row_cap=query_checks.MAX_GROUPS * len(planned.aggregates),
+            max_chars=constants.QUERY_MAX_RESULT_CHARS,
+            max_cell_chars=constants.QUERY_MAX_RESULT_CHARS,
+        )
+    except duck_sandbox.SandboxError:
+        # The user's own SQL will fail the same way, with the message that says why.
+        return query_checks.Findings()
+    hierarchy = await _hierarchy(series)
+    findings = query_checks.evaluate(planned, result.rows, series, hierarchy)
+    if findings.refusals:
+        raise query_checks.refusal_error(findings)
+    return findings
+
+
+async def _run(
+    series: list[VectorSeries], sql: str, row_cap: int, seconds: float
+) -> tuple[list[str], list[str], list[list[QueryCell]], bool]:
+    """Load `obs` and run `sql` in a capped child process (shared/duck_sandbox.py)."""
+    table = _table(series)
     try:
         result = await duck_sandbox.run_query(
             [table],
@@ -359,6 +420,7 @@ async def query_series(
     described, context_note = await context.describe(list(data.series))
     seconds = query_time_limit()
     row_cap = constants.QUERY_ROW_CAP
+    findings = await _checks(described, text, seconds)
     names, types, rows, truncated = await _run(described, text, row_cap, seconds)
     input_rows = sum(len(s.observations) for s in described)
     cap_note = client._m(
@@ -408,5 +470,6 @@ async def query_series(
             for s in described
         ],
         failed=data.failed,
+        warnings=findings.warnings,
         provenance=provenance,
     )

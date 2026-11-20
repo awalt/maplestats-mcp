@@ -326,6 +326,12 @@ class SeriesQueryResult(BaseModel):
     failed: list[FailedVector] = Field(
         default_factory=list, description="Vectors WDS could not serve; they are not in `obs`."
     )
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="What the query does with the numbers that is easy to misread, measured "
+        "on the data (nulls skipped, E/F values, an unweighted average of rates, a sum of "
+        "rates, values in thousands): say these with the result.",
+    )
     provenance: Provenance
 
 

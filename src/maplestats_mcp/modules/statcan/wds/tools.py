@@ -732,12 +732,13 @@ if config.get_query_series_enabled():
         `obs` columns: vector_id, product_id, table_id, coordinate, ref_period
         (DATE), value (unscaled: times scale_multiplier for the full figure),
         scale_multiplier, decimals, status, symbol, release_time, series_title,
-        table_title, unit, scale, frequency, geography. Example: SELECT
-        vector_id, year(ref_period) AS year, avg(value) FROM obs GROUP BY ALL
-        ORDER BY ALL. Only one SELECT (or WITH ... SELECT) runs, with no file,
-        URL or extension access, in a time and memory limit; at most 500 rows
-        and 1,000,000 characters come back. Quote `series` citations with the
-        result.
+        table_title, unit, scale, frequency, geography, adjustment, quality
+        (E/F/x). Example: SELECT vector_id, year(ref_period) AS year,
+        avg(value) FROM obs GROUP BY ALL ORDER BY ALL. A query that mixes units
+        or adjustments, or sums a total with its own parts, is refused with
+        the reason. One read-only SELECT runs in a sandbox (no files, URLs or
+        extensions; time and memory limits); at most 500 rows come back. Quote
+        the `series` citations and any `warnings` with the result.
         Keywords: statcan, SQL, query, compute, calculate, aggregate, sum,
         average, annual average, mean, group by, ranking, rank, top, maximum,
         minimum, peak, compare series, DuckDB, analysis, vectors, server-side.
