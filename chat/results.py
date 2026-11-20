@@ -9,7 +9,9 @@
 #          like, in the result's `transformed` block) is drawn in its own unit,
 #          with the formula in its notes; the published levels follow it.
 # Inputs:  (tool name, structured result) pairs collected by either backend
-# Outputs: {"data": [series...], "sources": [source...]}
+#          It also lists the data calls behind the answer (tool name and
+#          arguments), which the page's export buttons send back to repeat.
+# Outputs: {"data": [series...], "sources": [source...]} and [call...]
 # ============================================================
 
 import csv
@@ -483,6 +485,44 @@ def source_of(tool: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         "as_of": provenance.get("as_of"),
         "licence": provenance.get("licence"),
     }
+
+
+# Calls the "Get the code" and "Download Excel" buttons can repeat: data calls only.
+# Discovery tools return plans and tool lists, and the reproduce tools are what the
+# buttons call, so none of them is offered.
+NOT_REPRODUCIBLE = {
+    "plan_query",
+    "search_tools",
+    "call_tool",
+    "check_answer",
+    "reproduce_code",
+    "reproduce_workbook",
+}
+MAX_CALLS = 8
+
+
+def calls_behind(calls: list[tuple[dict[str, Any], Any]]) -> list[dict[str, Any]]:
+    """The data calls behind one turn, as {name, arguments}, for the export buttons.
+
+    `calls` holds (described call, raw result) pairs for every call that succeeded.
+    A call is kept when its result carries provenance with a URL (the same test as
+    the Sources tab), so a call that returned no data is not offered. A call made
+    twice with the same arguments is kept once, at its last place.
+    """
+    kept: dict[str, dict[str, Any]] = {}
+    for call, raw in calls:
+        name = call.get("name")
+        arguments = call.get("arguments")
+        if not isinstance(name, str) or name in NOT_REPRODUCIBLE:
+            continue
+        arguments = arguments if isinstance(arguments, dict) else {}
+        payload = parse_result(raw)
+        if payload is None or source_of(name, payload) is None:
+            continue
+        key = name + json.dumps(arguments, sort_keys=True, default=str)
+        kept.pop(key, None)
+        kept[key] = {"name": name, "arguments": arguments}
+    return list(kept.values())[-MAX_CALLS:]
 
 
 def collect(calls: list[tuple[str, Any]]) -> dict[str, list[dict[str, Any]]]:

@@ -3428,6 +3428,19 @@ TAXATION = Topic(
             ),
         ),
         PlanStep(
+            "cra_tax_stats_get_t1_series",
+            "a T1 table line item over tax years 2018-2024; by FSA: cra_tax_stats_get_fsa_table",
+            (
+                "t1 final",
+                "tax filer",
+                "tax filers",
+                "income tax statistics",
+                "forward sortation",
+                "statistiques finales t1",
+                "region de tri",
+            ),
+        ),
+        PlanStep(
             "cra_charities_search",
             "find a registered charity by name, city or business number, then "
             "cra_charities_get_charity or cra_charities_get_directors",
@@ -3596,11 +3609,15 @@ BUILDING_PERMITS = Topic(
             ("housing start", "mises en chantier"),
         ),
         PlanStep(
+            "calgary_summarize_building_permits",
+            "Calgary building permits by community, class or month",
+            places=("Calgary",),
+        ),
+        PlanStep(
             "socrata_query_dataset_rows",
-            "permit records for Calgary, Edmonton and Winnipeg: portal='calgary' "
-            "dataset_id='c2es-76ed' ('8ced-xbvn' holds inspections), portal='edmonton' "
+            "permit records for Edmonton and Winnipeg: portal='edmonton' "
             "dataset_id='24uj-dj8v', portal='winnipeg' dataset_id='it4w-cpf4'",
-            places=("Calgary", "Edmonton", "Winnipeg"),
+            places=("Edmonton", "Winnipeg"),
         ),
         PlanStep(
             "opendatasoft_vancouver_query_records",

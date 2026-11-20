@@ -193,6 +193,86 @@ STEPS: list[Step] = [
         {"product": "oil"},
         lambda data: data["exists"] and (data["size_bytes"] or 0) > 0,
     ),
+    # ST3 read as rows, one step per workbook layout (values read from the
+    # files themselves on 2026-11-19). The current year: months published so
+    # far, in m3, with the supply and disposition sections.
+    Step(
+        "aer",
+        "aer_st3_get_monthly_statistics",
+        {"product": "oil"},
+        lambda data: (
+            data["years"][-1]["year"] >= 2026
+            and len(data["years"][-1]["published_months"]) >= 1
+            and any(
+                o["item"] == "Total Production" and o["unit"] == "m3" for o in data["observations"]
+            )
+            and any(
+                (o.get("section") or "").startswith("DISPOSITION") for o in data["observations"]
+            )
+        ),
+    ),
+    # A past year's file: January 2025 total oil and equivalent production.
+    Step(
+        "aer",
+        "aer_st3_get_monthly_statistics",
+        {"product": "oil", "start_year": 2025, "end_year": 2025, "item": "Total Production"},
+        lambda data: any(
+            o["period"] == "2025-01"
+            and o["item"] == "Total Production"
+            and o["value"] == 20656335.2
+            for o in data["observations"]
+        ),
+    ),
+    # 2019 from the 2017-2019 ZIP, months in columns C-N rather than D-O.
+    Step(
+        "aer",
+        "aer_st3_get_monthly_statistics",
+        {"product": "ethane", "start_year": 2019, "end_year": 2019, "item": "Opening Inventory"},
+        lambda data: (
+            data["years"][0]["member"] == "Ethane_2019.xlsx"
+            and data["observations"][0]["value"] == 736335.8
+        ),
+    ),
+    # The revised 2026 gas sheet (label in column A, dashes for months to come):
+    # US removals by PADD, and the method change in revision_note.
+    Step(
+        "aer",
+        "aer_st3_get_monthly_statistics",
+        {"product": "gas", "start_year": 2026, "end_year": 2026, "item": "USA Removals"},
+        lambda data: (
+            any(o["item"] == "PADD2" and o["unit"] == "10^3 m3" for o in data["observations"])
+            and "April 2026" in data["revision_note"]
+        ),
+    ),
+    # 2023 oil prices exist only as an old .xls; the 2024 file is titled 2023.
+    Step(
+        "aer",
+        "aer_st3_get_monthly_statistics",
+        {"product": "oil_prices", "start_year": 2023, "end_year": 2024, "item": "Light"},
+        lambda data: (
+            {(o["period"], o["value"]) for o in data["observations"]}
+            >= {("2023-09", 704.94), ("2024-09", 535.12)}
+            and data["years"][1]["note"] is not None
+        ),
+    ),
+    # Every year from 2017: ten workbooks across all the layouts.
+    Step(
+        "aer",
+        "aer_st3_get_monthly_statistics",
+        {"product": "ngl", "start_year": 2017, "item": "Total Removals"},
+        lambda data: (
+            [y["year"] for y in data["years"]][:10] == list(range(2017, 2027))
+            and {o["year"] for o in data["observations"]} >= set(range(2017, 2027))
+        ),
+    ),
+    # Butane 2021 is linked as a PDF only.
+    Step(
+        "aer",
+        "aer_st3_get_monthly_statistics",
+        {"product": "butane", "start_year": 2021, "end_year": 2021},
+        expect_error="years are",
+    ),
+    Step("aer", "aer_st3_get_monthly_statistics", {"product": "coal"}, expect_error="oil_prices"),
     # ST98: the latest edition lists its figures, and at least one runs into
     # AER's forecast years.
     Step(

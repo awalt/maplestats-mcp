@@ -7,6 +7,7 @@ real HTTP 303 for ST3 .xlsx/ST1 .zip files).
 from __future__ import annotations
 
 import re
+import zipfile
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, NoReturn
 from urllib.parse import urljoin
@@ -14,9 +15,13 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
-from maplestats_mcp.modules.aer import constants, st98
+from maplestats_mcp.modules.aer import constants, st3, st98
 from maplestats_mcp.modules.aer.schemas import (
     ProductionVolumesLink,
+    St3Line,
+    St3Observation,
+    St3Statistics,
+    St3Year,
     St98Edition,
     St98Observation,
     St98Series,
@@ -38,6 +43,7 @@ from maplestats_mcp.shared.errors import (
 from maplestats_mcp.shared.executor import run_parse
 from maplestats_mcp.shared.http import new_client, send_with_retry
 from maplestats_mcp.shared.i18n import french_spacing
+from maplestats_mcp.shared.limits import fit_to_budget, join_limits, truncation_note
 from maplestats_mcp.shared.rate_limiter import get_limiter
 
 _LIMITER = get_limiter(
@@ -671,4 +677,330 @@ async def get_st98_table(
         total_observations=len(observations),
         notes=block.notes,
         provenance=_st98_provenance(chosen.workbook_url, cached, "St98Table", lang),
+    )
+
+
+# --- ST3 monthly statistics, read as tidy rows -------------------------------
+
+_ST3_HREF = re.compile(r'href="([^"]+\.(?:xlsx|xls|zip))"', re.IGNORECASE)
+_ST3_YEAR_TOKEN = re.compile(r"^20\d\d$")
+_ST3_PRODUCT_TOKENS = ("butane", "ethane", "gas", "ngl", "oil", "propane", "sulphur")
+_XLS_MAGIC = b"\xd0\xcf\x11\xe0"
+
+# product -> {year, or "current"} -> (url, ZIP member or None)
+St3Links = dict[str, dict[int | str, tuple[str, str | None]]]
+
+
+def st3_links_from_hrefs(hrefs: list[str] | tuple[str, ...]) -> St3Links:
+    """Product -> year -> workbook for every ST3 workbook or archive linked.
+
+    File names change from year to year (read live 2026-11-19): "Oil_current",
+    "Oil_2025", "ST3_Oil_2024", "ST3_2023-12_Oil", "ST3-Sulphur_2025",
+    "prices_oil_2025", "ST3_2022-12_Oil_Prices", and "Oil_2017-2019.zip" holding
+    "Oil_2017.xlsx" to "Oil_2019.xlsx". An .xlsx wins over an .xls for one year.
+    """
+    links: St3Links = {}
+    for href in hrefs:
+        url = urljoin(constants.ST3_PAGE_URL, href)
+        name = url.rsplit("/", 1)[-1]
+        stem, _, ext = name.rpartition(".")
+        tokens = [t for t in re.split(r"[_\-\s]+", stem.casefold()) if t]
+        if "st3" not in url.casefold() or "enhanced" in tokens:
+            continue
+        if "prices" in tokens:
+            product = "oil_prices"
+        else:
+            product = next((t for t in tokens if t in _ST3_PRODUCT_TOKENS), "")
+        if not product:
+            continue
+        years = [int(t) for t in tokens if _ST3_YEAR_TOKEN.match(t)]
+        by_year = links.setdefault(product, {})
+        if ext.casefold() == "zip" and len(years) == 2:
+            span = f"{years[0]}-{years[1]}"
+            for year in range(years[0], years[1] + 1):
+                by_year.setdefault(year, (url, f"{stem.replace(span, str(year))}.xlsx"))
+            continue
+        key: int | str | None = "current" if "current" in tokens else (years[0] if years else None)
+        if key is None:
+            continue
+        if key not in by_year or by_year[key][0].casefold().endswith(".xls"):
+            by_year[key] = (url, None)
+    return links
+
+
+async def _st3_download(url: str) -> bytes:
+    """GET an aer.ca file under the ST3 cap, through the shared file cache (a
+    2017-2019 archive serves three years)."""
+
+    async def fetch() -> file_download.Downloaded:
+        return await _st98_download(url, constants.ST3_MAX_WORKBOOK_BYTES)
+
+    response, _ = await file_download.cached_download(
+        file_download.cache_key(url), constants.CACHE_TTL_ST3_SECONDS, fetch
+    )
+    return response.body
+
+
+async def _st3_links() -> tuple[St3Links, bool]:
+    """(links, read from the live page); the recorded links when it does not answer."""
+
+    async def load() -> St3Links:
+        page = await _st98_download(constants.ST3_PAGE_URL, constants.ST3_MAX_PAGE_BYTES)
+        return st3_links_from_hrefs(_ST3_HREF.findall(page.body.decode("utf-8", errors="replace")))
+
+    try:
+        links, _ = await cached_fetch("aer:st3:page", constants.CACHE_TTL_ST3_SECONDS, load)
+    except (NotFound, UpstreamError, UpstreamUnavailable):
+        links = {}
+    if links:
+        return links, True
+    return st3_links_from_hrefs(constants.ST3_RECORDED_LINKS), False
+
+
+async def _st3_workbook(url: str, member: str | None, lang: str) -> tuple[st3.ParsedSt3, bool]:
+    async def load() -> st3.ParsedSt3:
+        body = await _st3_download(url)
+        where = f"{url} ({member})" if member else url
+        if member:
+            try:
+                body = st3.zip_member(body, member)
+            except (KeyError, zipfile.BadZipFile):
+                _raise(
+                    UpstreamError,
+                    f"aer: {url} has no {member}; the archive changed.",
+                    f"aer : {url} ne contient pas {member} ; l'archive a changé.",
+                    lang,
+                )
+        if not body.startswith((b"PK", _XLS_MAGIC)):
+            _raise(
+                UpstreamError,
+                f"aer: {where} is not an Excel workbook.",
+                f"aer : {where} n'est pas un classeur Excel.",
+                lang,
+            )
+        parsed = await run_parse(st3.parse_workbook, body)
+        if parsed is None:
+            _raise(
+                UpstreamError,
+                f"aer: no Jan-Dec table read from {where}; its layout changed.",
+                f"aer : aucun tableau janvier-décembre lu dans {where} ; sa structure a changé.",
+                lang,
+            )
+        return parsed
+
+    key = f"aer:st3:{url}:{member}"
+    return await cached_fetch(key, constants.CACHE_TTL_ST3_SECONDS, load)
+
+
+def _st3_product(product: str, lang: str) -> str:
+    key = product.strip().casefold().replace(" ", "_")
+    key = {"prices": "oil_prices", "prices_oil": "oil_prices", "butanes": "butane"}.get(key, key)
+    if key not in constants.PRODUCTION_PRODUCTS:
+        _raise(
+            InvalidInput,
+            f"product must be one of {sorted(constants.PRODUCTION_PRODUCTS)}, got {product!r}.",
+            f"product doit être l'un de {sorted(constants.PRODUCTION_PRODUCTS)}, reçu {product!r}.",
+            lang,
+        )
+    return key
+
+
+def _st3_year_note(link_year: int, parsed: st3.ParsedSt3, lang: str) -> str | None:
+    """Live 2026-11-19: the 2024 oil-price link's sheet is titled 2023, but its
+    numbers are not the 2023 table's (September light crude 535 $/m3 against
+    705 in the 2023 file, as 2024 against 2023 prices moved), so the link's year
+    is kept and the stale title is reported."""
+    if parsed.year is None or parsed.year == link_year:
+        return None
+    if lang == "fr":
+        return french_spacing(
+            f"Le titre de la feuille indique {parsed.year}, mais c'est le fichier que l'AER "
+            f"publie pour {link_year} ; les valeurs sont attribuées à {link_year}."
+        )
+    return (
+        f"The sheet's title says {parsed.year}, but this is the file AER posts for "
+        f"{link_year}; the values are given as {link_year}."
+    )
+
+
+def _st3_coverage(key: str, missing: list[int], live: bool, lang: str) -> str | None:
+    gap = None
+    if missing:
+        gap = (
+            f"AER publishes no readable {key} workbook for {missing}."
+            if lang != "fr"
+            else french_spacing(f"L'AER ne publie aucun classeur {key} lisible pour {missing}.")
+        )
+    recorded = None
+    if not live:
+        recorded = (
+            "The ST3 page did not answer; years are the links MapleStats recorded on 2026-11-19."
+            if lang != "fr"
+            else french_spacing(
+                "La page ST3 n'a pas répondu ; les années sont les liens relevés par MapleStats "
+                "le 2026-11-19."
+            )
+        )
+    return join_limits(gap, recorded)
+
+
+async def get_st3_statistics(
+    product: str,
+    *,
+    start_year: int | None = None,
+    end_year: int | None = None,
+    item: str | None = None,
+    lang: str = "en",
+) -> St3Statistics:
+    """One ST3 product's monthly supply and disposition (or price) lines as tidy rows."""
+    key = _st3_product(product, lang)
+    if start_year is not None and end_year is not None and start_year > end_year:
+        _raise(
+            InvalidInput,
+            f"aer: start_year {start_year} is after end_year {end_year}.",
+            f"aer : start_year {start_year} est postérieur à end_year {end_year}.",
+            lang,
+        )
+    links, live = await _st3_links()
+    by_year = links.get(key, {})
+    found = {y: link for y, link in by_year.items() if isinstance(y, int)}
+    # The current workbook's year is read from the workbook itself.
+    parsed_by_link: dict[tuple[str, str | None], st3.ParsedSt3] = {}
+    all_cached = True
+    current = by_year.get("current")
+    if current is not None:
+        parsed, cached = await _st3_workbook(current[0], current[1], lang)
+        parsed_by_link[current] = parsed
+        all_cached = all_cached and cached
+        if parsed.year is not None:
+            found.setdefault(parsed.year, current)
+    available = sorted(found)
+    if not available:
+        _raise(
+            NotFound,
+            f"aer: the ST3 page links no readable {key} workbook.",
+            f"aer : la page ST3 ne propose aucun classeur {key} lisible.",
+            lang,
+        )
+    last = end_year if end_year is not None else available[-1]
+    first = start_year if start_year is not None else last
+    wanted = [y for y in available if first <= y <= last]
+    if not wanted:
+        _raise(
+            NotFound,
+            f"aer: no ST3 {key} workbook for {first}-{last}; years are {available}.",
+            f"aer : aucun classeur ST3 {key} pour {first}-{last} ; les années sont {available}.",
+            lang,
+        )
+
+    years: list[St3Year] = []
+    lines: dict[tuple[str | None, str], St3Line] = {}
+    observations: list[St3Observation] = []
+    notes: list[str] = []
+    needle = (item or "").casefold().strip()
+    for year in wanted:
+        link = found[year]
+        parsed = parsed_by_link.get(link)
+        if parsed is None:
+            parsed, cached = await _st3_workbook(link[0], link[1], lang)
+            all_cached = all_cached and cached
+        years.append(
+            St3Year(
+                year=year,
+                workbook_url=link[0],
+                member=link[1],
+                title=parsed.title,
+                run_date=parsed.run_date,
+                published_months=parsed.published_months,
+                note=_st3_year_note(year, parsed, lang),
+            )
+        )
+        notes.extend(n for n in parsed.notes if n not in notes)
+        for line in parsed.lines:
+            if needle and needle not in f"{line.section or ''} > {line.item}".casefold():
+                continue
+            lines.setdefault(
+                (line.section, line.item),
+                St3Line(item=line.item, section=line.section, unit=line.unit),
+            )
+            for month in parsed.published_months:
+                value, marker = line.cells[month - 1]
+                if value is None and marker is None:
+                    continue
+                observations.append(
+                    St3Observation(
+                        year=year,
+                        month=month,
+                        period=f"{year:04d}-{month:02d}",
+                        item=line.item,
+                        section=line.section,
+                        value=value,
+                        unit=line.unit,
+                        marker=marker,
+                    )
+                )
+    if needle and not lines:
+        _raise(
+            NotFound,
+            f"aer: no ST3 {key} line matching {item!r}; call without item to see the lines.",
+            f"aer : aucune ligne ST3 {key} correspondant à {item!r} ; appelez sans item pour "
+            "voir les lignes.",
+            lang,
+        )
+
+    total = len(observations)
+    # Rows run oldest year first, so the cap keeps the latest years.
+    kept = fit_to_budget(observations[-constants.ST3_MAX_OBSERVATIONS :][::-1])[::-1]
+    cut = truncation_note(
+        returned=len(kept),
+        total=total,
+        unit="observations",
+        order="latest",
+        how_to_get_more="narrow item or the years",
+    )
+    if cut and lang == "fr":
+        cut = french_spacing(
+            f"{len(kept)} observations les plus récentes sur {total} renvoyées ; précisez item "
+            "ou les années."
+        )
+    revision = constants.ST3_REVISION_NOTE[1 if lang == "fr" else 0]
+    if key == "gas" and wanted[-1] >= 2026:
+        revision = f"{revision} {constants.ST3_GAS_METHOD_NOTE[1 if lang == 'fr' else 0]}"
+    if lang == "fr":
+        revision = french_spacing(revision)
+    latest = years[-1]
+    return St3Statistics(
+        product=key,
+        title=latest.title,
+        years=years,
+        available_years=available,
+        lines=list(lines.values()),
+        observations=kept,
+        total_observations=total,
+        notes=notes,
+        revision_note=revision,
+        provenance=make_provenance(
+            source=constants.RATE_LIMIT_SOURCE,
+            url=latest.workbook_url,
+            cached=all_cached,
+            schema_name="aer.St3Statistics",
+            as_of=(
+                datetime.combine(latest.run_date, time(), tzinfo=ZoneInfo(constants.TIMEZONE))
+                if latest.run_date
+                else None
+            ),
+            freshness=(
+                "released at the end of every month, one month in arrears (oil prices two)"
+                if lang != "fr"
+                else french_spacing(
+                    "publié à la fin de chaque mois, avec un mois de décalage (deux pour les prix "
+                    "du pétrole)"
+                )
+            ),
+            coverage=_st3_coverage(
+                key, [y for y in range(first, last + 1) if y not in found], live, lang
+            ),
+            limits=join_limits(cut, _ENGLISH_ONLY_FR if lang == "fr" else None),
+            lang=lang,
+        ),
     )

@@ -29,6 +29,35 @@ charts itself (inline SVG, no chart library) and builds every element from text,
 from HTML in a result. The conversation is kept in the browser's local storage; **New
 chat** clears it. **Theme** switches light and dark.
 
+Under the panel, when the answer fetched data:
+
+- **Get the code**: the scripts `reproduce_code` writes for one data call behind the
+  answer (R, Python, Stata, Julia and an Excel Power Query), one tab each, with Copy and
+  Download, the packages each needs, the URL they fetch and the server's notes.
+- **Download Excel**: the rows of that call as an .xlsx from `reproduce_workbook`
+  (delivered as base64 and saved by the page), with the server's notes and, when the file
+  holds only the first rows, a pointer to the Power Query script for all of them.
+
+The answer records its data calls (`calls` in the result: tool name and arguments, only for
+calls that succeeded and returned provenance, at most 8; discovery and reproduce tools are
+never listed). With several, a list picks one. The page posts it to `POST /api/code` or
+`POST /api/workbook` (`{"tool_name", "arguments", "lang"}`, plus `"language"` for code),
+and this service asks the MCP server through `call_tool`, as the `openai` backend calls
+tools. No model is called, so the exports never touch the question or token limits; they
+have their own limit, 30 per address per hour (`CHAT_EXPORT_PER_HOUR`), the same
+`application/json` rule as `/api/chat`, a 64 KiB body, and a 120 s wait for the server
+(`CHAT_EXPORT_TIMEOUT_SECONDS`). A tool name must look like a MapleStats data tool. Only the
+fields the page draws are passed back; the server's own error (a tool with no script, for
+example) is shown as text, cut at 600 characters.
+
+**Français** in the header switches the page to French (and **English** back); the first
+visit follows the browser's language, and the choice is kept in this browser. Every string
+the page writes is in both languages. A French page sends `"lang": "fr"` with each
+request: the limits and errors come back in French, the model's system prompt gets one more
+block (after the cached one) telling it to answer in French and pass `lang="fr"` to
+`plan_query` and every tool, and the export calls pass `lang="fr"` to the reproduce tools,
+whose notes and workbook labels are then French. The StatCan notice stays bilingual.
+
 ## Run it locally
 
 ```bash

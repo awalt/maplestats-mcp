@@ -158,3 +158,105 @@ class ResourceRows(BaseModel):
     )
     licence_note: str | None = None
     provenance: Provenance
+
+
+class ActivityIndexPoint(BaseModel):
+    period: str = Field(description="Month, YYYY-MM.")
+    value: float = Field(description="Index level, January 1981 = 100.")
+
+
+class ActivityIndex(BaseModel):
+    series: str = Field(description="The series title as published.")
+    observations: list[ActivityIndexPoint] = Field(description="Oldest first.")
+    first_period: str = Field(description="First month the published series has.")
+    last_period: str = Field(description="Latest month the published series has.")
+    total_observations: int = Field(description="Months in the published series.")
+    dataset: str
+    dataset_title: str
+    dataset_url: str
+    resource_name: str | None = None
+    url: str = Field(description="The file read; ab_opendata_read_resource reads it as published.")
+    licence: str | None = None
+    ogl_alberta: bool
+    attribution: str | None = Field(
+        default=None, description="Statement to carry with any reuse of the figures."
+    )
+    provenance: Provenance
+
+
+class ProjectionRow(BaseModel):
+    year: int = Field(description="Population on July 1 of this year.")
+    gender: Literal["women+", "men+", "all"]
+    projected: bool = Field(
+        description="True from the edition's first projection year; earlier years are "
+        "Statistics Canada estimates."
+    )
+    total: int | None
+    ages: dict[str, int | None] | None = Field(
+        default=None,
+        description="Population by single year of age (0 to the open-ended last group), "
+        "when ages=true was asked.",
+    )
+
+
+class PopulationProjection(BaseModel):
+    edition: int = Field(description="First projection year of the edition read.")
+    geography: str
+    scenario: Literal["low", "medium", "high"]
+    area: str | None = Field(
+        description="The area read (a sheet of the geography's workbook); null for Alberta, "
+        "and null when no area was given (then `areas` lists them and no rows are read)."
+    )
+    areas: list[str] = Field(description="Every area of this geography's workbook.")
+    rows: list[ProjectionRow]
+    dataset: str
+    dataset_title: str
+    dataset_url: str
+    resource_name: str | None = None
+    url: str = Field(description="The file read; ab_opendata_read_resource reads it as published.")
+    licence: str | None = None
+    ogl_alberta: bool
+    attribution: str | None = None
+    provenance: Provenance
+
+
+class ProjectionSummaryRow(BaseModel):
+    year: int = Field(description="Population on July 1 of this year.")
+    period: str | None = Field(
+        default=None, description="July-to-June period of the components, e.g. 2025-26."
+    )
+    projected: bool
+    population: int | None = None
+    percent_change: float | None = None
+    men_per_100_women: float | None = None
+    average_age: float | None = None
+    child_dependency_ratio: float | None = Field(
+        default=None, description="Population aged 0-14 per 100 aged 15-64."
+    )
+    elderly_dependency_ratio: float | None = Field(
+        default=None, description="Population aged 65 and older per 100 aged 15-64."
+    )
+    total_fertility_rate: float | None = None
+    median_age_at_death: float | None = None
+    births: int | None = None
+    deaths: int | None = None
+    immigrants: int | None = None
+    net_emigrants: int | None = None
+    net_non_permanent_residents: int | None = None
+    net_interprovincial: int | None = None
+    total_net_migration: int | None = None
+
+
+class ProjectionSummary(BaseModel):
+    edition: int
+    scenario: Literal["medium"] = "medium"
+    rows: list[ProjectionSummaryRow]
+    dataset: str
+    dataset_title: str
+    dataset_url: str
+    resource_name: str | None = None
+    url: str
+    licence: str | None = None
+    ogl_alberta: bool
+    attribution: str | None = None
+    provenance: Provenance

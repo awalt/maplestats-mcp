@@ -238,7 +238,11 @@ QUESTIONS: list[tuple[str, str, str]] = [
     ("Qui est le ministre des Finances ?", "representatives", "ourcommons_get_ministry"),
     # Permits, licences, inspections and planning applications, 2026-10-27.
     ("Value of building permits by province", "building_permits", "wds_get_cube_metadata"),
-    ("Calgary building permits issued this year", "building_permits", "socrata_query_dataset_rows"),
+    (
+        "Calgary building permits issued this year",
+        "building_permits",
+        "calgary_summarize_building_permits",
+    ),
     ("Permis de bâtir délivrés à Montréal", "building_permits", "ckan_datastore_search"),
     ("Valeur des permis de construction par province", "building_permits", "wds_get_cube_metadata"),
     (

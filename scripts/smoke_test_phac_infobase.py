@@ -155,6 +155,43 @@ async def main() -> int:
     print("OK: AEFI markers ->", [(m.value, m.count) for m in aefi.markers])
     ok &= any(m.value == "X" for m in aefi.markers)
 
+    # Report figures added 2026-11-19 (perinatal trends, cold injuries, PTSD
+    # claims, CARSS AMR); values read live that day.
+    csections = await client.query(
+        "perinatal_caesarean_sections", filters={"Period": "Mar 2015 - Feb 2016"}
+    )
+    births = csections.rows[0]["Number of c-sections"] if csections.rows else ""
+    print(f"OK: c-sections Mar 2015 - Feb 2016 -> {births}")
+    # 82,312 on 2026-11-19.
+    ok &= births.isdigit() and 70000 < int(births) < 95000
+
+    cold = await client.query("cold_injury_deaths", start="2023", end="2023")
+    rate = cold.rows[0]["Death_rate"] if cold.rows else ""
+    print(f"OK: cold-related death rate 2023 -> {rate} per 1,000,000")
+    # 3.5 on 2026-11-19.
+    ok &= cold.returned_count == 1 and 1 < float(rate or 0) < 10
+
+    ptsd = await client.query(
+        "ptsd_lost_time_claims_mental_illness", filters={"categories": "PTSD"}, start="2022"
+    )
+    claims = ptsd.rows[0]["number-lost-time-claims"] if ptsd.rows else ""
+    print(f"OK: PTSD lost time claims 2022 -> {claims}")
+    ok &= ptsd.returned_count == 1 and claims.strip().isdigit()
+
+    mrsa = await client.query(
+        "amr_mrsa_bloodstream_incidence", filters={"MRSABSI_TYPE": "Overall"}, start="2018"
+    )
+    print("OK: MRSA BSI overall ->", [(r["YEAR"], r["RATE_10000PTDAYS"]) for r in mrsa.rows])
+    # 1.04 per 10,000 patient-days in 2018 on 2026-11-19.
+    ok &= mrsa.returned_count >= 5 and mrsa.rows[0]["RATE_10000PTDAYS"] == "1.04"
+
+    gono = await client.describe_dataset("amr_gonorrhoea_resistance", lang="fr")
+    print(f"OK: gonorrhoea AMR fr -> file {gono.file_language}, {gono.encoding}")
+    ok &= gono.file_language == "en" and any(
+        c.name == "ANTIMICROBIAL_FR" and any("azithromycine" in v for v in c.sample_values)
+        for c in gono.columns
+    )
+
     # reproduce_code: scripts that repeat the tool's filters on the same file
     # (the generated scripts were run live against the tool's rows on 2026-09-27).
     from maplestats_mcp.modules.reproduce import client as reproduce

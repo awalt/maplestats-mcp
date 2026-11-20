@@ -359,7 +359,7 @@ The site lists its 211 products in `/src/json/articles.json`. Each of
 the 130 non-blog product pages and its local scripts was fetched and
 searched for `.csv`, `.json` and `.zip` references (mostly `d3.csv(...)`
 calls and "Download data" links). The module reads a curated catalogue
-of 55 files with stable names, 9 of them also in French: respiratory
+of 78 files with stable names, 9 of them also in French: respiratory
 viruses (RVDSS laboratory detections, FluWatch+ outbreaks, FluWatchers,
 severe outcomes, SPRINT-KIDS, CNISP sentinel hospitals), wastewater
 (weekly, daily, latest trends), opioid and stimulant harms, supervised
@@ -368,8 +368,9 @@ sales, measles, mpox, tuberculosis, emerging respiratory pathogens,
 enteric outbreaks, notifiable diseases 1924-2016, hepatitis C treatment,
 vaccine adverse events, cancer statistics, Health of People in Canada,
 the risk factor atlas, the 2018 CCDI, PASS and congenital anomalies
-snapshots, positive mental health, and archived COVID-19 cases, testing,
-hospital capacity and vaccination (last updated 2023-2024).
+snapshots, positive mental health, archived COVID-19 cases, testing,
+hospital capacity and vaccination (last updated 2023-2024), and report
+figures added 2026-11-19 (see below).
 
 Overlap with `ckan_*`: open.canada.ca lists 68 resources on
 health-infobase.canada.ca. Of the catalogued files, only the COVID-19
@@ -465,9 +466,27 @@ Dashboards with no downloadable data:
 Three catalogued files carry a year in their name and will move with the
 next release (`TB_incidence_by_PT_2015-2024.csv`,
 `reformatted_data_2025.csv`, `HoPiC-data-2026.zip`); the live smoke test
-reports them as NotFound when that happens. Many other interactive
-reports load small figure CSVs (perinatal trends, cold injuries, PTSD,
-AMR) that could be added as catalogue entries.
+reports them as NotFound when that happens.
+
+Report figures, added 2026-11-19 after reading each file live: 23 small
+English CSVs (French labels in their own columns) that the interactive
+reports load with `d3.csv`. Trends in perinatal health during the
+COVID-19 pandemic: `covid_phi_fig1` to `fig6` and `fig2b` (live births,
+admissions, length of stay, c-sections, inductions, hypertension and
+diabetes, infant outcomes; `Period` is a March-to-February year and is
+filtered as a value). Cold-related injuries: deaths, hospitalizations and
+ED visits per 1,000,000. PTSD's impact on Canada's workforce: the four
+AWCBC lost time claim files (`ptsd-awcbc/`). CARSS antimicrobial
+resistance: nine of the report's figure files (MRSA incidence and
+resistance, VRE, CPE, E. coli and K. pneumoniae urine isolates,
+C. difficile, gonorrhoea, TB drug resistance, S. pneumoniae). Left out:
+`covid_phi_fig7.csv` (commented out in the page script, answers with the
+404 page); the PTSD data tool's `PTSD.csv`, `prevalence*.csv` and
+`population*.csv` (all answer with the 404 page); the PTSD survey tables
+(`PTSD_tables_SMHSE_ENG.zip` holds an XLSX, which the reader does not
+parse); the other 60-odd CARSS figure files (AMU and the remaining AMR
+figures repeat these shapes; `graph-metadata.csv` lists them); the
+GASP and ESAG pages (no data file found in their scripts).
 
 Checked values: apparent opioid toxicity deaths in Canada in 2023 are
 8,083 in the 2026-09-22 file; tuberculosis incidence in Nunavut in 2024
@@ -2412,7 +2431,22 @@ repeated in the script.
 
 ## CRA individual tax statistics and benefit statistics
 
-**Status:** Covered (via `ckan_*` + `ckan_read_resource`).
+**Status:** Shipped 2026-11-19 as `modules/cra_tax_stats/` (T1 Final Basic
+Tables and FSA tables); benefit statistics stay covered via `ckan_*` +
+`ckan_read_resource`.
+
+Rechecked 2026-11-19 before building: the T1 editions that still read are tax
+years 2018 to 2024 (2024 adds separate English and French files and drops Table
+5); every CSV link of tax years 2015, 2016 and 2017 answers 404 on www.canada.ca,
+2012 too, and 2014 points to the retired cra-arc.gc.ca host. Table 1 is in
+millions of dollars to 2021 and thousands from 2022; Table 3 changed in 2022 from
+line items by source to sources by province. The FSA series ("Individual Tax
+Statistics by Forward Sortation Area", separate from ITSA, which is by census
+geography) covers tax years 2017 to 2021, in dollars to 2020 and thousands in
+2021. Some resources link the wrong file (2021 Table 2 for Alberta and Quebec are
+PDFs; 2024's French Nova Scotia Table 2 is the English file), so the module
+matches files by name. Not built: ITSA by CMA, CD and CSD (tax years 2010 to
+2024), still read with `ckan_read_resource`.
 
 Checked 2026-09-25. Individual Income Tax Return Statistics (formerly T1
 Final Statistics) appear as one dataset per tax year, 2011 to 2022, each

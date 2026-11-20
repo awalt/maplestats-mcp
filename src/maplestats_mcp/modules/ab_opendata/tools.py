@@ -8,9 +8,12 @@ from fastmcp.tools import tool
 
 from maplestats_mcp.modules.ab_opendata import client, constants
 from maplestats_mcp.modules.ab_opendata.schemas import (
+    ActivityIndex,
     DatasetDetail,
     DatasetList,
     OrganizationList,
+    PopulationProjection,
+    ProjectionSummary,
     ResourceRows,
     ResourceStructure,
 )
@@ -184,4 +187,115 @@ async def ab_opendata_read_resource(
         limit=limit,
         offset=offset,
         lang=lang,
+    )
+
+
+@tool
+async def ab_opendata_get_activity_index(
+    start: str | None = None,
+    end: str | None = None,
+    last_n: int | None = None,
+    lang: Lang = "en",
+) -> ActivityIndex:
+    """Get the Alberta Activity Index (AAX), Treasury Board and Finance's monthly index.
+
+    Use for: the province's own monthly gauge of Alberta economic activity, January
+    1981 = 100, from 1981 to the most recent month (about two months behind): a weighted
+    average of nine indicators (employment, average weekly earnings, retail
+    and wholesale trade, manufacturing, new truck sales, housing starts, rigs drilling,
+    oil production). `start` and `end` are months as YYYY-MM; `last_n` keeps the
+    last n months of that range. With none of them, the last 24 months come back.
+    Values are the published index levels; recent months are revised. Read from the
+    current file of the Open Alberta dataset alberta-activity-index-data-tables
+    (Open Government Licence - Alberta; cite the attribution). For a quarterly or
+    annual output figure use StatCan's wds_ tools; for the indicators themselves use
+    ab_economic_ (Alberta Economic Dashboard). Pace: one request per 10 seconds.
+    Keywords: Alberta Activity Index, AAX, Alberta economy, economic activity index,
+    Alberta economic indicator, Treasury Board and Finance, Office of Statistics and
+    Information, business cycle, nowcast.
+    Mots-clés : indice d'activité de l'Alberta, AAX, économie albertaine, activité
+    économique mensuelle, indicateur économique, Conseil du Trésor et Finances,
+    conjoncture, cycle économique, substitut du PIB, Alberta.
+    """
+    return await client.get_activity_index(start=start, end=end, last_n=last_n, lang=lang)
+
+
+@tool
+async def ab_opendata_get_population_projection(
+    geography: client.ProjectionGeography = "alberta",
+    area: str | None = None,
+    scenario: client.ScenarioName = "medium",
+    gender: client.GenderName = "all",
+    start_year: int | None = None,
+    end_year: int | None = None,
+    ages: bool = False,
+    edition: int | None = None,
+    lang: Lang = "en",
+) -> PopulationProjection:
+    """Get Alberta government population projections to 2051, for Alberta or an area.
+
+    Use for: how many people Alberta, a census division, a CMA (Calgary, Edmonton,
+    Lethbridge, Red Deer), an economic region, a local geographic area, a health zone
+    area or a school authority is projected to have each year to 2051, from Treasury
+    Board and Finance (Office of Statistics and Information), with StatCan
+    estimates for 2001 up to the edition's first year (projected false). Alberta has
+    low, medium and high scenarios; every sub-provincial geography is the medium
+    scenario only. For a sub-provincial geography, `area` is a sheet of its workbook
+    (census division codes 4801 to 4819, CMA names, ...): leave it unset first to get
+    `areas` and no rows. `gender` is all (default), women+, men+ or any (all three).
+    `start_year`/`end_year` trim the years; `ages=true` adds population by single year
+    of age. `edition` is the first projection year (2024 onward); by default the
+    newest edition found. Population on July 1. Open Government Licence - Alberta.
+    For projected births and deaths use ab_opendata_get_population_projection_summary.
+    Pace: one request per 10 seconds; a large workbook (local geographic areas, 6 MB)
+    takes longer to open.
+    Keywords: Alberta population projections, population forecast, demographic
+    projection, 2051, census division, Calgary, Edmonton, scenario, age, Treasury
+    Board and Finance, future population.
+    Mots-clés : projections démographiques de l'Alberta, prévisions de population,
+    population future, 2051, division de recensement, Calgary, Edmonton, scénario,
+    âge, Conseil du Trésor et Finances.
+    """
+    return await client.get_population_projection(
+        geography=geography,
+        area=area,
+        scenario=scenario,
+        gender=gender,
+        start_year=start_year,
+        end_year=end_year,
+        ages=ages,
+        edition=edition,
+        lang=lang,
+    )
+
+
+@tool
+async def ab_opendata_get_population_projection_summary(
+    start_year: int | None = None,
+    end_year: int | None = None,
+    edition: int | None = None,
+    lang: Lang = "en",
+) -> ProjectionSummary:
+    """Get the summary of Alberta's population projections: growth and its components.
+
+    Use for: Alberta's projected population to 2051 (medium scenario) with the
+    percent change, men+ per 100 women+, average age, child and elderly dependency
+    ratios, total fertility rate, median age at death, and the components of growth
+    (births, deaths, immigrants, net emigrants, net non-permanent residents, net
+    inflow from elsewhere in the country, total net inflow), as projected by Treasury
+    Board and Finance (Office of Statistics and Information). Years before the edition's first
+    projection year are StatCan estimates (projected false). Components
+    cover the July-to-June period ending in that year (`period`). `edition` is the
+    first projection year (2024 onward); by default the newest found. Open
+    Government Licence - Alberta. For areas, ages or the low and high scenarios use
+    ab_opendata_get_population_projection. Pace: one request per 10 seconds.
+    Keywords: Alberta population projections, projected components of growth,
+    projected births, projected deaths, fertility rate, dependency ratio, average age,
+    population summary, 2051.
+    Mots-clés : projections démographiques de l'Alberta, accroissement
+    démographique, solde migratoire projeté, naissances, décès, indice
+    de fécondité, rapport de dépendance, âge moyen, 2051.
+    """
+    return await client.get_population_projection_summary(
+        start_year=start_year, end_year=end_year, edition=edition, lang=lang
     )

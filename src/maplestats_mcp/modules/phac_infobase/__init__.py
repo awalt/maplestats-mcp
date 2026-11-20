@@ -2,14 +2,16 @@
 
 health-infobase.canada.ca hosts PHAC's surveillance dashboards. Most load
 plain CSV files from /src/data/..., which this module reads through a
-curated catalogue (catalogue.py) of 55 files: respiratory virus
+curated catalogue (catalogue.py) of 78 files: respiratory virus
 surveillance (laboratory detections, FluWatch+, CNISP sentinel
 hospitals), wastewater, opioid and stimulant harms, supervised
 consumption sites, substance use surveys, measles, mpox, tuberculosis,
 notifiable diseases, vaccine adverse events, chronic disease and health
-status indicators, and the archived COVID-19 files. Confirmed live
-2026-09-26. PHAC's open.canada.ca datasets remain reachable through
-ckan_*; only a handful of these files are listed there.
+status indicators, the archived COVID-19 files, and report figures on
+perinatal health, cold-related injuries, PTSD workers' compensation
+claims and antimicrobial resistance (CARSS). Confirmed live 2026-09-26;
+the report figures 2026-11-19. PHAC's open.canada.ca datasets remain
+reachable through ckan_*; only a handful of these files are listed there.
 
 Dashboards with no downloadable data are not catalogued: the Canadian
 Chronic Disease Surveillance System data tool and the current CCDI,
@@ -26,7 +28,9 @@ MODULE_DESCRIPTION = (
     "(respiratory virus detections and FluWatch+, wastewater, opioid and "
     "stimulant harms, supervised consumption sites, substance use surveys, "
     "measles, mpox, tuberculosis, notifiable diseases, vaccine adverse "
-    "events, chronic disease indicators, archived COVID-19 data), filtered "
+    "events, chronic disease indicators, perinatal health, cold-related "
+    "injuries, PTSD claims, antimicrobial resistance, archived COVID-19 "
+    "data), filtered "
     "by column values, province and date range, in English or French."
 )
 MODULE_DESCRIPTION_FR = (
@@ -37,7 +41,9 @@ MODULE_DESCRIPTION_FR = (
     "sites de consommation supervisée, enquêtes sur la consommation de "
     "substances, rougeole, mpox, tuberculose, maladies à déclaration "
     "obligatoire, manifestations cliniques après la vaccination, "
-    "indicateurs de maladies chroniques, données COVID-19 archivées), "
+    "indicateurs de maladies chroniques, santé périnatale, blessures liées "
+    "au froid, demandes d'indemnisation pour TSPT, résistance aux "
+    "antimicrobiens, données COVID-19 archivées), "
     "filtrées par valeur de colonne, province et période, en français ou "
     "en anglais."
 )

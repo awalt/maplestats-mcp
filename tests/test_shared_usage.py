@@ -435,6 +435,88 @@ def test_a_file_from_before_error_codes_still_loads(tmp_path) -> None:
     }
 
 
+def test_top_failing_tools_rank_by_failures_with_rate_and_codes() -> None:
+    stats = UsageStats(("boc_get_observations", "wds_search_cubes", "never_fails"))
+    for _ in range(9):
+        stats.record("boc_get_observations", True)
+    stats.record("boc_get_observations", False, code="upstream_error")
+    stats.record("wds_search_cubes", False, code="not_found")
+    stats.record("wds_search_cubes", False, code="not_found")
+    stats.record("wds_search_cubes", False, code="invalid_input")
+    stats.record("wds_search_cubes", True)
+    stats.record("never_fails", True)
+    stats.record("not a tool", False, code="unknown_tool")
+    assert stats.snapshot()["top_failing_tools"] == [
+        {
+            "tool": "wds_search_cubes",
+            "calls": 4,
+            "errors": 3,
+            "error_rate": 0.75,
+            "codes": {"not_found": 2, "invalid_input": 1},
+        },
+        {
+            "tool": "boc_get_observations",
+            "calls": 10,
+            "errors": 1,
+            "error_rate": 0.1,
+            "codes": {"upstream_error": 1},
+        },
+        {
+            "tool": "other",
+            "calls": 1,
+            "errors": 1,
+            "error_rate": 1.0,
+            "codes": {"unknown_tool": 1},
+        },
+    ]
+
+
+def test_top_failing_tools_is_capped() -> None:
+    from maplestats_mcp.shared.usage import TOP_FAILING
+
+    names = [f"tool_{i:03d}" for i in range(TOP_FAILING + 5)]
+    stats = UsageStats(names)
+    for i, name in enumerate(names):
+        for _ in range(i + 1):
+            stats.record(name, False, code="not_found")
+    snap = stats.snapshot()
+    top = snap["top_failing_tools"]
+    assert len(top) == TOP_FAILING
+    assert [entry["tool"] for entry in top] == names[::-1][:TOP_FAILING]
+    # The full breakdown still has every tool.
+    assert len(snap["by_error"]) == len(names)
+
+
+def test_top_failing_tools_from_a_file_before_error_codes(tmp_path) -> None:
+    path = tmp_path / "stats.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "counting_since": "2026-11-07T16:39:30+00:00",
+                "by_tool": {"boc_get_observations": {"ok": 3, "error": 2}},
+                "by_day": {"2026-11-07": {"ok": 3, "error": 2}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    stats = UsageStats(("boc_get_observations",), path=path)
+    stats.record("boc_get_observations", False, code="not_found")
+    snap = stats.snapshot()
+    assert snap["top_failing_tools"] == [
+        {
+            "tool": "boc_get_observations",
+            "calls": 6,
+            "errors": 3,
+            "error_rate": 0.5,
+            "codes": {"not_found": 1, "uncoded": 2},
+        }
+    ]
+    # The file keeps its format: the ranking is computed, never saved.
+    assert stats.save()
+    assert "top_failing_tools" not in json.loads(path.read_text(encoding="utf-8"))
+
+
 # ---- who calls: a fixed label per client, never the name or the address it sent
 
 

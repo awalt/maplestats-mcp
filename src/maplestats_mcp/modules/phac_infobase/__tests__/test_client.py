@@ -229,6 +229,57 @@ async def test_bom_and_r_row_number_column(httpx_mock):
     assert canada.returned_count == 1
 
 
+async def test_report_figure_files(httpx_mock):
+    # Rows trimmed from the live files of 2026-11-19. The perinatal Period
+    # ("Mar 2015 - Feb 2016") is not a date, so it is filtered as a value;
+    # the CARSS file has a BOM and French labels in a column of its own.
+    perinatal = BY_ID["perinatal_caesarean_sections"]
+    httpx_mock.add_response(
+        url=_url(perinatal.url_en),
+        text=(
+            "Period,Période,Number of c-sections,C-section rate per 100 deliveries,"
+            "Categories1,Categories2,Catégories1,Catégories2\n"
+            "Mar 2015 - Feb 2016,mars 2015 à février 2016,82312,28.72177093,Number of "
+            "c-sections,C-section rate per 100 deliveries,Nombre de césariennes,"
+            "Taux de césariennes\n"
+            "Mar 2016 - Feb 2017,mars 2016 à février 2017,83043,29.02921344,Number of "
+            "c-sections,C-section rate per 100 deliveries,Nombre de césariennes,"
+            "Taux de césariennes\n"
+        ),
+    )
+    first = await client.query(
+        "perinatal_caesarean_sections", filters={"Period": "Mar 2015 - Feb 2016"}
+    )
+    assert [r["Number of c-sections"] for r in first.rows] == ["82312"]
+    with pytest.raises(InvalidInput, match="no date column"):
+        await client.query("perinatal_caesarean_sections", start="2016")
+
+    mrsa = BY_ID["amr_mrsa_bloodstream_incidence"]
+    httpx_mock.add_response(
+        url=_url(mrsa.url_en),
+        content=(
+            "﻿YEAR,RATE_10000PTDAYS,MRSABSI_TYPE,MRSABSI_TYPE_FR\n"
+            "2018,1.04,Overall,Dans l'ensemble\n"
+            "2022,1.01,Overall,Dans l'ensemble\n"
+            "2022,0.42,Community-associated,Bactériémie à SARM-OC\n"
+        ).encode(),
+    )
+    described = await client.describe_dataset("amr_mrsa_bloodstream_incidence", lang="fr")
+    assert described.columns[0].name == "YEAR" and described.file_language == "en"
+    assert described.date_start == "2018-01-01"
+    latest = await client.query(
+        "amr_mrsa_bloodstream_incidence", filters={"MRSABSI_TYPE": "Overall"}, start="2022"
+    )
+    assert latest.rows == [
+        {
+            "YEAR": "2022",
+            "RATE_10000PTDAYS": "1.01",
+            "MRSABSI_TYPE": "Overall",
+            "MRSABSI_TYPE_FR": "Dans l'ensemble",
+        }
+    ]
+
+
 async def test_pruid_geography_column(httpx_mock):
     entry = BY_ID["wastewater_daily"]
     body = (
