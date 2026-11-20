@@ -343,12 +343,12 @@ async def wds_get_data_from_vectors(
     with their formula.
     A challenged WDS gets a labelled stand-in.
     Keywords: statcan, vector, observations, latest, data, time series,
-    wds, values, year-over-year, yoy, inflation rate, percent change,
+    wds, values, year-over-year, yoy, inflation rate, CPI inflation, percent change,
     growth rate, annualized, quarterly average, annual average, index,
     moving average, rolling average.
     Mots-clés : Statistique Canada, vecteur, observations, dernières
     données, données récentes, série chronologique, valeurs, dernières
-    périodes, variation annuelle, glissement annuel, taux d'inflation,
+    périodes, variation annuelle, glissement annuel, taux d'inflation, inflation de l'IPC,
     variation en pourcentage, taux de croissance, moyenne trimestrielle,
     moyenne annuelle, indice, moyenne mobile.
     """
