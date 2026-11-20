@@ -274,3 +274,14 @@ def test_the_census_tables_the_planner_routes_to_carry_the_boundary_note():
     assert _keys("wds_get_data_from_cube_coord", {"product_id": 98100253}) == {
         "census-geography-vintage"
     }
+
+
+def test_every_rule_has_a_short_form_shorter_than_its_note():
+    from maplestats_mcp.shared.fitness_rules import BRIEF_NOTES
+
+    assert set(BRIEF_NOTES) == {rule.key for rule in RULES}
+    for rule in RULES:
+        brief_en, brief_fr = BRIEF_NOTES[rule.key]
+        assert brief_en and brief_fr, rule.key
+        assert len(brief_en) <= max(len(rule.note_en), 300), rule.key
+        assert len(brief_fr) <= max(len(rule.note_fr), 330), rule.key

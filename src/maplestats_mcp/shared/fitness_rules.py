@@ -1009,3 +1009,304 @@ RULES: tuple[FitnessRule, ...] = (
         tool_prefixes=("ircc_monthly_",),
     ),
 )
+
+# Short forms of the notes, for brief results (shared/brief.py): the instruction a
+# reader must not miss, in about 250 characters, taken from the note itself and
+# adding nothing it does not say. detail='full' gives the whole note. A full note
+# reaches a brief result word for word, so brief.py finds it by its text and puts
+# the short form in its place. tests/test_fitness.py checks every rule has one.
+BRIEF_NOTES: dict[str, tuple[str, str]] = {
+    "lfs-vs-seph": (
+        (
+            "LFS (people employed) and SEPH (payroll jobs, no self-employed) are "
+            "different measures: do not compare their levels; compare trends over "
+            "several months. For detailed-industry earnings use SEPH (14-10-0203, "
+            "14-10-0204)."
+        ),
+        (
+            "L'EPA (personnes occupées) et l'EERH (emplois salariés, sans travailleurs "
+            "autonomes) sont des mesures différentes : n'en comparez pas les niveaux; "
+            "comparez les tendances sur plusieurs mois. Pour la rémunération d'une "
+            "industrie détaillée, prenez l'EERH (14-10-0203, 14-10-0204)."
+        ),
+    ),
+    "lfs-sampling-variability": (
+        (
+            "LFS figures are survey estimates with sampling error: a change is "
+            "significant at 5% only if it is more than two standard errors from zero "
+            "(standard errors are in 14-10-0287's Statistics dimension). Seasonally "
+            "adjusted series are revised yearly."
+        ),
+        (
+            "Les chiffres de l'EPA sont des estimations avec erreur d'échantillonnage :"
+            " une variation n'est significative à 5 % que si elle dépasse deux erreurs "
+            "types (dans la dimension Statistiques de 14-10-0287). Les séries "
+            "désaisonnalisées sont révisées chaque année."
+        ),
+    ),
+    "seph-january-2026-level-shift": (
+        (
+            "SEPH may show a temporary level shift from January 2026, corrected in "
+            "March 2027: use caution comparing later months with earlier ones."
+        ),
+        (
+            "L'EERH peut montrer un décalage de niveau temporaire à partir de janvier "
+            "2026, corrigé en mars 2027 : prudence en comparant les mois suivants aux "
+            "précédents."
+        ),
+    ),
+    "census-random-rounding": (
+        (
+            "2021 Census values are randomly rounded to a multiple of 5 or 10, totals "
+            "separately: use the published total, do not rebuild it from its parts; "
+            "small counts are imprecise."
+        ),
+        (
+            "Les valeurs du Recensement de 2021 sont arrondies au hasard à un multiple "
+            "de 5 ou 10, totaux à part : utilisez le total publié sans le reconstituer "
+            "à partir des parties; les petits comptes sont imprécis."
+        ),
+    ),
+    "census-geography-vintage": (
+        (
+            "Census boundaries change between censuses (2021: 41 CMAs, 111 CAs): "
+            "compare places only on the same boundaries, and name the census geography "
+            "of each figure."
+        ),
+        (
+            "Les limites du recensement changent d'un recensement à l'autre (2021 : 41 "
+            "RMR, 111 AR) : ne comparez des lieux que selon les mêmes limites, et "
+            "nommez la géographie de recensement de chaque chiffre."
+        ),
+    ),
+    "low-income-lines": (
+        (
+            "Name the line and base with every rate: MBM (official poverty line, 2023 "
+            "base official since November 2025), LIM-AT (relative) and LICO measure "
+            "different things. Small groups and the territories have large sampling "
+            "variability."
+        ),
+        (
+            "Nommez le seuil et la base avec chaque taux : MPC (seuil officiel, base de"
+            " 2023 officielle depuis novembre 2025), MFR-ApI (relative) et SFR mesurent"
+            " des choses différentes. Petits groupes et territoires : forte variabilité"
+            " d'échantillonnage."
+        ),
+    ),
+    "cpi-revisions": (
+        (
+            "The official CPI (18-10-0004, not seasonally adjusted) is never revised; "
+            "seasonally adjusted indexes (18-10-0006) are, and do not add up to "
+            "all-items."
+        ),
+        (
+            "L'IPC officiel (18-10-0004, non désaisonnalisé) n'est jamais révisé; les "
+            "indices désaisonnalisés (18-10-0006) le sont, et ne s'additionnent pas "
+            "pour donner l'ensemble."
+        ),
+    ),
+    "core-cpi-revisions": (
+        (
+            "CPI-trim, CPI-median and CPI-common are revised: a past month's value may "
+            "differ from what was first published (first releases: 18-10-0259 or "
+            "wds_get_series_as_of)."
+        ),
+        (
+            "L'IPC-tronq, l'IPC-méd et l'IPC-comm sont révisés : la valeur d'un mois "
+            "passé peut différer de la première publication (premières diffusions : "
+            "18-10-0259 ou wds_get_series_as_of)."
+        ),
+    ),
+    "gdp-industry-vs-expenditure": (
+        (
+            "Monthly GDP by industry (36-10-0434, basic prices) and quarterly "
+            "expenditure GDP (36-10-0104, market prices) differ and are revised. "
+            "Chained-dollar components do not sum to their total: use 'Contributions to"
+            " percent change'."
+        ),
+        (
+            "Le PIB mensuel par industrie (36-10-0434, prix de base) et le PIB "
+            "trimestriel en dépenses (36-10-0104, prix du marché) diffèrent et sont "
+            "révisés. Les composantes en dollars enchaînés ne totalisent pas l'agrégat "
+            ": prenez les « Contributions à la variation en pourcentage »."
+        ),
+    ),
+    "classification-versions": (
+        (
+            "Classified by NAICS 2022 or NOC 2021; older versions are in terminated "
+            "series or other tables, and codes do not match one for one: check the "
+            "concordance before splicing."
+        ),
+        (
+            "Classement selon le SCIAN 2022 ou la CNP 2021; les versions antérieures "
+            "sont dans des séries terminées ou d'autres tableaux, et les codes ne se "
+            "correspondent pas un pour un : vérifiez la concordance avant de raccorder."
+        ),
+    ),
+    "pumf-weights-and-release": (
+        (
+            "PUMF estimates must use the survey weight, follow the user guide's release"
+            " rules (CV thresholds), and take variances from the guide's method, not "
+            "standard formulas."
+        ),
+        (
+            "Les estimations d'un FMGD doivent utiliser le poids d'enquête, suivre les "
+            "règles de diffusion du guide (seuils de CV) et calculer la variance selon "
+            "la méthode du guide, pas les formules standard."
+        ),
+    ),
+    "cmhc-rental-market-reliability": (
+        (
+            "CMHC grades estimates a to d (d: use with caution); ** is suppressed. For "
+            "rent growth use CMHC's published percent change (same structures both "
+            "years), not the gap between two average rents."
+        ),
+        (
+            "La SCHL cote les estimations de a à d (d : à utiliser avec prudence); ** "
+            "signale une donnée supprimée. Pour la hausse des loyers, prenez la "
+            "variation publiée par la SCHL (mêmes immeubles), pas l'écart entre deux "
+            "loyers moyens."
+        ),
+    ),
+    "cpi-annual-average": (
+        (
+            "Annual inflation is the change between annual average indexes: read it in "
+            "18-10-0005-01 (your own average of monthly values can differ by 0.1). "
+            "December-to-December is a different measure; say which you report."
+        ),
+        (
+            "L'inflation annuelle est la variation entre indices en moyenne annuelle : "
+            "prenez-la dans 18-10-0005-01 (votre propre moyenne peut différer de 0,1). "
+            "La variation de décembre à décembre est une autre mesure; précisez "
+            "laquelle."
+        ),
+    ),
+    "cpi-city-coverage": (
+        (
+            "Most CPI components exist for Canada and the provinces only; mortgage "
+            "interest cost for Canada only; Toronto has six series. If a city figure "
+            "does not exist, say so and offer the national or provincial one."
+        ),
+        (
+            "La plupart des composantes de l'IPC n'existent que pour le Canada et les "
+            "provinces; l'intérêt hypothécaire, que pour le Canada; Toronto a six "
+            "séries. Si un chiffre municipal n'existe pas, dites-le et proposez le "
+            "chiffre national ou provincial."
+        ),
+    ),
+    "cmhc-rms-universe": (
+        (
+            "CMHC Rental Market Survey (October): average rent actually paid, not "
+            "asking rents. Check the structure type (34-10-0127 covers six units and "
+            "over only), and read a series' data before stating its first year."
+        ),
+        (
+            "Enquête sur les logements locatifs de la SCHL (octobre) : loyer réellement"
+            " payé, pas loyer demandé. Vérifiez le type d'immeuble (34-10-0127 ne "
+            "couvre que six logements et plus), et lisez les données avant de donner la"
+            " première année."
+        ),
+    ),
+    "income-unit-and-dollars": (
+        (
+            "11-10-0190 is in constant dollars (real growth). Name the unit (family vs "
+            "person); 'household' income is the Census unit. Give the median beside any"
+            " average and say which is which."
+        ),
+        (
+            "11-10-0190 est en dollars constants (croissance réelle). Nommez l'unité "
+            "(famille ou personne); le revenu des « ménages » est l'unité du "
+            "Recensement. Donnez la médiane à côté de toute moyenne et dites laquelle "
+            "est laquelle."
+        ),
+    ),
+    "trade-basis": (
+        (
+            "12-10-0011 has customs and balance-of-payments bases, each unadjusted and "
+            "adjusted: for a headline use balance of payments, seasonally adjusted, and"
+            " say which you used. CIMT is customs basis, for product or province detail"
+            " only."
+        ),
+        (
+            "12-10-0011 a une base douanière et une base de la balance des paiements, "
+            "chacune brute et désaisonnalisée : pour un chiffre principal, prenez la "
+            "balance des paiements désaisonnalisée, et dites laquelle. La CIMT (base "
+            "douanière) sert au détail par produit ou province."
+        ),
+    ),
+    "building-permits-adjustment": (
+        (
+            "34-10-0292 gives permits four ways: lead with seasonally adjusted, current"
+            " dollars (the release's figure) unless asked otherwise, and name it. "
+            "Values are in thousands of dollars."
+        ),
+        (
+            "34-10-0292 donne les permis de quatre façons : donnez d'abord la valeur "
+            "désaisonnalisée en dollars courants (celle du communiqué), sauf demande "
+            "contraire, et nommez-la. Valeurs en milliers de dollars."
+        ),
+    ),
+    "jobbank-wage-estimates": (
+        (
+            "Job Bank wages are ESDC estimates, not a Statistics Canada table: source "
+            "and period differ by cell (data_source, reference_period). Low and high "
+            "are mostly 10th and 90th percentiles; median is the prevailing wage."
+        ),
+        (
+            "Les salaires du Guichet-Emplois sont des estimations d'EDSC, pas un "
+            "tableau de Statistique Canada : source et période varient selon la cellule"
+            " (data_source, reference_period). Bas et élevé : surtout 10e et 90e "
+            "centiles; la médiane est le salaire en vigueur."
+        ),
+    ),
+    "ircc-processing-times-snapshot": (
+        (
+            "IRCC processing times are point-in-time estimates with no history: not a "
+            "trend. Quote the last-updated date; an individual application can take "
+            "longer."
+        ),
+        (
+            "Les délais de traitement d'IRCC sont des estimations ponctuelles sans "
+            "historique : pas une tendance. Citez la date de mise à jour; une demande "
+            "donnée peut prendre plus de temps."
+        ),
+    ),
+    "proactive-disclosure-amendments": (
+        (
+            "Each amendment is its own row holding the amended total: do not sum rows "
+            "(disclosure_summarize keeps the latest). Contract values cover all years "
+            "of a contract, and recent quarters grow after release."
+        ),
+        (
+            "Chaque modification est une ligne qui porte le total modifié : "
+            "n'additionnez pas les lignes (disclosure_summarize garde la plus récente)."
+            " La valeur d'un contrat couvre toutes ses années, et les trimestres "
+            "récents augmentent après publication."
+        ),
+    ),
+    "lfs-subprovincial-moving-averages": (
+        (
+            "Below the province, LFS estimates are three-month moving averages: say so,"
+            " and compare unadjusted values with the same months a year earlier. Only "
+            "Montréal, Toronto and Vancouver have single-month estimates (14-10-0460)."
+        ),
+        (
+            "Sous le niveau provincial, les estimations de l'EPA sont des moyennes "
+            "mobiles de trois mois : dites-le, et comparez les valeurs non "
+            "désaisonnalisées aux mêmes mois un an plus tôt. Seules Montréal, Toronto "
+            "et Vancouver ont des estimations mensuelles (14-10-0460)."
+        ),
+    ),
+    "ircc-counts-not-population": (
+        (
+            "IRCC counts admissions and permits, not people living in Canada. For "
+            "population or the number of temporary residents use 17-10-0009, 17-10-0040"
+            " and 17-10-0121."
+        ),
+        (
+            "IRCC compte des admissions et des permis, pas des personnes qui vivent au "
+            "Canada. Pour la population ou le nombre de résidents temporaires, prenez "
+            "17-10-0009, 17-10-0040 et 17-10-0121."
+        ),
+    ),
+}

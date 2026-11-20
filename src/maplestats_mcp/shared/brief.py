@@ -21,6 +21,17 @@ on every call.
   empty fields, and members or titles the citation or series title already
   states. A list of more than CSV_MIN_ROWS flat rows becomes one CSV text
   block ({"format": "csv", "rows": n, "csv": "header\\nrow..."}).
+  Since 2026-11-20 a brief result also: states once, in `<list>_common`, what
+  every item of a list shares (a series' table, unit, period range, and its
+  citation with a "v{vector_id}" slot when only the vector differs); writes a SQL
+  result's rows as CSV; gives fitness-for-use notes in their short form
+  (fitness_rules.BRIEF_NOTES); keeps one language of a bilingual pair; and in a
+  CSV block leaves out empty columns, states a one-value column once (`same`) and
+  a label column that spells out a code column as a map (`labels`), and writes
+  1703.0 as 1703. Twelve live calls (LFS, CPI, SQL, metadata, Eurostat, Bank of
+  Canada) went from 122,348 to 72,157 characters. `expand_tables()` undoes all of
+  it, and chat/results.py keeps a copy of that reader (tests/test_brief.py checks
+  they agree).
 - **full**: today's result, field for field, except that a note, caveat or
   licence repeated in several items of one list is stated once in
   `shared_notes` and each item says "shared_notes[i]" (both modes do this).
@@ -35,6 +46,7 @@ from __future__ import annotations
 
 import copy
 import csv
+import functools
 import io
 import json
 import re
@@ -175,13 +187,15 @@ Scalar = str | int | float | bool | None
 
 
 def brief_note(lang: str) -> str:
-    """The one line a brief result carries instead of the full provenance."""
+    """The one line a brief result carries instead of the full provenance.
+
+    Kept short: it is read on every call. reproduce_code is named in the server
+    instructions and the call_tool description, so this line no longer repeats it.
+    """
     return pick(
         lang,
-        "brief: pass detail='full' for full provenance and every field; "
-        "reproduce_code gives scripts that fetch the same data.",
-        "bref : passez detail='full' pour la provenance complète et tous les champs ; "
-        "reproduce_code donne des scripts qui récupèrent les mêmes données.",
+        "brief: detail='full' gives every field and whole caveats.",
+        "bref : detail='full' donne tous les champs et les mises en garde entières.",
     )
 
 
@@ -302,12 +316,248 @@ def _brief(
     payload: dict[str, Any], lang: str, wrapped: bool, cut: set[str] | None = None
 ) -> dict[str, Any]:
     body: Any = payload.get("result") if wrapped else payload
+    body = _short_caveats(body)
+    body = _one_language(body, normalize_lang(lang))
+    if isinstance(body, dict):
+        body = _query_rows_as_csv(body)
     body = _clean(body)
+    body = _state_common_once(body)
     if isinstance(body, dict):
         body["detail"] = " ".join(
             [brief_note(lang), *(_cut_note(c, lang) for c in sorted(cut or ()))]
         )
     return {**payload, "result": body} if wrapped else body
+
+
+@functools.cache
+def _caveat_shorts() -> dict[str, str]:
+    # Imported here: fitness is not needed to read a brief result back.
+    from maplestats_mcp.shared.fitness import short_notes
+
+    return short_notes()
+
+
+def _short_caveats(node: Any) -> Any:
+    """`node` with each fitness-for-use note in its short form (fitness_rules.BRIEF_NOTES).
+
+    The same two or three notes come with every call on a table, and the long forms
+    ran to 800 characters each (lfs-vs-seph): a conversation about the LFS read them
+    on every call. The short form keeps the instruction; detail='full' has the rest.
+    """
+    if isinstance(node, str):
+        return _caveat_shorts().get(node, node)
+    if isinstance(node, dict):
+        return {k: _short_caveats(v) for k, v in node.items()}
+    if isinstance(node, list):
+        return [_short_caveats(v) for v in node]
+    return node
+
+
+def _one_language(node: Any, lang: str) -> Any:
+    """`node` keeping one language of each bilingual pair (title_en / title_fr).
+
+    The catalogue tools did this already (see _metadata); data results such as
+    wds_get_series_info sent both titles too.
+    """
+    if isinstance(node, list):
+        return [_one_language(v, lang) for v in node]
+    if not isinstance(node, dict):
+        return node
+    other = "_fr" if lang == "en" else "_en"
+    return {
+        key: value if key == "provenance" else _one_language(value, lang)
+        for key, value in node.items()
+        if not (key.endswith(other) and f"{key[: -len(other)]}_{lang}" in node)
+    }
+
+
+def _query_rows_as_csv(body: dict[str, Any]) -> dict[str, Any]:
+    """A SQL result's rows (lists, with a `columns` header) as row objects, so the
+    brief rules write them as one CSV block; `column_types` and a `row_count` the
+    block's own count states are dropped. Short results stay lists, which cost less.
+    """
+    columns, rows = body.get("columns"), body.get("rows")
+    if (
+        not isinstance(columns, list)
+        or not all(isinstance(c, str) for c in columns)
+        or len(set(columns)) != len(columns)
+        or not isinstance(rows, list)
+        or len(rows) < CSV_MIN_ROWS
+        or not all(isinstance(r, list) and len(r) == len(columns) for r in rows)
+    ):
+        return body
+    out = {k: v for k, v in body.items() if k not in ("columns", "column_types")}
+    out["rows"] = [dict(zip(columns, row, strict=True)) for row in rows]
+    if out.get("row_count") == len(rows):
+        del out["row_count"]
+    return out
+
+
+# ---- brief, fields every item of a list shares --------------------------------------
+
+_COMMON_SUFFIX = "_common"
+# Placeholder for an item's vector id in a citation stated once for a list of series.
+_VECTOR_SLOT = "v{vector_id}"
+
+
+def _same_everywhere(values: list[Any]) -> bool:
+    first = values[0]
+    if isinstance(first, dict) or first in (None, ""):
+        return False
+    if isinstance(first, list) and not all(not isinstance(v, dict | list) for v in first):
+        return False
+    return all(v == first for v in values[1:])
+
+
+def _template_citations(items: list[dict[str, Any]]) -> None:
+    """Write each series' citation with "v{vector_id}" when that is all that differs.
+
+    A StatCan citation names the table, its title, the vector and the release; for
+    five series of one table only the vector differs, and the citation was the
+    longest field of each. Said once with the slot, each series' own is its
+    `vector_id` put in the slot (restore_common does it for code).
+    """
+    ids = [item.get("vector_id") for item in items]
+    if not all(isinstance(i, int) and not isinstance(i, bool) and i > 0 for i in ids):
+        return
+    holders: list[tuple[str, ...]] = [("citation",)]
+    holders += [(k, "citation") for k, v in items[0].items() if isinstance(v, dict)]
+    for path in holders:
+        texts = []
+        for item in items:
+            node: Any = item
+            for key in path[:-1]:
+                node = node.get(key) if isinstance(node, dict) else None
+            texts.append(node.get(path[-1]) if isinstance(node, dict) else None)
+        if not all(isinstance(t, str) for t in texts):
+            continue
+        slotted = [t.replace(f"v{i}", _VECTOR_SLOT) for t, i in zip(texts, ids, strict=True)]
+        if all(f"v{i}" in t for t, i in zip(texts, ids, strict=True)) and _same_everywhere(slotted):
+            for item, text in zip(items, slotted, strict=True):
+                node = item
+                for key in path[:-1]:
+                    node = node[key]
+                node[path[-1]] = text
+
+
+def _common_fields(items: list[Any]) -> dict[str, Any]:
+    """Fields every item holds with one value (top level, and one level into a nested
+    object such as a series' `context`), removed from the items.
+
+    Five LFS series read the same table id, table URL, unit, scale, frequency and
+    period range five times. Values (`value`, `values`) always stay in each item.
+    """
+    if len(items) < 2 or not all(isinstance(i, dict) for i in items):
+        return {}
+    _template_citations(items)
+    common: dict[str, Any] = {}
+    first = items[0]
+    for key, value in first.items():
+        if key in _VALUE_KEYS or not all(key in item for item in items):
+            continue
+        values = [item[key] for item in items]
+        if isinstance(value, dict):
+            # A CSV block stays whole: its rows are the item's own.
+            if not all(isinstance(v, dict) and not is_csv_block(v) for v in values):
+                continue
+            nested = {
+                k: v
+                for k, v in value.items()
+                if k not in _VALUE_KEYS
+                and all(k in other for other in values)
+                and _same_everywhere([other[k] for other in values])
+            }
+            if nested:
+                common[key] = nested
+        elif _same_everywhere(values):
+            common[key] = value
+    if not common:
+        return {}
+    rest = [_without_common(item, common) for item in items]
+    # Items left with nothing of their own were identical: leave them whole.
+    if any(not r for r in rest):
+        for item in items:
+            filled = _fill_slots(item, item.get("vector_id"))
+            item.clear()
+            item.update(filled)
+        return {}
+    for item, remaining in zip(items, rest, strict=True):
+        item.clear()
+        item.update(remaining)
+    return common
+
+
+def _without_common(item: dict[str, Any], common: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, value in item.items():
+        shared = common.get(key)
+        if isinstance(shared, dict) and isinstance(value, dict):
+            inner = {k: v for k, v in value.items() if k not in shared}
+            if inner:
+                out[key] = inner
+        elif key not in common:
+            out[key] = value
+    return out
+
+
+def _state_common_once(node: Any) -> Any:
+    """`node` with what every item of a list shares stated once, in `<list>_common`
+    placed just before the list."""
+    if isinstance(node, list):
+        return [_state_common_once(v) for v in node]
+    if not isinstance(node, dict) or is_csv_block(node):
+        return node
+    out: dict[str, Any] = {}
+    for key, value in node.items():
+        if key == "provenance":
+            out[key] = value
+            continue
+        value = _state_common_once(value)
+        name = f"{key}{_COMMON_SUFFIX}"
+        if isinstance(value, list) and name not in node:
+            common = _common_fields(value)
+            if common:
+                out[name] = common
+        out[key] = value
+    return out
+
+
+def _fill_slots(value: Any, vector_id: Any) -> Any:
+    if isinstance(value, str) and _VECTOR_SLOT in value and isinstance(vector_id, int):
+        return value.replace(_VECTOR_SLOT, f"v{vector_id}")
+    if isinstance(value, dict):
+        return {k: _fill_slots(v, vector_id) for k, v in value.items()}
+    return value
+
+
+def restore_common(node: Any) -> Any:
+    """`node` with every `<list>_common` merged back into the items of its list."""
+    if isinstance(node, list):
+        return [restore_common(v) for v in node]
+    if not isinstance(node, dict):
+        return node
+    out = {k: restore_common(v) for k, v in node.items()}
+    for key in [k for k in out if k.endswith(_COMMON_SUFFIX)]:
+        base = key[: -len(_COMMON_SUFFIX)]
+        common, items = out[key], out.get(base)
+        if not isinstance(common, dict) or not isinstance(items, list):
+            continue
+        merged = []
+        for item in items:
+            if not isinstance(item, dict):
+                merged.append(item)
+                continue
+            whole = dict(item)
+            for name, shared in common.items():
+                shared = _fill_slots(shared, item.get("vector_id"))
+                if isinstance(shared, dict) and isinstance(whole.get(name), dict):
+                    whole[name] = {**shared, **whole[name]}
+                elif name not in whole:
+                    whole[name] = shared
+            merged.append(whole)
+        out[base] = merged
+        del out[key]
+    return out
 
 
 # ---- brief, catalogue and metadata tools --------------------------------------------
@@ -494,8 +744,23 @@ def _clean(node: Any, key: str = "", in_rows: bool = False) -> Any:
             continue
         if _empty(v) and k not in _VALUE_KEYS:
             continue
+        # "Nothing was cut" is the usual case; a cut says so in provenance.limits.
+        if k == "truncated" and v is False:
+            continue
+        if k.endswith("_date") and isinstance(v, str):
+            v = _date_only(v)
         out[k] = _clean(v, k)
     return out
+
+
+# StatCan writes a date as midnight Eastern in UTC ("1995-01-01T05:00:00Z").
+_MIDNIGHT = re.compile(r"^(\d{4}-\d{2}-\d{2})T0[045]:00(?::00(?:\.0+)?)?(?:Z|[+-]00:00)?$")
+
+
+def _date_only(text: str) -> str:
+    """A `*_date` field's date without a midnight time; any other text as it is."""
+    match = _MIDNIGHT.match(text)
+    return match.group(1) if match else text
 
 
 def _without_restated(node: dict[str, Any]) -> dict[str, Any]:
@@ -513,6 +778,15 @@ def _without_restated(node: dict[str, Any]) -> dict[str, Any]:
         released = item.get("table_release_time")
         if isinstance(released, str) and released[:10] in citation:
             del item["table_release_time"]
+    # A SQL result's series state their citation beside their context's copy: the
+    # copy stays, so the context's own rules (title and release in the citation) apply.
+    context = item.get("context")
+    if (
+        isinstance(citation, str)
+        and isinstance(context, dict)
+        and context.get("citation") == citation
+    ):
+        del item["citation"]
     members = item.get("members")
     series_title = item.get("series_title")
     if isinstance(members, list) and isinstance(series_title, str):
@@ -527,6 +801,9 @@ def _cell(value: Scalar) -> str:
         return ""
     if isinstance(value, bool):
         return "true" if value else "false"
+    if isinstance(value, float) and value.is_integer() and abs(value) < 1e15:
+        # 1703.0 reads as 1703: the same number, two characters fewer in every cell.
+        return str(int(value))
     if isinstance(value, int | float):
         return json.dumps(value)
     return str(value)
@@ -560,32 +837,102 @@ def _flat(row: dict[str, Any], prefix: Path = ()) -> dict[Path, Scalar] | None:
 def _compact_list(rows: list[Any]) -> Any:
     """A long list of flat rows as one CSV block; anything else as it was.
 
-    The header names a nested value by its keys joined with "."; when any value is
-    nested, `columns` also lists each column's keys, since a key may itself hold a
-    dot (Valet's "BD.CDN.10YR.DQ.YLD").
+    The header names a nested value by its keys joined with "."; `columns` lists each
+    column's keys only when a key itself holds a dot (Valet's "BD.CDN.10YR.DQ.YLD"),
+    since otherwise splitting the header on "." gives them. Columns no row fills are
+    left out. When no key holds a dot, the block also states once:
+
+    - `same`: a column with one value in every row (Eurostat's freq, a single unit);
+    - `labels`: a label column that only spells out a code column (geo_label for geo,
+      geo_name for geo_code), as {"of": code column, "values": {code: label}}.
     """
     if len(rows) < CSV_MIN_ROWS or not all(isinstance(r, dict) for r in rows):
         return rows
     flat = [_flat(r) for r in rows]
     if any(f is None for f in flat):
         return rows
+    filled: list[dict[Path, Scalar]] = [f for f in flat if f is not None]
     columns: dict[Path, None] = {}
-    for f in flat:
-        assert f is not None
+    for f in filled:
         columns.update(dict.fromkeys(f))
+    columns = {
+        c: None
+        for c in columns
+        if c[-1] in _VALUE_KEYS or any(f.get(c) not in (None, "") for f in filled)
+    }
     if not columns:
         return rows
+    dotted = any("." in key for c in columns for key in c)
+    same: dict[str, Scalar] = {}
+    labels: dict[str, dict[str, Any]] = {}
+    if not dotted:
+        same = _same_columns(filled, columns)
+        labels = _label_columns(filled, [c for c in columns if ".".join(c) not in same])
+    kept = [c for c in columns if ".".join(c) not in same and ".".join(c) not in labels]
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\n")
-    writer.writerow([".".join(c) for c in columns])
-    for f in flat:
-        assert f is not None
-        writer.writerow([_cell(f.get(c)) for c in columns])
+    writer.writerow([".".join(c) for c in kept])
+    for f in filled:
+        writer.writerow([_cell(f.get(c)) for c in kept])
     block: dict[str, Any] = {"format": "csv", "rows": len(rows)}
-    if any(len(c) > 1 for c in columns):
-        block["columns"] = [list(c) for c in columns]
+    if dotted:
+        block["columns"] = [list(c) for c in kept]
+    if same:
+        block["same"] = same
+    if labels:
+        block["labels"] = labels
     block["csv"] = buffer.getvalue()
     return block
+
+
+_LABEL_SUFFIXES = ("_label", "_name", "_title")
+_CODE_SUFFIXES = ("", "_code", "_id")
+
+
+def _same_columns(
+    rows: list[dict[Path, Scalar]], columns: Mapping[Path, None]
+) -> dict[str, Scalar]:
+    """Columns other than values that hold one non-empty value in every row."""
+    same: dict[str, Scalar] = {}
+    for c in columns:
+        if c[-1] in _VALUE_KEYS:
+            continue
+        first = rows[0].get(c)
+        if first not in (None, "") and all(r.get(c) == first for r in rows[1:]):
+            same[".".join(c)] = first
+    # A block whose every column is the same would hold no rows of its own.
+    return {} if len(same) == len(columns) else same
+
+
+def _label_columns(
+    rows: list[dict[Path, Scalar]], columns: list[Path]
+) -> dict[str, dict[str, Any]]:
+    """Label columns that spell out a code column, as code-to-label maps.
+
+    Kept only when the map is at most half as long as the rows, so it saves text.
+    """
+    names = {".".join(c): c for c in columns}
+    labels: dict[str, dict[str, Any]] = {}
+    for name, column in names.items():
+        if column[-1] in _VALUE_KEYS:
+            continue
+        stem = next((name[: -len(s)] for s in _LABEL_SUFFIXES if name.endswith(s)), None)
+        if not stem:
+            continue
+        code = next(
+            (stem + s for s in _CODE_SUFFIXES if stem + s in names and stem + s != name), None
+        )
+        if code is None or code in labels:
+            continue
+        mapping: dict[str, Scalar] = {}
+        for row in rows:
+            key, label = _cell(row.get(names[code])), row.get(column)
+            if key == "" or mapping.setdefault(key, label) != label:
+                break
+        else:
+            if len(mapping) * 2 <= len(rows):
+                labels[name] = {"of": code, "values": mapping}
+    return labels
 
 
 # ---- reading a brief result back ---------------------------------------------------
@@ -612,13 +959,24 @@ def csv_rows(block: Mapping[str, Any]) -> list[dict[str, Any]]:
     paths: list[Path] = (
         [tuple(str(k) for k in c) for c in listed]
         if isinstance(listed, list) and len(listed) == len(header)
-        else [(name,) for name in header]
+        else [tuple(name.split(".")) for name in header]
     )
+    same_block, labels_block = block.get("same"), block.get("labels")
+    same: Mapping[str, Any] = same_block if isinstance(same_block, Mapping) else {}
+    labels: Mapping[str, Any] = labels_block if isinstance(labels_block, Mapping) else {}
     rows = []
     for record in reader:
         row: dict[str, Any] = {}
-        for path, text in zip(paths, record, strict=False):
-            value = _parse_cell(text)
+        texts = dict(zip(header, record, strict=False))
+        cells: list[tuple[Path, Scalar]] = [
+            (path, _parse_cell(text)) for path, text in zip(paths, record, strict=False)
+        ]
+        for name, spec in labels.items():
+            if isinstance(spec, dict) and isinstance(spec.get("values"), dict):
+                label = spec["values"].get(texts.get(str(spec.get("of")), ""))
+                cells.append((tuple(name.split(".")), label))
+        cells += [(tuple(name.split(".")), value) for name, value in same.items()]
+        for path, value in cells:
             node = row
             for key in path[:-1]:
                 node = node.setdefault(key, {})
@@ -637,10 +995,12 @@ def is_csv_block(value: Any) -> bool:
 
 
 def expand_tables(node: Any) -> Any:
-    """`node` with every CSV block turned back into a list of row objects."""
+    """`node` with every CSV block turned back into a list of row objects, and every
+    `<list>_common` merged back into its list's items."""
     if is_csv_block(node):
         return csv_rows(node)
     if isinstance(node, dict):
+        node = restore_common(node)
         return {k: expand_tables(v) for k, v in node.items()}
     if isinstance(node, list):
         return [expand_tables(v) for v in node]

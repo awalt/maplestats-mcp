@@ -37,8 +37,11 @@ def _cell(text: str) -> Any:
 def _csv_rows(block: dict[str, Any]) -> list[dict[str, Any]]:
     """Rows of a brief result's CSV block.
 
-    A nested value's keys are in the block's `columns` (["values", "FXUSDCAD"]);
-    without `columns` every header name is a plain key.
+    A header name joins a nested value's keys with "." (values.FXUSDCAD); when a key
+    itself holds a dot, the block's `columns` lists each column's keys instead. The
+    block may also state once a column with one value in every row (`same`) and a
+    label column that spells out a code column (`labels`: {"geo_label": {"of":
+    "geo", "values": {"DE": "Germany"}}}); both go back into every row.
     """
     reader = csv.reader(io.StringIO(block["csv"]))
     header = next(reader, [])
@@ -46,13 +49,21 @@ def _csv_rows(block: dict[str, Any]) -> list[dict[str, Any]]:
     paths = (
         [[str(k) for k in c] for c in listed]
         if isinstance(listed, list) and len(listed) == len(header)
-        else [[name] for name in header]
+        else [name.split(".") for name in header]
     )
+    same = block.get("same") if isinstance(block.get("same"), dict) else {}
+    labels = block.get("labels") if isinstance(block.get("labels"), dict) else {}
     rows = []
     for record in reader:
         row: dict[str, Any] = {}
-        for path, text in zip(paths, record, strict=False):
-            value = _cell(text)
+        texts = dict(zip(header, record, strict=False))
+        cells = [(path, _cell(text)) for path, text in zip(paths, record, strict=False)]
+        for name, spec in labels.items():
+            if isinstance(spec, dict) and isinstance(spec.get("values"), dict):
+                label = spec["values"].get(texts.get(str(spec.get("of")), ""))
+                cells.append((name.split("."), label))
+        cells += [(name.split("."), value) for name, value in same.items()]
+        for path, value in cells:
             node = row
             for key in path[:-1]:
                 node = node.setdefault(key, {})
@@ -62,10 +73,49 @@ def _csv_rows(block: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+# A brief result states what every item of a list shares once, in `<list>_common`
+# (a series' table, unit and citation); a citation shared but for the vector holds
+# this slot for each series' own vector id.
+_VECTOR_SLOT = "v{vector_id}"
+
+
+def _fill_slots(value: Any, vector_id: Any) -> Any:
+    if isinstance(value, str) and _VECTOR_SLOT in value and isinstance(vector_id, int):
+        return value.replace(_VECTOR_SLOT, f"v{vector_id}")
+    if isinstance(value, dict):
+        return {k: _fill_slots(v, vector_id) for k, v in value.items()}
+    return value
+
+
+def _restore_common(node: dict[str, Any]) -> dict[str, Any]:
+    """`node` with each `<list>_common` merged back into its list's items."""
+    out = dict(node)
+    for key in [k for k in out if k.endswith("_common")]:
+        common, items = out[key], out.get(key[: -len("_common")])
+        if not isinstance(common, dict) or not isinstance(items, list):
+            continue
+        merged = []
+        for item in items:
+            if not isinstance(item, dict):
+                merged.append(item)
+                continue
+            whole = dict(item)
+            for name, shared in common.items():
+                shared = _fill_slots(shared, item.get("vector_id"))
+                if isinstance(shared, dict) and isinstance(whole.get(name), dict):
+                    whole[name] = {**shared, **whole[name]}
+                elif name not in whole:
+                    whole[name] = shared
+            merged.append(whole)
+        out[key[: -len("_common")]] = merged
+        del out[key]
+    return out
+
+
 def expand_tables(node: Any) -> Any:
     """Brief results (the server's default) send six or more rows as one CSV text
-    block, {"format": "csv", "rows": n, "csv": "..."}; this turns each back into
-    the list of row objects a full result has."""
+    block, {"format": "csv", "rows": n, "csv": "..."}, and state what a list's items
+    share once in `<list>_common`; this turns both back into what a full result has."""
     if (
         isinstance(node, dict)
         and node.get("format") == "csv"
@@ -73,7 +123,7 @@ def expand_tables(node: Any) -> Any:
     ):
         return _csv_rows(node)
     if isinstance(node, dict):
-        return {k: expand_tables(v) for k, v in node.items()}
+        return {k: expand_tables(v) for k, v in _restore_common(node).items()}
     if isinstance(node, list):
         return [expand_tables(v) for v in node]
     return node
