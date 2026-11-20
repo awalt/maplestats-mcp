@@ -335,7 +335,16 @@ async def _checks(series: list[VectorSeries], sql: str, seconds: float) -> query
         # The user's own SQL will fail the same way, with the message that says why.
         return query_checks.Findings()
     hierarchy = await _hierarchy(series)
-    findings = query_checks.evaluate(planned, result.rows, series, hierarchy)
+    refs = [
+        query_checks.SeriesRef(
+            vector_id=s.vector_id,
+            product_id=s.product_id,
+            coordinate=s.coordinate,
+            name=(s.context.series_title if s.context else None) or f"v{s.vector_id}",
+        )
+        for s in series
+    ]
+    findings = query_checks.evaluate(planned, result.rows, refs, hierarchy)
     if findings.refusals:
         raise query_checks.refusal_error(findings)
     return findings

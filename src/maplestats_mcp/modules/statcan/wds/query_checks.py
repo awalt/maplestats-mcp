@@ -50,7 +50,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from maplestats_mcp.modules.statcan.wds import client
-from maplestats_mcp.modules.statcan.wds.schemas import VectorSeries
 from maplestats_mcp.shared import duck_worker
 from maplestats_mcp.shared.errors import InvalidInput
 
@@ -207,6 +206,16 @@ def quality(status_code: int | None, security_level_code: int | None) -> str | N
 
 
 # ---- findings -------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SeriesRef:
+    """One series as the checks see it: its table, coordinate and a name to quote."""
+
+    vector_id: int
+    product_id: int
+    coordinate: str
+    name: str
 
 
 @dataclass
@@ -407,14 +416,17 @@ class Plan:
     literals: list[tuple[str, str]]
 
 
-def plan(sql: str) -> Plan:
-    """Read `sql` once: the diagnostic to run and the literals its WHERE compares."""
+def plan(sql: str, text_columns: Iterable[str] = ()) -> Plan:
+    """Read `sql` once: the diagnostic to run and the literals its WHERE compares.
+
+    `text_columns` adds text columns beyond TEXT_COLUMNS (a table's dimensions).
+    """
     connection = duck_worker.open_sandbox(16)
     try:
         tree = _tree(connection, sql)
         if tree is None:
             return Plan(None, [], [])
-        literals = _where_literals(tree)
+        literals = _where_literals(tree, TEXT_COLUMNS | {c.lower() for c in text_columns})
         parts: list[str] = []
         aggregates: list[list[tuple[str, bool]]] = []
         for node in _select_nodes(tree):
@@ -436,7 +448,7 @@ def plan(sql: str) -> Plan:
         connection.close()
 
 
-def _where_literals(tree: Mapping[str, Any]) -> list[tuple[str, str]]:
+def _where_literals(tree: Mapping[str, Any], text_columns: frozenset[str]) -> list[tuple[str, str]]:
     """(column, text) for each `column = 'text'` or `column IN ('a', ...)` on obs."""
     found: list[tuple[str, str]] = []
     for node in _select_nodes(tree):
@@ -455,7 +467,7 @@ def _where_literals(tree: Mapping[str, Any]) -> list[tuple[str, str]]:
             for column_side, literal_side in pairs:
                 column = _column(column_side or {})
                 literal = (literal_side or {}).get("literal") or {}
-                if column in TEXT_COLUMNS and literal.get("kind") in ("VARCHAR", "STRING"):
+                if column in text_columns and literal.get("kind") in ("VARCHAR", "STRING"):
                     found.append((column, str(literal.get("text", ""))))
     return found
 
@@ -530,7 +542,7 @@ def _ancestors(parents: Mapping[int, int | None], member: int) -> set[int]:
     return seen
 
 
-def part_of(whole: VectorSeries, part: VectorSeries, hierarchy: Hierarchy) -> bool:
+def part_of(whole: SeriesRef, part: SeriesRef, hierarchy: Hierarchy) -> bool:
     """Whether `part` is inside `whole` in the table's member hierarchy: the same member
     or one of its descendants in every dimension, and a descendant in at least one."""
     if whole.product_id != part.product_id or whole.vector_id == part.vector_id:
@@ -552,11 +564,6 @@ def part_of(whole: VectorSeries, part: VectorSeries, hierarchy: Hierarchy) -> bo
     return strictly
 
 
-def _name(series: VectorSeries) -> str:
-    ctx = series.context
-    return (ctx.series_title if ctx and ctx.series_title else None) or f"v{series.vector_id}"
-
-
 def _groups_text(groups: list[str], total: int) -> str:
     shown = ", ".join(repr(g) for g in groups[:_EXAMPLES])
     more = total - min(total, _EXAMPLES)
@@ -566,7 +573,7 @@ def _groups_text(groups: list[str], total: int) -> str:
 def evaluate(
     plan_: Plan,
     rows: Sequence[Sequence[Any]],
-    series: Sequence[VectorSeries],
+    series: Sequence[SeriesRef],
     hierarchy: Hierarchy,
 ) -> Findings:
     """Turn the diagnostic's measured groups into refusals and warnings."""
@@ -589,7 +596,7 @@ def _evaluate_node(
     findings: Findings,
     aggregates: list[tuple[str, bool]],
     groups: list[dict[str, Any]],
-    by_id: Mapping[int, VectorSeries],
+    by_id: Mapping[int, SeriesRef],
     hierarchy: Hierarchy,
 ) -> None:
     names = {name for name, _ in aggregates}
@@ -634,7 +641,7 @@ def _evaluate_node(
             )
             if pair is not None:
                 hit("total_with_parts" if summing else "average_with_parts", group)
-                parts_example = parts_example or (_name(pair[0]), _name(pair[1]))
+                parts_example = parts_example or (pair[0].name, pair[1].name)
 
     def groups_of(kind: str) -> str:
         return _groups_text(hits[kind], len(hits[kind]))

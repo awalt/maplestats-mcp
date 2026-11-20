@@ -13,7 +13,6 @@ from __future__ import annotations
 import pytest
 
 from maplestats_mcp.modules.statcan.wds import constants, query_checks, tools
-from maplestats_mcp.modules.statcan.wds.schemas import VectorSeries
 from maplestats_mcp.shared.errors import InvalidInput
 
 LFS = 14100287
@@ -275,9 +274,7 @@ def test_part_of_reads_the_member_hierarchy():
     hierarchy = query_checks.hierarchy_from({LFS: _cube()})
 
     def s(vector):
-        return VectorSeries(
-            product_id=LFS, coordinate=COORDS[vector][0], vector_id=vector, observations=[]
-        )
+        return query_checks.SeriesRef(vector, LFS, COORDS[vector][0], COORDS[vector][1])
 
     assert query_checks.part_of(s(CA_EMP), s(ON_EMP), hierarchy)
     assert not query_checks.part_of(s(ON_EMP), s(CA_EMP), hierarchy)

@@ -47,7 +47,9 @@ async def ab_economic_get_indicator_series(indicator: str, lang: Lang = "en") ->
     (e.g. "Unemployment Rate", "Housing Starts", "Farm Cash Receipts")
     publishes named API links such as "Unemployment rate in Alberta" or
     "... by Industry"; each comes back as a table plus filters to pass
-    straight to ab_economic_get_data.
+    straight to ab_economic_get_data. "... by Province" series hold every
+    province and Canada, to compare Alberta with the national figure
+    (checked on the unemployment rate page, 2026-11-20).
     Keywords: Alberta, economic dashboard, indicator, API, series,
     official data link, unemployment, housing starts, CPI.
     Mots-clés : Alberta, tableau de bord économique, indicateur, API,

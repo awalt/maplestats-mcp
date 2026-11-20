@@ -16,6 +16,12 @@ CODE_SETS = {
     "object": {
         "scalar": [
             {"scalarFactorCode": 0, "scalarFactorDescEn": "units", "scalarFactorDescFr": "unités"},
+            # LFS employment's scale, checked live 2026-11-20.
+            {
+                "scalarFactorCode": 3,
+                "scalarFactorDescEn": "thousands",
+                "scalarFactorDescFr": "milliers",
+            },
             {
                 "scalarFactorCode": 6,
                 "scalarFactorDescEn": "millions",

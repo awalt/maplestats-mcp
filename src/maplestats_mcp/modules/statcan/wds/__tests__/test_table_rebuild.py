@@ -185,3 +185,13 @@ def test_the_script_writes_statcans_csv_layout_with_its_code_sets(httpx_mock, tm
         f'"2026-02",{toronto},"All-items",{tail},"v103","5.7","30.8","","","","1"',
         "",
     ]
+
+
+@pytest.mark.parametrize(
+    ("start", "expected"),
+    [("2025", 23), ("2025-01", 23), ("2025-01-15", 23), (None, 611)],
+)
+def test_periods_to_ask_reads_every_ref_date_form(start, expected):
+    """A bare year raised ValueError from wds_get_full_table_download until 2026-11-20."""
+    monthly = {"cubeStartDate": "1976-01-01", "cubeEndDate": "2026-10-01", "frequencyCode": 6}
+    assert wds_table.periods_to_ask(monthly, start) == expected
