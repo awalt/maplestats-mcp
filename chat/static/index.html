@@ -122,6 +122,13 @@
   }
   .notice[hidden] { display: none; }
   .notice p { margin: 2px 0; }
+  /* Code and Excel exports under an answer. */
+  .exports { margin-top: 12px; }
+  .exports select { font: inherit; font-size: .85rem; color: var(--fg); background: var(--card);
+    border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; max-width: 100%; }
+  .tool-btn:disabled { opacity: .5; cursor: wait; }
+  pre.code { margin: 0; max-height: 420px; overflow: auto; padding: 10px; background: var(--soft);
+    border-radius: 6px; font-size: .8rem; line-height: 1.45; white-space: pre; }
   .note { max-width: 860px; margin: 6px auto 0; color: var(--muted); font-size: .8rem; }
 </style>
 <!-- Page views, as on the website. The path is fixed so the ?q= question a link
@@ -131,11 +138,13 @@
 <body>
 <main>
   <header>
-    <h1>MapleStats Chat</h1>
-    <button type="button" class="tool-btn" id="theme" aria-label="Switch light or dark theme">Theme</button>
-    <button type="button" class="tool-btn" id="new">New chat</button>
+    <h1 data-i18n="title">MapleStats Chat</h1>
+    <button type="button" class="tool-btn" id="lang" lang="fr" aria-label="Lire cette page en français">Français</button>
+    <button type="button" class="tool-btn" id="theme" data-i18n="theme" data-i18n-aria="themeLabel"
+      aria-label="Switch light or dark theme">Theme</button>
+    <button type="button" class="tool-btn" id="new" data-i18n="newChat">New chat</button>
   </header>
-  <p class="sub">Ask about Canadian open data. Claude Haiku, a small AI model, looks the
+  <p class="sub" data-i18n="sub">Ask about Canadian open data. Claude Haiku, a small AI model, looks the
     answer up live through the MapleStats MCP server. Under each answer: a chart and a
     table of the data the server returned, and its sources.</p>
   <div class="notice" id="upstream-notice" role="status" hidden>
@@ -146,22 +155,27 @@
       d'autres sources.</p>
   </div>
   <details class="disclaimer" open>
-    <summary>Before you ask</summary>
+    <summary data-i18n="beforeYouAsk">Before you ask</summary>
     <ul>
-      <li><strong>AI answers can be wrong.</strong> The model can misread a table, pick the
+      <li><strong data-i18n="wrongHead">AI answers can be wrong.</strong>
+        <span data-i18n="wrong">The model can misread a table, pick the
         wrong series or period, or miscalculate. Check every figure against the source
-        listed under the answer before you use it.</li>
-      <li><strong>Not an official source.</strong> MapleStats is an independent project. It
+        listed under the answer before you use it.</span></li>
+      <li><strong data-i18n="officialHead">Not an official source.</strong>
+        <span data-i18n="official">MapleStats is an independent project. It
         is not affiliated with or endorsed by Statistics Canada, the Bank of Canada or any
-        other government agency; their published releases are the authoritative figures.</li>
-      <li><strong>Not advice.</strong> Answers are for information only, not financial,
-        legal, tax or investment advice.</li>
-      <li><strong>Privacy.</strong> Your questions are sent to Anthropic, the model provider,
+        other government agency; their published releases are the authoritative figures.</span></li>
+      <li><strong data-i18n="adviceHead">Not advice.</strong>
+        <span data-i18n="advice">Answers are for information only, not financial,
+        legal, tax or investment advice.</span></li>
+      <li><strong data-i18n="privacyHead">Privacy.</strong>
+        <span data-i18n="privacy">Your questions are sent to Anthropic, the model provider,
         to be answered. Do not enter names, contact details or other personal or
-        confidential information.</li>
-      <li><strong>A limited demo.</strong> Questions per hour and per day are capped, and an
+        confidential information.</span></li>
+      <li><strong data-i18n="limitedHead">A limited demo.</strong>
+        <span data-i18n="limited">Questions per hour and per day are capped, and an
         answer can stop early when a question needs many lookups. It may be unavailable
-        or change without notice.</li>
+        or change without notice.</span></li>
     </ul>
   </details>
   <div class="chips" id="chips"></div>
@@ -170,10 +184,11 @@
 <form id="form">
   <div class="row">
     <input id="box" autocomplete="off" maxlength="1000" aria-label="Your question"
-      placeholder="Ask a question, in English or French">
-    <button class="send" id="send">Ask</button>
+      placeholder="Ask a question, in English or French"
+      data-i18n-aria="boxLabel" data-i18n-placeholder="boxPlaceholder">
+    <button class="send" id="send" data-i18n="ask">Ask</button>
   </div>
-  <div class="note">AI-generated answers can be wrong: check the source each one names.
+  <div class="note" data-i18n="note">AI-generated answers can be wrong: check the source each one names.
     Not affiliated with Statistics Canada or any government agency. The chart and table
     show the data the server returned, not the model's text. Questions go to Anthropic;
     this chat is saved in your browser only.</div>
@@ -189,17 +204,135 @@
   integrity="sha384-P0JNneQf81HOl9VwNXK76cQ9VMD6Nfsnepxb0cCOg8+UzEdzgPHAPV4wVQrvYQSx"
   crossorigin="anonymous"></script>
 <script>
-  const examples = [
-    "What is Canada's unemployment rate right now?",
-    "How did Toronto's average two-bedroom rent change from 2019 to 2025?",
-    "Quel est le taux d'inflation au Canada?",
-    "What was mortgage interest cost inflation in Toronto in 2025?",
-  ];
+  // 0. Interface language ----
+  // Every string the page writes is here, in English and French. The switch in the
+  // header picks one (kept in this browser); the first visit follows the browser's
+  // language. A French interface also sends "lang": "fr" with each request, so the
+  // service answers and refuses in French and tells the model to pass lang="fr" to
+  // the MapleStats tools.
+  const NB = " "; // a no-break space, before French : ; ? !
+  const STRINGS = {
+    en: {
+      title: "MapleStats Chat",
+      switchTo: "Français", switchLabel: "Lire cette page en français", switchLang: "fr",
+      theme: "Theme", themeLabel: "Switch light or dark theme", newChat: "New chat",
+      sub: "Ask about Canadian open data. Claude Haiku, a small AI model, looks the answer up live through the MapleStats MCP server. Under each answer: a chart and a table of the data the server returned, its sources, and buttons for the code and an Excel file.",
+      beforeYouAsk: "Before you ask",
+      wrongHead: "AI answers can be wrong.",
+      wrong: "The model can misread a table, pick the wrong series or period, or miscalculate. Check every figure against the source listed under the answer before you use it.",
+      officialHead: "Not an official source.",
+      official: "MapleStats is an independent project. It is not affiliated with or endorsed by Statistics Canada, the Bank of Canada or any other government agency; their published releases are the authoritative figures.",
+      adviceHead: "Not advice.",
+      advice: "Answers are for information only, not financial, legal, tax or investment advice.",
+      privacyHead: "Privacy.",
+      privacy: "Your questions are sent to Anthropic, the model provider, to be answered. Do not enter names, contact details or other personal or confidential information.",
+      limitedHead: "A limited demo.",
+      limited: "Questions per hour and per day are capped, and an answer can stop early when a question needs many lookups. It may be unavailable or change without notice.",
+      boxLabel: "Your question", boxPlaceholder: "Ask a question, in English or French", ask: "Ask",
+      note: "AI-generated answers can be wrong: check the source each one names. Not affiliated with Statistics Canada or any government agency. The chart and table show the data the server returned, not the model's text. Questions go to Anthropic; this chat is saved in your browser only.",
+      examples: [
+        "What is Canada's unemployment rate right now?",
+        "How did Toronto's average two-bedroom rent change from 2019 to 2025?",
+        "Quel est le taux d'inflation au Canada?",
+        "What was mortgage interest cost inflation in Toronto in 2025?",
+      ],
+      chart: "Chart", table: "Table", sources: "Sources", value: "value",
+      lineChart: "Line chart of ", barChart: "Bar chart of ",
+      series: "Series", period: "Period", valueCol: "Value", unit: "Unit", vector: "Vector", status: "Status",
+      filterRows: "Filter rows", downloadCsv: "Download CSV", rowsShown: (n, m) => `${n} of ${m} rows`,
+      tableFact: "Table", geography: "Geography", frequency: "Frequency", released: "Released",
+      cautions: "Cautions for these tables", callsBehind: "Calls behind this answer",
+      source: "source", via: " via ",
+      panelFailed: "The chart and table could not be drawn for this answer.",
+      noAnswer: "(no answer)", toolCalls: (n) => `${n} tool call${n === 1 ? "" : "s"}`,
+      planning: "planning which sources to use", finding: "finding the right data tool",
+      census: "reading the 2021 Census profile (StatCan's service is slow, up to a minute)",
+      censusPlace: "finding the place in the census (can take 20 s)", calling: (tool) => "calling " + tool,
+      starting: "Starting...", planningLookup: "Planning the lookup.",
+      stepStatus: (s, n, what) => `${s} s. Step ${n}: ${what}.`,
+      demoFailed: "The demo failed. Try again.",
+      connectionEnded: "The connection ended before the answer arrived. Try again.",
+      noServer: (status) => `The demo server did not answer (HTTP ${status}). It may be restarting: try again in a minute.`,
+      noAnswerSent: "The demo server sent no answer. Try again.",
+      getCode: "Get the code", downloadExcel: "Download Excel", dataCall: "Data call",
+      writingCode: "Writing the scripts...", buildingWorkbook: "Building the workbook...",
+      codeFrom: "These scripts fetch the same data from the source, without MapleStats:",
+      copy: "Copy", copied: "Copied", download: "Download", packages: "Packages: ",
+      noScripts: "The server has no script for this call.",
+      saved: (file, n) => `Saved ${file}: ${n} row${n === 1 ? "" : "s"}.`,
+      truncated: (n, m) => `Only the first ${n} of ${m} rows fit in the file; for all of them, use the Excel Power Query script under "Get the code".`,
+      exportFailed: "The data server did not answer. Try again.",
+      languages: { r: "R", python: "Python", stata: "Stata", julia: "Julia", excel: "Excel Power Query" },
+    },
+    fr: {
+      title: "Clavardage MapleStats",
+      switchTo: "English", switchLabel: "Read this page in English", switchLang: "en",
+      theme: "Thème", themeLabel: "Passer au thème clair ou sombre", newChat: "Nouvelle conversation",
+      sub: "Posez une question sur les données ouvertes canadiennes. Claude Haiku, un petit modèle d'IA, cherche la réponse en direct au moyen du serveur MCP MapleStats. Sous chaque réponse" + NB + ": un graphique et un tableau des données renvoyées par le serveur, leurs sources, et des boutons pour le code et un fichier Excel.",
+      beforeYouAsk: "Avant de poser une question",
+      wrongHead: "Les réponses de l'IA peuvent être fausses.",
+      wrong: "Le modèle peut mal lire un tableau, choisir la mauvaise série ou la mauvaise période, ou se tromper dans un calcul. Vérifiez chaque chiffre auprès de la source indiquée sous la réponse avant de l'utiliser.",
+      officialHead: "Pas une source officielle.",
+      official: "MapleStats est un projet indépendant. Il n'est ni affilié à Statistique Canada, à la Banque du Canada ou à un autre organisme gouvernemental, ni approuvé par eux" + NB + "; leurs publications font foi.",
+      adviceHead: "Pas un conseil.",
+      advice: "Les réponses sont données à titre d'information seulement, et non comme conseil financier, juridique, fiscal ou en placement.",
+      privacyHead: "Confidentialité.",
+      privacy: "Vos questions sont envoyées à Anthropic, le fournisseur du modèle, pour y répondre. N'entrez pas de noms, de coordonnées ni d'autres renseignements personnels ou confidentiels.",
+      limitedHead: "Une démo limitée.",
+      limited: "Le nombre de questions par heure et par jour est plafonné, et une réponse peut s'arrêter tôt quand une question demande beaucoup de recherches. La démo peut être indisponible ou changer sans préavis.",
+      boxLabel: "Votre question", boxPlaceholder: "Posez une question, en français ou en anglais", ask: "Demander",
+      note: "Les réponses produites par l'IA peuvent être fausses" + NB + ": vérifiez la source que chacune nomme. Aucune affiliation avec Statistique Canada ni avec un organisme gouvernemental. Le graphique et le tableau montrent les données renvoyées par le serveur, et non le texte du modèle. Les questions sont envoyées à Anthropic" + NB + "; cette conversation n'est enregistrée que dans votre navigateur.",
+      examples: [
+        "Quel est le taux de chômage au Canada en ce moment" + NB + "?",
+        "Comment le loyer moyen d'un logement de deux chambres à Toronto a-t-il évolué de 2019 à 2025" + NB + "?",
+        "Quel est le taux d'inflation au Canada" + NB + "?",
+        "Quelle a été l'inflation du coût de l'intérêt hypothécaire à Toronto en 2025" + NB + "?",
+      ],
+      chart: "Graphique", table: "Tableau", sources: "Sources", value: "valeur",
+      lineChart: "Graphique linéaire" + NB + ": ", barChart: "Graphique à barres" + NB + ": ",
+      series: "Série", period: "Période", valueCol: "Valeur", unit: "Unité", vector: "Vecteur", status: "Statut",
+      filterRows: "Filtrer les lignes", downloadCsv: "Télécharger le CSV",
+      rowsShown: (n, m) => `${n} ligne${n > 1 ? "s" : ""} sur ${m}`,
+      tableFact: "Tableau", geography: "Géographie", frequency: "Fréquence", released: "Diffusion",
+      cautions: "Mises en garde pour ces tableaux", callsBehind: "Appels à l'origine de cette réponse",
+      source: "source", via: " par ",
+      panelFailed: "Le graphique et le tableau n'ont pas pu être tracés pour cette réponse.",
+      noAnswer: "(aucune réponse)", toolCalls: (n) => `${n} appel${n > 1 ? "s" : ""} d'outil`,
+      planning: "choisir les sources à consulter", finding: "trouver le bon outil de données",
+      census: "lire le profil du Recensement de 2021 (le service de Statistique Canada est lent, jusqu'à une minute)",
+      censusPlace: "trouver le lieu dans le recensement (peut prendre 20" + NB + "s)", calling: (tool) => "appel de " + tool,
+      starting: "Démarrage...", planningLookup: "Préparation de la recherche.",
+      stepStatus: (s, n, what) => `${s}${NB}s. Étape ${n}${NB}: ${what}.`,
+      demoFailed: "La démo a échoué. Réessayez.",
+      connectionEnded: "La connexion s'est terminée avant l'arrivée de la réponse. Réessayez.",
+      noServer: (status) => `Le serveur de la démo n'a pas répondu (HTTP ${status}). Il redémarre peut-être${NB}: réessayez dans une minute.`,
+      noAnswerSent: "Le serveur de la démo n'a envoyé aucune réponse. Réessayez.",
+      getCode: "Obtenir le code", downloadExcel: "Télécharger en Excel", dataCall: "Appel de données",
+      writingCode: "Rédaction des scripts...", buildingWorkbook: "Création du classeur...",
+      codeFrom: "Ces scripts récupèrent les mêmes données à la source, sans MapleStats" + NB + ":",
+      copy: "Copier", copied: "Copié", download: "Télécharger", packages: "Paquets" + NB + ": ",
+      noScripts: "Le serveur n'a pas de script pour cet appel.",
+      saved: (file, n) => `${file} enregistré${NB}: ${n} ligne${n > 1 ? "s" : ""}.`,
+      truncated: (n, m) => `Seules les ${n} premières lignes sur ${m} tiennent dans le fichier${NB}; pour les avoir toutes, utilisez le script Power Query d'Excel sous «${NB}Obtenir le code${NB}».`,
+      exportFailed: "Le serveur de données n'a pas répondu. Réessayez.",
+      languages: { r: "R", python: "Python", stata: "Stata", julia: "Julia", excel: "Power Query (Excel)" },
+    },
+  };
+  const STORE = "maplestats-chat-v1";
+  function storedLang() {
+    try {
+      const saved = localStorage.getItem(STORE + "-lang");
+      if (saved === "en" || saved === "fr") return saved;
+    } catch (e) { /* blocked */ }
+    return (navigator.language || "").toLowerCase().startsWith("fr") ? "fr" : "en";
+  }
+  let lang = storedLang();
+  const t = (key) => STRINGS[lang][key];
+
   const log = document.getElementById("log");
   const box = document.getElementById("box");
   const send = document.getElementById("send");
-  const STORE = "maplestats-chat-v1";
-  // Each turn: {q, answer, tools_used, data, sources}. Only q and answer go to the server.
+  // Each turn: {q, answer, tools_used, data, sources, calls}. Only q and answer go to the server.
   let turns = [];
 
   // 1. Small helpers ----
@@ -220,8 +353,14 @@
   // Links come from tool results: only https, so no javascript: or data: URL can run.
   const safeUrl = (u) => (typeof u === "string" && /^https:\/\//i.test(u)) ? u : null;
   const fmt = (v) => v == null ? "–" :
-    Number(v).toLocaleString(undefined, { maximumFractionDigits: 3 });
+    Number(v).toLocaleString(lang === "fr" ? "fr-CA" : "en-CA", { maximumFractionDigits: 3 });
   const colour = (i) => `var(--c${(i % 8) + 1})`;
+  // Saves a Blob as a file through a temporary link, as the CSV download does.
+  function saveFile(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = el("a", { href: url, download: name });
+    document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }
 
   function save() {
     try { localStorage.setItem(STORE, JSON.stringify(turns)); } catch (e) { /* full or blocked */ }
@@ -236,7 +375,7 @@
     const wrap = el("div");
     const groups = new Map();
     series.forEach((s, i) => {
-      const unit = [s.unit, s.scale].filter(Boolean).join(", ") || "value";
+      const unit = [s.unit, s.scale].filter(Boolean).join(", ") || t("value");
       if (!groups.has(unit)) groups.set(unit, []);
       groups.get(unit).push({ s, i });
     });
@@ -278,7 +417,7 @@
     const values = members.flatMap(({ s }) => s.points.map((p) => p.value)).filter((v) => v != null);
     const y = scale(Math.min(...values), Math.max(...values));
     const svg = frame(W, H, P, y);
-    svg.setAttribute("aria-label", "Line chart of " + members.map(({ s }) => s.title).join("; "));
+    svg.setAttribute("aria-label", t("lineChart") + members.map(({ s }) => s.title).join("; "));
     const x = (p) => P.l + (W - P.l - P.r) * (periods.length < 2 ? 0.5 : periods.indexOf(p) / (periods.length - 1));
     const yv = (v) => P.t + (H - P.t - P.b) * (1 - (v - y.lo) / (y.hi - y.lo));
     const every = Math.max(1, Math.ceil(periods.length / 8));
@@ -288,9 +427,9 @@
     periods.forEach((p, k) => {
       if (k % every && k !== periods.length - 1) return;
       const anchor = periods.length < 2 ? "middle" : k === 0 ? "start" : k === periods.length - 1 ? "end" : "middle";
-      const t = svgEl("text", { x: x(p), y: H - 8, "text-anchor": anchor });
-      t.textContent = p.slice(0, cut);
-      svg.append(t);
+      const label = svgEl("text", { x: x(p), y: H - 8, "text-anchor": anchor });
+      label.textContent = p.slice(0, cut);
+      svg.append(label);
     });
     for (const { s, i } of members) {
       const pts = s.points.filter((p) => p.value != null);
@@ -309,7 +448,7 @@
     const values = members.map(({ s }) => (s.points.find((p) => p.value != null) || {}).value ?? 0);
     const max = Math.max(...values.map(Math.abs), 1e-9);
     const svg = svgEl("svg", { class: "chart", viewBox: `0 0 ${W} ${H}`, role: "img" });
-    svg.setAttribute("aria-label", "Bar chart of " + members.map(({ s }) => s.title).join("; "));
+    svg.setAttribute("aria-label", t("barChart") + members.map(({ s }) => s.title).join("; "));
     members.forEach(({ s, i }, k) => {
       const v = values[k], yy = P.t + 34 * k + 6, w = (W - P.l - P.r) * Math.abs(v) / max;
       const bar = svgEl("rect", { x: P.l, y: yy, width: Math.max(w, 1), height: 22, rx: 3, fill: colour(i) });
@@ -328,11 +467,11 @@
       series: s.title, vector: s.vector_id || "", period: p.period, value: p.value,
       unit: [s.unit, s.scale].filter(Boolean).join(", "), status: p.status || "",
     })));
-    const cols = [["series", "Series"], ["period", "Period"], ["value", "Value"],
-      ["unit", "Unit"], ["vector", "Vector"], ["status", "Status"]];
+    const cols = [["series", t("series")], ["period", t("period")], ["value", t("valueCol")],
+      ["unit", t("unit")], ["vector", t("vector")], ["status", t("status")]];
     let sortKey = "period", asc = true;
-    const filter = el("input", { type: "search", placeholder: "Filter rows", "aria-label": "Filter rows" });
-    const download = el("button", { type: "button", class: "tool-btn", text: "Download CSV" });
+    const filter = el("input", { type: "search", placeholder: t("filterRows"), "aria-label": t("filterRows") });
+    const download = el("button", { type: "button", class: "tool-btn", text: t("downloadCsv") });
     const holder = el("div", { class: "rows" }), count = el("div", { class: "count" });
     function shown() {
       const q = filter.value.trim().toLowerCase();
@@ -357,16 +496,14 @@
           el("td", { class: key === "value" ? "num" : "", text: key === "value" ? fmt(r.value) : r[key] }))));
       }
       holder.replaceChildren(el("table", {}, el("thead", {}, head), body));
-      count.textContent = `${list.length} of ${rows.length} rows`;
+      count.textContent = t("rowsShown")(list.length, rows.length);
     }
     filter.oninput = render;
     download.onclick = () => {
-      const cell = (v) => { const t = v == null ? "" : String(v); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+      const cell = (v) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
       const csv = [cols.map(([, l]) => l).join(","),
         ...shown().map((r) => cols.map(([k]) => cell(r[k])).join(","))].join("\n");
-      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-      const a = el("a", { href: url, download: "maplestats-data.csv" });
-      document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      saveFile(new Blob([csv], { type: "text/csv" }), "maplestats-data.csv");
     };
     render();
     return el("div", {}, el("div", { class: "table-tools" }, filter, download), holder, count);
@@ -380,11 +517,11 @@
       const facts = el("dl");
       const add = (k, v) => { if (v) facts.append(el("dt", { text: k }), el("dd", {}, v)); };
       const url = safeUrl(s.table_url);
-      add("Table", url ? el("a", { href: url, target: "_blank", rel: "noopener",
+      add(t("tableFact"), url ? el("a", { href: url, target: "_blank", rel: "noopener",
         text: [s.table_id, s.table_title].filter(Boolean).join(" · ") }) : s.table_id);
-      add("Vector", s.vector_id); add("Geography", s.geography);
-      add("Unit", [s.unit, s.scale].filter(Boolean).join(", ")); add("Frequency", s.frequency);
-      add("Released", s.release);
+      add(t("vector"), s.vector_id); add(t("geography"), s.geography);
+      add(t("unit"), [s.unit, s.scale].filter(Boolean).join(", ")); add(t("frequency"), s.frequency);
+      add(t("released"), s.release);
       const card = el("div", { class: "src" }, el("h4", { text: s.title }), facts);
       if (s.notes && s.notes.length) card.append(el("ul", { class: "caveats" },
         ...s.notes.map((n) => el("li", { text: n }))));
@@ -392,46 +529,149 @@
       wrap.append(card);
     }
     if (caveats.size) {
-      wrap.append(el("div", { class: "src" }, el("h4", { text: "Cautions for these tables" }),
+      wrap.append(el("div", { class: "src" }, el("h4", { text: t("cautions") }),
         el("ul", { class: "caveats" }, ...[...caveats].map((c) => el("li", { text: c })))));
     }
     if (others && others.length) {
       const list = el("ul", { class: "caveats" });
       for (const o of others) {
         const url = safeUrl(o.url);
-        list.append(el("li", {}, (o.source || "source") + " via " + o.tool + ": ",
+        list.append(el("li", {}, (o.source || t("source")) + t("via") + o.tool + ": ",
           url ? el("a", { href: url, target: "_blank", rel: "noopener", text: url }) : ""));
       }
-      wrap.append(el("div", { class: "src" }, el("h4", { text: "Calls behind this answer" }), list));
+      wrap.append(el("div", { class: "src" }, el("h4", { text: t("callsBehind") }), list));
     }
     return wrap;
+  }
+
+  // A row of tabs over panes built on first view; used by the result panel and the code viewer.
+  function tabbed(panes, className) {
+    const tabs = el("div", { class: "tabs", role: "tablist" });
+    const holder = el("div", { class: className }, tabs);
+    panes.forEach(([name, build], k) => {
+      const pane = el("div", { class: "pane", role: "tabpanel" });
+      if (k) pane.hidden = true; else pane.append(build());
+      const tab = el("button", { type: "button", role: "tab", text: name, "aria-selected": k ? "false" : "true" });
+      tab.onclick = () => {
+        [...tabs.children].forEach((other) => other.setAttribute("aria-selected", "false"));
+        [...holder.children].forEach((p) => { if (p.classList.contains("pane")) p.hidden = true; });
+        tab.setAttribute("aria-selected", "true");
+        if (!pane.childElementCount) pane.append(build());
+        pane.hidden = false;
+      };
+      tabs.append(tab); holder.append(pane);
+    });
+    return holder;
   }
 
   function resultPanel(turn) {
     const series = (turn.data || []).filter((s) => s && Array.isArray(s.points) && s.points.length);
     if (!series.length && !(turn.sources || []).length) return null;
     const panes = [];
-    if (series.length) panes.push(["Chart", () => chart(series)], ["Table", () => table(series)]);
-    panes.push(["Sources", () => sources(series, turn.sources)]);
-    const tabs = el("div", { class: "tabs", role: "tablist" });
-    const box = el("div", { class: "result" }, tabs);
-    panes.forEach(([name, build], k) => {
-      const pane = el("div", { class: "pane", role: "tabpanel" });
-      if (k) pane.hidden = true; else pane.append(build());
-      const tab = el("button", { type: "button", role: "tab", text: name, "aria-selected": k ? "false" : "true" });
-      tab.onclick = () => {
-        [...tabs.children].forEach((t) => t.setAttribute("aria-selected", "false"));
-        box.querySelectorAll(".pane").forEach((p) => { p.hidden = true; });
-        tab.setAttribute("aria-selected", "true");
-        if (!pane.childElementCount) pane.append(build());
-        pane.hidden = false;
-      };
-      tabs.append(tab); box.append(pane);
-    });
-    return box;
+    if (series.length) panes.push([t("chart"), () => chart(series)], [t("table"), () => table(series)]);
+    panes.push([t("sources"), () => sources(series, turn.sources)]);
+    return tabbed(panes, "result");
   }
 
-  // 5. Conversation ----
+  // 5. Code and Excel: repeat a data call behind the answer through the server ----
+  // The service asks the MapleStats server's reproduce_code or reproduce_workbook for the
+  // chosen call (its tool name and arguments, recorded with the answer). Nothing here
+  // reaches a model, and the scripts and file are built from text, never as HTML.
+  const EXTENSIONS = { r: ".R", python: ".py", stata: ".do", julia: ".jl", excel: ".pq" };
+  async function postExport(path, body) {
+    const res = await fetch(path, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...body, lang }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || t("exportFailed"));
+    return data;
+  }
+  function codeViewer(result) {
+    const wrap = el("div");
+    const url = safeUrl(result.source_url);
+    wrap.append(el("p", { class: "status", text: t("codeFrom") + " " },
+      url ? el("a", { href: url, target: "_blank", rel: "noopener noreferrer", text: url }) : ""));
+    const scripts = (result.scripts || []).filter((s) => s && typeof s.code === "string");
+    if (!scripts.length) wrap.append(el("p", { text: t("noScripts") }));
+    else {
+      wrap.append(tabbed(scripts.map((s) => [t("languages")[s.language] || s.language, () => {
+        const copy = el("button", { type: "button", class: "tool-btn", text: t("copy") });
+        copy.onclick = async () => {
+          try { await navigator.clipboard.writeText(s.code); copy.textContent = t("copied"); }
+          catch (e) { /* the clipboard is blocked; the code can still be selected */ }
+        };
+        const download = el("button", { type: "button", class: "tool-btn", text: t("download") });
+        const name = "maplestats-" + String(result.tool || "data").replace(/[^a-z0-9_]/gi, "") +
+          (EXTENSIONS[s.language] || ".txt");
+        download.onclick = () => saveFile(new Blob([s.code], { type: "text/plain" }), name);
+        const tools = el("div", { class: "table-tools" }, copy, download);
+        if (s.packages && s.packages.length) {
+          tools.append(el("span", { class: "count", text: t("packages") + s.packages.join(", ") }));
+        }
+        return el("div", {}, tools, el("pre", { class: "code" }, el("code", { text: s.code })));
+      }]), "result"));
+    }
+    if (result.notes && result.notes.length) {
+      wrap.append(el("ul", { class: "caveats" }, ...result.notes.map((n) => el("li", { text: n }))));
+    }
+    return wrap;
+  }
+  function decodeBase64(text) {
+    const binary = atob(text);
+    const bytes = new Uint8Array(binary.length);
+    for (let k = 0; k < binary.length; k += 1) bytes[k] = binary.charCodeAt(k);
+    return bytes;
+  }
+  function exportBar(turn) {
+    const calls = (turn.calls || []).filter((c) => c && typeof c.name === "string");
+    if (!calls.length) return null;
+    const getCode = el("button", { type: "button", class: "tool-btn", text: t("getCode") });
+    const getExcel = el("button", { type: "button", class: "tool-btn", text: t("downloadExcel") });
+    const bar = el("div", { class: "table-tools" });
+    // With several calls behind the answer, the visitor picks which one to repeat.
+    let picker = null;
+    if (calls.length > 1) {
+      picker = el("select", { "aria-label": t("dataCall") });
+      calls.forEach((c, k) => {
+        const args = JSON.stringify(c.arguments || {});
+        picker.append(el("option", { value: String(k),
+          text: c.name + " " + (args.length > 60 ? args.slice(0, 57) + "..." : args) }));
+      });
+      bar.append(picker);
+    }
+    bar.append(getCode, getExcel);
+    const out = el("div");
+    const chosen = () => calls[picker ? Number(picker.value) : 0];
+    async function run(button, waiting, work) {
+      getCode.disabled = getExcel.disabled = true;
+      out.replaceChildren(el("p", { class: "status", text: waiting }));
+      try { await work(); }
+      catch (err) { out.replaceChildren(el("p", { class: "err", text: err.message || t("exportFailed") })); }
+      finally { getCode.disabled = getExcel.disabled = false; }
+    }
+    getCode.onclick = () => run(getCode, t("writingCode"), async () => {
+      const call = chosen();
+      const result = await postExport("api/code", { tool_name: call.name, arguments: call.arguments || {} });
+      out.replaceChildren(codeViewer(result));
+    });
+    getExcel.onclick = () => run(getExcel, t("buildingWorkbook"), async () => {
+      const call = chosen();
+      const result = await postExport("api/workbook", { tool_name: call.name, arguments: call.arguments || {} });
+      if (typeof result.workbook_base64 !== "string") throw new Error(t("exportFailed"));
+      // The server names the file; only plain characters are kept in it.
+      const name = String(result.file_name || "maplestats.xlsx").replace(/[^\w.-]/g, "_");
+      saveFile(new Blob([decodeBase64(result.workbook_base64)],
+        { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), name);
+      const lines = [t("saved")(name, Number(result.rows_written) || 0)];
+      if (result.truncated) lines.push(t("truncated")(result.rows_written, result.rows_available));
+      out.replaceChildren(el("ul", { class: "caveats" },
+        ...[...lines, ...(result.notes || [])].map((n) => el("li", { text: n }))));
+    });
+    return el("div", { class: "exports" }, bar, out);
+  }
+
+  // 6. Conversation ----
   function bubble(role) {
     const div = el("div", { class: "msg " + role });
     log.append(div); div.scrollIntoView({ block: "nearest" });
@@ -448,17 +688,19 @@
     // Model text goes through the sanitiser; everything else is built from text nodes.
     // No images: one in model text could beacon to any host (the CSP blocks
     // it too; this keeps a broken image out of the answer).
-    div.innerHTML = DOMPurify.sanitize(marked.parse(turn.answer || "(no answer)"),
+    div.innerHTML = DOMPurify.sanitize(marked.parse(turn.answer || t("noAnswer")),
       { FORBID_TAGS: ["img"] });
     // A result the panel cannot draw must not take the answer text with it.
     let panel = null;
     try { panel = resultPanel(turn); }
-    catch (e) { panel = el("p", { class: "err", text: "The chart and table could not be drawn for this answer." }); }
+    catch (e) { panel = el("p", { class: "err", text: t("panelFailed") }); }
     if (panel) div.append(panel);
+    const exports = exportBar(turn);
+    if (exports) div.append(exports);
     if (turn.tools_used && turn.tools_used.length) {
       div.append(el("details", { class: "calls" },
-        el("summary", { text: turn.tools_used.length + " tool call(s)" }),
-        ...turn.tools_used.map((t) => el("code", { text: t.name + " " + JSON.stringify(t.arguments) }))));
+        el("summary", { text: t("toolCalls")(turn.tools_used.length) }),
+        ...turn.tools_used.map((c) => el("code", { text: c.name + " " + JSON.stringify(c.arguments) }))));
     }
   }
   function showTurn(turn) {
@@ -469,11 +711,11 @@
   // What a step means to a visitor. StatCan's census profile service is the slow one
   // (30 to 45 s a call, measured), so say so instead of looking stuck.
   function describe(tool) {
-    if (tool === "plan_query") return "planning which sources to use";
-    if (tool === "search_tools") return "finding the right data tool";
-    if (tool.startsWith("statcan_census_profile_get_data")) return "reading the 2021 Census profile (StatCan's service is slow, up to a minute)";
-    if (tool.startsWith("statcan_census_profile_search_geography")) return "finding the place in the census (can take 20 s)";
-    return "calling " + tool;
+    if (tool === "plan_query") return t("planning");
+    if (tool === "search_tools") return t("finding");
+    if (tool.startsWith("statcan_census_profile_get_data")) return t("census");
+    if (tool.startsWith("statcan_census_profile_search_geography")) return t("censusPlace");
+    return t("calling")(tool);
   }
   // Newline-delimited JSON events: progress while the model works, then one
   // "final" (the result) or "error". Returns the final event.
@@ -484,7 +726,7 @@
       let event;
       try { event = JSON.parse(line); } catch (e) { return; }
       if (event.type === "final") final = event;
-      else if (event.type === "error") throw new Error(event.error || "The demo failed. Try again.");
+      else if (event.type === "error") throw new Error(event.error || t("demoFailed"));
       else onEvent(event);
     };
     if (!res.body || !res.body.getReader) {
@@ -503,7 +745,7 @@
       }
       handle(buffer + decoder.decode());
     }
-    if (!final) throw new Error("The connection ended before the answer arrived. Try again.");
+    if (!final) throw new Error(t("connectionEnded"));
     return final;
   }
 
@@ -513,38 +755,38 @@
     box.value = ""; send.disabled = true;
     bubble("user").append(el("p", { text }));
     const pending = bubble("bot");
-    const status = el("p", { class: "status", text: "Starting..." });
+    const status = el("p", { class: "status", text: t("starting") });
     const live = el("p", { class: "live" });
     pending.append(status, live);
-    const messages = turns.flatMap((t) => [{ role: "user", content: t.q }, { role: "assistant", content: t.answer }]);
+    const messages = turns.flatMap((turn) => [{ role: "user", content: turn.q }, { role: "assistant", content: turn.answer }]);
     messages.push({ role: "user", content: text });
     const started = Date.now();
     let steps = 0, last = "";
     const showStatus = () => {
       const seconds = Math.round((Date.now() - started) / 1000);
-      status.textContent = seconds + " s. " + (steps ? "Step " + steps + ": " + describe(last) + "." : "Planning the lookup.");
+      status.textContent = steps ? t("stepStatus")(seconds, steps, describe(last))
+        : seconds + (lang === "fr" ? NB : " ") + "s. " + t("planningLookup");
     };
     showStatus();
     const ticker = setInterval(showStatus, 1000);
     try {
       const res = await fetch("api/chat/stream", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages }),
+        body: JSON.stringify({ messages, lang }),
       });
       // A refusal (limits, bad input) is an ordinary JSON error; a gateway error
       // while the host restarts comes back as an HTML page, not JSON.
       if (!res.ok || !(res.headers.get("content-type") || "").includes("ndjson")) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ||
-          "The demo server did not answer (HTTP " + res.status + "). It may be restarting: try again in a minute.");
+        throw new Error(data.error || t("noServer")(res.status));
       }
       const data = await readEvents(res, (event) => {
         if (event.type === "tool") { steps += 1; last = event.name; live.textContent = ""; showStatus(); }
         else if (event.type === "text") { live.textContent += event.delta; }
       });
-      if (typeof data.answer !== "string") throw new Error("The demo server sent no answer. Try again.");
+      if (typeof data.answer !== "string") throw new Error(t("noAnswerSent"));
       const turn = { q: text, answer: data.answer, tools_used: data.tools_used || [],
-        data: data.data || [], sources: data.sources || [] };
+        data: data.data || [], sources: data.sources || [], calls: data.calls || [] };
       turns.push(turn); save();
       showAnswer(pending, turn);
       // A long answer is read from its first line, not its last.
@@ -559,11 +801,36 @@
     }
   }
 
-  for (const text of examples) {
-    const b = el("button", { type: "button", text });
-    b.onclick = () => { box.value = text; ask(); };
-    document.getElementById("chips").append(b);
+  // 7. Static text, examples and the language switch ----
+  function applyLanguage() {
+    document.documentElement.lang = lang;
+    document.title = t("title");
+    document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); });
+    document.querySelectorAll("[data-i18n-aria]").forEach((node) => {
+      node.setAttribute("aria-label", t(node.dataset.i18nAria));
+    });
+    document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => {
+      node.setAttribute("placeholder", t(node.dataset.i18nPlaceholder));
+    });
+    const switcher = document.getElementById("lang");
+    switcher.textContent = t("switchTo");
+    switcher.setAttribute("lang", t("switchLang"));
+    switcher.setAttribute("aria-label", t("switchLabel"));
+    const chips = document.getElementById("chips");
+    chips.replaceChildren(...t("examples").map((text) => {
+      const b = el("button", { type: "button", text });
+      b.onclick = () => { box.value = text; ask(); };
+      return b;
+    }));
   }
+  document.getElementById("lang").onclick = () => {
+    lang = t("switchLang");
+    try { localStorage.setItem(STORE + "-lang", lang); } catch (e) { /* blocked */ }
+    applyLanguage();
+    // Redraw the saved answers so their panels and buttons speak the new language.
+    if (!send.disabled) { log.replaceChildren(); turns.forEach(showTurn); }
+  };
+  applyLanguage();
   document.getElementById("form").onsubmit = (e) => { e.preventDefault(); ask(); };
   document.getElementById("new").onclick = () => {
     turns = []; save(); log.replaceChildren(); box.focus();
@@ -587,7 +854,7 @@
   });
   save();
 
-  // 6. Upstream notice ----
+  // 8. Upstream notice ----
   // The chat service says whether the data server has seen StatCan refuse automated
   // requests lately (it reads that once a minute). A failed check leaves the notice as it
   // was, and a question never waits for it.
