@@ -153,6 +153,44 @@ async def test_a_slice_is_queried_with_one_column_per_dimension(table):
     assert result.citation.startswith("Statistics Canada. Table 14-10-0287-01, Labour force")
 
 
+async def test_a_follow_up_query_on_the_same_slice_reads_it_from_memory(table, monkeypatch):
+    # Agreed with the owner on 2026-11-21: the LFS slice took about 16 s to read, and a
+    # second SQL over the same members and periods is common.
+    opened: list[str] = []
+    real = _FakeStream.blocks
+
+    def counting(self):
+        opened.append("file")
+        return real(self)
+
+    monkeypatch.setattr(_FakeStream, "blocks", counting)
+    first = await _query("SELECT count(*) FROM obs", members={"Geography": ["Alberta"]})
+    second = await _query(
+        "SELECT count(DISTINCT vector_id) FROM obs", members={"Geography": ["Alberta"]}
+    )
+    assert opened == ["file"]
+    assert first.provenance.cached is False and second.provenance.cached is True
+    assert second.input_rows == first.input_rows and second.source == "full-table file"
+    assert "earlier call" in (second.provenance.coverage or "")
+    # Other members, other periods, a new release or an old slice: read again.
+    await _query("SELECT 1 FROM obs", members={"Geography": ["Ontario"]})
+    await _query("SELECT 1 FROM obs", members={"Geography": ["Alberta"]}, start_period="2026")
+    assert len(opened) == 3
+    monkeypatch.setattr(table_query, "SLICE_CACHE_SECONDS", -1)
+    await _query("SELECT 1 FROM obs", members={"Geography": ["Alberta"]})
+    assert len(opened) == 4
+
+
+async def test_kept_slices_stay_under_the_row_limit(table, monkeypatch):
+    monkeypatch.setattr(table_query, "SLICE_CACHE_ROWS", 6)
+    await _query("SELECT 1 FROM obs", members={"Geography": ["Alberta"]})
+    await _query("SELECT 1 FROM obs", members={"Geography": ["Ontario"]})
+    kept = list(table_query._SLICES.values())
+    assert sum(len(k.rows) for k in kept) <= 6
+    # The newest stays; the oldest went first.
+    assert kept and {r[-3] for r in kept[-1].rows} == {"Ontario"}
+
+
 async def test_members_and_periods_narrow_the_slice(table):
     result = await _query(
         "SELECT count(*), min(ref_period) FROM obs",
