@@ -12,6 +12,9 @@
   each error response's HTTP status, waits as a 429's Retry-After asks (longer after a
   503 or an ingress error), tries three times, and names the statuses when a call still
   fails. Before, the retry came 2 s later and the status was lost.
+- A live step that fails no longer leaves its tool's earlier result for the steps after
+  it: in an earlier run the French CIHI search met a refusal and the next step checked
+  the English search's result, one cause counted twice.
 - The `sdmx_get_data` live step accepts the refusal in WDS's words: behind StatCan's
   captcha the tool answers from WDS, which refuses an unpublished series differently
   from SDMX.

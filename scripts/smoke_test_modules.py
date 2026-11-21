@@ -2048,6 +2048,12 @@ async def main(modules: set[str], url: str | None = None) -> int:
             request = {"name": step.tool, "arguments": args}
             if not step.brief:
                 request["detail"] = "full"
+            # A step that fails must not leave the same tool's earlier result for the
+            # steps after it: on Azure (2026-11-20) the French cihi_search_indicators
+            # met a refusal, and the next step read the English search's result and
+            # failed its check, a second failure for one cause. Without an entry, a
+            # dependent step is skipped ("no input from an earlier step").
+            ctx.pop(step.tool, None)
             result = await client.call_tool("call_tool", request, raise_on_error=False)
             text = _text(result)
             if step.expect_error is not None:
