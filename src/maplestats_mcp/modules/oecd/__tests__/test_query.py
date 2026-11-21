@@ -16,7 +16,7 @@ import pytest
 
 from maplestats_mcp.modules.oecd import client, query
 from maplestats_mcp.shared import cache as cache_module
-from maplestats_mcp.shared.errors import InvalidInput
+from maplestats_mcp.shared.errors import InvalidInput, UpstreamUnavailable
 
 FIXTURES = Path(__file__).parent / "fixtures"
 CATALOGUE = "https://sdmx.oecd.org/public/rest/dataflow/all"
@@ -35,8 +35,10 @@ HEADER = (
 def _reset_state():
     cache_module._caches.clear()
     client.BUDGET.reset()
+    query.reset_query_share()
     yield
     client.BUDGET.reset()
+    query.reset_query_share()
 
 
 def _mock(httpx_mock, csv_text: str | None = None) -> None:
@@ -122,3 +124,14 @@ async def test_an_unknown_dimension_or_code_is_refused_before_the_download(httpx
     with pytest.raises(InvalidInput, match="ref_area = 'ZZZ' matches no row"):
         await query.query_dataset("DSD_EO@DF_EO", "SELECT * FROM obs WHERE ref_area = 'ZZZ'")
     assert not [r for r in httpx_mock.get_requests() if "/rest/data/" in str(r.url)]
+
+
+async def test_the_sql_tool_keeps_to_its_share_of_the_hourly_downloads(httpx_mock, monkeypatch):
+    # 15 of the server's 50 OECD downloads an hour, so oecd_get_data keeps the rest.
+    monkeypatch.setattr(query, "QUERY_DOWNLOADS_PER_HOUR", 1)
+    _mock(httpx_mock, (FIXTURES / "data_eo_en.csv").read_text(encoding="utf-8"))
+    filters = {"REF_AREA": ["CAN"], "MEASURE": ["GDPV_ANNPCT"], "FREQ": ["A"]}
+    await query.query_dataset("DSD_EO@DF_EO", "SELECT count(*) FROM obs", filters=filters)
+    with pytest.raises(UpstreamUnavailable, match="oecd_query_dataset may use 1 of"):
+        await query.query_dataset("DSD_EO@DF_EO", "SELECT count(*) FROM obs", filters=filters)
+    assert len([r for r in httpx_mock.get_requests() if "/rest/data/" in str(r.url)]) == 1

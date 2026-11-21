@@ -18,6 +18,8 @@ from __future__ import annotations
 import csv
 import io
 import math
+import time
+from collections import deque
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -27,7 +29,7 @@ from maplestats_mcp.modules.oecd import client, constants
 from maplestats_mcp.modules.oecd.schemas import DatasetQueryResult
 from maplestats_mcp.shared import sdmx_query
 from maplestats_mcp.shared.envelope import raise_localized
-from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError
+from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
 from maplestats_mcp.shared.i18n import fr_number, pick
 from maplestats_mcp.shared.limits import join_limits
 
@@ -35,6 +37,42 @@ from maplestats_mcp.shared.limits import join_limits
 # dimension (all codes with data where a dimension is not named). Each query spends
 # one of the OECD's hourly downloads (client.BUDGET) whatever its size.
 MAX_QUERY_SERIES = 20_000
+
+# Each query spends one of this server's OECD data downloads (client.BUDGET: 50 an hour
+# of the OECD's 60), which every OECD tool and every user share. Without a share of
+# its own, a burst of SQL would spend them all and leave oecd_get_data,
+# oecd_compare_countries and the planner nothing for the rest of the hour; the SQL tool
+# takes at most this many.
+QUERY_DOWNLOADS_PER_HOUR = 15
+_QUERY_TIMES: deque[float] = deque()
+
+
+def reset_query_share() -> None:
+    _QUERY_TIMES.clear()
+
+
+def _spend_query_share(lang: str) -> None:
+    now = time.monotonic()
+    while _QUERY_TIMES and now - _QUERY_TIMES[0] >= 3600:
+        _QUERY_TIMES.popleft()
+    if len(_QUERY_TIMES) >= QUERY_DOWNLOADS_PER_HOUR:
+        minutes = max(1, math.ceil((3600 - (now - _QUERY_TIMES[0])) / 60))
+        raise_localized(
+            UpstreamUnavailable,
+            f"oecd_query_dataset may use {QUERY_DOWNLOADS_PER_HOUR} of this server's "
+            f"{constants.DATA_BUDGET_PER_HOUR} OECD downloads an hour, so the other OECD tools "
+            f"keep theirs, and has used them; try again in about {minutes} minute"
+            f"{'s' if minutes > 1 else ''}, or read up to 200 series with oecd_get_data.",
+            f"oecd_query_dataset peut utiliser {QUERY_DOWNLOADS_PER_HOUR} des "
+            f"{constants.DATA_BUDGET_PER_HOUR} téléchargements de l'OCDE par heure de ce "
+            "serveur, pour que les autres outils de l'OCDE gardent les leurs, et les a "
+            f"utilisés ; réessayez dans environ {minutes} minute{'s' if minutes > 1 else ''}, "
+            "ou lisez jusqu'à 200 séries avec oecd_get_data.",
+            lang,
+        )
+    # Counted before the request, which spends a download whether or not it succeeds.
+    _QUERY_TIMES.append(now)
+
 
 _ROLES = {
     "REF_AREA": "geo",
@@ -204,6 +242,7 @@ async def query_dataset(
     sdmx_query.check_codes(text, known, sdmx_query.dimension_columns(known), lang)
     params = client._data_params(start_period, end_period, None)
     url = client._data_url(info["agency"], fid, key)
+    _spend_query_share(lang)
     response = await client._get(
         url,
         params,

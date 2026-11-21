@@ -200,7 +200,8 @@ if config.get_query_series_enabled():
         parts (the OECD or G7 and their members, an activity and its
         sections, a total and its categories), is refused with the reason.
         At most 500 rows come back. Each query spends one of the OECD's
-        hourly downloads. Quote the `citation` and any `warnings`.
+        hourly downloads; this tool takes at most 15 an hour. Quote the
+        `citation` and any `warnings`.
         Keywords: OECD, SQL, query dataset, whole dataset, member countries,
         aggregate, group by, ranking, cross-country, DuckDB.
         Mots-clés : OCDE, requête SQL, jeu de données complet, pays membres,
