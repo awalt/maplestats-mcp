@@ -258,38 +258,44 @@ async def main() -> int:
     try:
         changed = await client.get_changed_series_list()
     except DataLocked as exc:
-        # StatCan locks the changed-series methods from 12am to 8:30am ET (HTTP 409).
+        # StatCan answers the changed-series methods with HTTP 409 from 12am to 8:30am ET,
+        # and on a day with no release ("The product is not released yet", a Saturday,
+        # 2026-11-21). Only these steps are skipped: until 2026-11-21 the script returned
+        # here, and every later step (full-table links, code sets, ...) went unchecked.
         print(f"SKIP: changed series ({str(exc)[:90]})")
-        return 0 if ok else 1
-    ok &= check(True, "changed series today", len(changed.series))
-    if changed.series:
-        first = changed.series[0]
-        by_vec = await client.get_changed_series_data_from_vector(first.vector_id)
-        by_pid = await client.get_changed_series_data_from_cube_pid_coord(
-            first.product_id, first.coordinate
+        changed = None
+    if changed is not None:
+        ok &= check(True, "changed series today", len(changed.series))
+        if changed.series:
+            first = changed.series[0]
+            by_vec = await client.get_changed_series_data_from_vector(first.vector_id)
+            by_pid = await client.get_changed_series_data_from_cube_pid_coord(
+                first.product_id, first.coordinate
+            )
+            ok &= check(
+                by_vec.vector_id == by_pid.vector_id == first.vector_id
+                and by_pid.product_id == first.product_id,
+                "changed data by coordinate is the same series",
+            )
+        # The review's reproduction: this used to return vector 74740 of another table.
+        try:
+            data = await client.get_changed_series_data_from_cube_pid_coord(CPI_PID, CPI_COORDINATE)
+            ok &= check(
+                data.product_id == CPI_PID, "changed data are from the asked table", data.product_id
+            )
+        except NotFound as exc:
+            ok &= check(
+                True, "unchanged series is NotFound, not another table's series", str(exc)[:90]
+            )
+        ok &= (
+            await raises(
+                NotFound,
+                "unchanged vector is NotFound",
+                client.get_changed_series_data_from_vector(CPI_VECTOR),
+            )
+            if not any(s.vector_id == CPI_VECTOR for s in changed.series)
+            else True
         )
-        ok &= check(
-            by_vec.vector_id == by_pid.vector_id == first.vector_id
-            and by_pid.product_id == first.product_id,
-            "changed data by coordinate is the same series",
-        )
-    # The review's reproduction: this used to return vector 74740 of another table.
-    try:
-        data = await client.get_changed_series_data_from_cube_pid_coord(CPI_PID, CPI_COORDINATE)
-        ok &= check(
-            data.product_id == CPI_PID, "changed data are from the asked table", data.product_id
-        )
-    except NotFound as exc:
-        ok &= check(True, "unchanged series is NotFound, not another table's series", str(exc)[:90])
-    ok &= (
-        await raises(
-            NotFound,
-            "unchanged vector is NotFound",
-            client.get_changed_series_data_from_vector(CPI_VECTOR),
-        )
-        if not any(s.vector_id == CPI_VECTOR for s in changed.series)
-        else True
-    )
 
     # wds_get_changed_cube_list
     yesterday = (datetime.now(UTC) - timedelta(days=1)).date().isoformat()

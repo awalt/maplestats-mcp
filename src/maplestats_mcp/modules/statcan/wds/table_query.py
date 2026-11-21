@@ -41,8 +41,8 @@ from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, 
 from maplestats_mcp.shared.executor import run_in_pool
 from maplestats_mcp.shared.limits import join_limits
 from maplestats_mcp.shared.rate_limiter import get_limiter
-from maplestats_mcp.shared.remote_zip import list_members
-from maplestats_mcp.shared.zip_stream import MemberStream, ScanLimitExceeded
+from maplestats_mcp.shared.remote_zip import RangeRefused, list_members
+from maplestats_mcp.shared.zip_stream import MemberStream, OnePassMember, ScanLimitExceeded
 
 # Zipped size past which a table is not read: its download alone would take minutes.
 MAX_ZIP_BYTES = 200 * 1024 * 1024
@@ -79,7 +79,9 @@ _NAME = re.compile(r"[^a-z0-9]+")
 # 2026-11-21): a follow-up query, another SQL over the same members and periods, skips
 # the download, about 16 s for the LFS table. Keyed by the table, its release time,
 # the members and the periods, never the SQL; a new release is a new key. Nothing is
-# written to disk. Bounded in time and in rows, the oldest slice going first.
+# written to disk. Bounded in time and in rows, the oldest slice going first: a kept
+# LFS slice of 150,552 rows held 46 MB, and its follow-up query took 6.6 s against 86 s
+# for the first read (2026-11-21).
 SLICE_CACHE_SECONDS = 15 * 60
 SLICE_CACHE_ROWS = 300_000
 
@@ -280,6 +282,23 @@ class _ParseState:
             self.rows.add(dict(zip(self.header, record, strict=False)), self.pid, self.table_id)
 
 
+def _too_big(pid: int, size: int) -> InvalidInput:
+    """A table over MAX_ZIP_BYTES zipped: its download alone would take minutes."""
+    return InvalidInput(
+        client._m(
+            f"Table {context.table_number(pid)} is {size // 2**20} MB "
+            f"zipped, over the {MAX_ZIP_BYTES // 2**20} MB this tool reads. Use "
+            "wds_get_data_from_cube_coord for the series you need, or "
+            "wds_get_full_table_download for the file.",
+            f"Le tableau {context.table_number(pid)} pèse "
+            f"{size // 2**20} Mo compressé, au-delà des "
+            f"{MAX_ZIP_BYTES // 2**20} Mo que lit cet outil. Utilisez "
+            "wds_get_data_from_cube_coord pour les séries voulues, ou "
+            "wds_get_full_table_download pour le fichier.",
+        )
+    )
+
+
 async def _from_file(
     pid: int,
     keep: list[set[str] | None],
@@ -295,6 +314,47 @@ async def _from_file(
     # The range reader reports a captcha as a plain HTTP error; check_file knows it.
     if await client.check_file(url) == "blocked":
         raise _Blocked
+    try:
+        return await _from_file_by_range(url, pid, keep, dims, start, end, rows, seconds)
+    except RangeRefused:
+        # StatCan's file servers honoured one ranged request in six after its outage of
+        # 2026-11-21, answering the rest with the whole file: read it once, in order.
+        rows.rows.clear()
+        rows.seen = 0
+    state = _ParseState(dims, keep, start, end, rows, pid, url)
+    stream = OnePassMember(
+        url,
+        lambda name: name.endswith(".csv") and "MetaData" not in name,
+        max_bytes=MAX_ZIP_BYTES,
+        max_inflated_bytes=MAX_ZIP_BYTES * 30,
+        max_seconds=seconds,
+        chunk_bytes=_CHUNK_BYTES,
+    )
+    blocks = stream.blocks()
+    try:
+        async for block in blocks:
+            await run_in_pool(state.feed, block)
+    except ScanLimitExceeded:
+        if stream.length is not None and stream.length > MAX_ZIP_BYTES:
+            raise _too_big(pid, stream.length) from None
+        raise
+    finally:
+        await blocks.aclose()
+    return url
+
+
+async def _from_file_by_range(
+    url: str,
+    pid: int,
+    keep: list[set[str] | None],
+    dims: list[str],
+    start: str | None,
+    end: str | None,
+    rows: _Slice,
+    seconds: float,
+) -> str:
+    """The data CSV read by HTTP range, inflated as it arrives; RangeRefused when the host
+    stops honouring ranges."""
     members, _ = await list_members(url)
     csv_member = next(
         (m for m in members if m.name.endswith(".csv") and "MetaData" not in m.name), None
@@ -302,19 +362,7 @@ async def _from_file(
     if csv_member is None:
         raise UpstreamError(f"{url} holds no data CSV.")
     if csv_member.compressed_size > MAX_ZIP_BYTES:
-        raise InvalidInput(
-            client._m(
-                f"Table {context.table_number(pid)} is {csv_member.compressed_size // 2**20} MB "
-                f"zipped, over the {MAX_ZIP_BYTES // 2**20} MB this tool reads. Use "
-                "wds_get_data_from_cube_coord for the series you need, or "
-                "wds_get_full_table_download for the file.",
-                f"Le tableau {context.table_number(pid)} pèse "
-                f"{csv_member.compressed_size // 2**20} Mo compressé, au-delà des "
-                f"{MAX_ZIP_BYTES // 2**20} Mo que lit cet outil. Utilisez "
-                "wds_get_data_from_cube_coord pour les séries voulues, ou "
-                "wds_get_full_table_download pour le fichier.",
-            )
-        )
+        raise _too_big(pid, csv_member.compressed_size)
     stream = MemberStream(
         url,
         csv_member,

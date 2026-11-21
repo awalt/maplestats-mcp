@@ -38,9 +38,12 @@ import zlib
 from collections import deque
 from collections.abc import AsyncGenerator, Awaitable, Callable, Iterator
 from dataclasses import dataclass
+from typing import Any
+
+import httpx
 
 from maplestats_mcp.shared import remote_zip
-from maplestats_mcp.shared.errors import UpstreamError
+from maplestats_mcp.shared.errors import UpstreamError, UpstreamUnavailable
 from maplestats_mcp.shared.executor import run_in_pool
 from maplestats_mcp.shared.fr_typography import call_error
 from maplestats_mcp.shared.remote_zip import ZipMember
@@ -517,3 +520,153 @@ class MemberStream:
         except zlib.error:
             return None
         return None
+
+
+class OnePassMember:
+    """The first member of a remote ZIP whose name `wanted` accepts, read in one GET.
+
+    For a host that stops honouring Range (remote_zip.RangeRefused): the archive is
+    downloaded front to back once, its local headers walked in order, and only the
+    wanted member inflated, in bounded steps off the event loop; the download stops
+    once that member ends. Members before it are inflated and dropped when their
+    sizes come after their data (a data descriptor, as in StatCan's full-table zips:
+    the data CSV is the first member, checked 2026-11-21). `blocks()` yields runs of
+    complete lines, as MemberStream.blocks does.
+    """
+
+    def __init__(
+        self,
+        url: str,
+        wanted: Callable[[str], bool],
+        *,
+        max_bytes: int,
+        max_inflated_bytes: int,
+        max_seconds: float,
+        chunk_bytes: int = 256 * 1024,
+    ) -> None:
+        self.url = url
+        self.wanted = wanted
+        self.max_bytes = max_bytes
+        self.max_inflated_bytes = max_inflated_bytes
+        self.max_seconds = max_seconds
+        self.chunk_bytes = chunk_bytes
+        self.length: int | None = None
+
+    def _fail(self, en: str, fr: str) -> UpstreamError:
+        return call_error(UpstreamError, f"{self.url}: {en}", f"{self.url} : {fr}")
+
+    async def blocks(self) -> AsyncGenerator[bytes]:
+        try:
+            async for block in self._blocks():
+                yield block
+        except httpx.HTTPError as exc:
+            # StatCan reset one long download mid-stream (HTTP/2 RST_STREAM, 2026-11-21).
+            raise call_error(
+                UpstreamUnavailable,
+                f"{self.url} dropped the download ({type(exc).__name__}); retry.",
+                f"{self.url} a interrompu le téléchargement ({type(exc).__name__}) ; réessayez.",
+            ) from exc
+
+    async def _blocks(self) -> AsyncGenerator[bytes]:
+        started = time.monotonic()
+        headers = remote_zip.request_headers(self.url, None)
+        async with remote_zip._client.stream("GET", self.url, headers=headers) as response:
+            response.raise_for_status()
+            declared = response.headers.get("content-length", "")
+            self.length = int(declared) if declared.isdigit() else None
+            if self.length is not None and self.length > self.max_bytes:
+                raise ScanLimitExceeded(
+                    f"{self.url} is {self.length:,} bytes, over {self.max_bytes:,}.", 0
+                )
+            source = response.aiter_bytes(self.chunk_bytes)
+            buf = bytearray()
+            read = 0
+
+            async def more() -> bool:
+                nonlocal read
+                try:
+                    chunk = await anext(source)
+                except StopAsyncIteration:
+                    return False
+                read += len(chunk)
+                if read > self.max_bytes or time.monotonic() - started > self.max_seconds:
+                    raise ScanLimitExceeded(f"{self.url}: read past the byte or time limit.", read)
+                buf.extend(chunk)
+                return True
+
+            def truncated() -> UpstreamError:
+                return self._fail(
+                    "the download ended inside the archive.",
+                    "le téléchargement s'est arrêté au milieu de l'archive.",
+                )
+
+            async def take(count: int) -> bytes:
+                while len(buf) < count:
+                    if not await more():
+                        raise truncated()
+                out = bytes(buf[:count])
+                del buf[:count]
+                return out
+
+            while True:
+                if await take(4) != _LOCAL:
+                    raise self._fail(
+                        "no member matched before the archive's directory.",
+                        "aucun membre ne convenait avant le répertoire de l'archive.",
+                    )
+                fields = struct.unpack("<HHHHHIIIHH", await take(26))
+                flags, method, compressed = fields[1], fields[2], fields[6]
+                raw_name = await take(fields[8])
+                name = raw_name.decode("utf-8" if flags & 0x800 else "cp437", errors="replace")
+                await take(fields[9])
+                wanted = self.wanted(name)
+                described = bool(flags & 0x08)
+                if not wanted and not described and method in (0, 8):
+                    await take(compressed)
+                    continue
+                if method != 8:
+                    raise self._fail(
+                        f"{name} uses ZIP compression method {method}, which cannot be read "
+                        "in one pass.",
+                        f"{name} utilise la méthode de compression ZIP {method}, illisible en "
+                        "une passe.",
+                    )
+                inflater = zlib.decompressobj(-15)
+
+                def step(raw: bytes, inflater: Any = inflater) -> bytes:
+                    # Bounded output per call, so a deflate bomb cannot balloon memory.
+                    out = bytearray()
+                    while raw and not inflater.eof:
+                        out += inflater.decompress(raw, _INFLATE_STEP)
+                        raw = inflater.unconsumed_tail
+                    return bytes(out)
+
+                inflated = 0
+                pending = b""
+                while not inflater.eof:
+                    if not buf and not await more():
+                        raise truncated()
+                    data = bytes(buf)
+                    buf.clear()
+                    out = await run_in_pool(step, data)
+                    if inflater.eof:
+                        buf[:0] = inflater.unused_data
+                    inflated += len(out)
+                    if inflated > self.max_inflated_bytes:
+                        raise ScanLimitExceeded(f"{name} inflates past the limit.", read)
+                    if wanted and out:
+                        text = pending + out
+                        cut = text.rfind(b"\n")
+                        if cut >= 0:
+                            yield text[:cut]
+                            pending = text[cut + 1 :]
+                        else:
+                            pending = text
+                if wanted:
+                    if pending:
+                        yield pending
+                    return
+                if described:
+                    # The data descriptor: an optional signature, then CRC and two sizes.
+                    first = await take(4)
+                    await take(12 if first == b"PK\x07\x08" else 8)
