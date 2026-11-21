@@ -45,6 +45,12 @@ def _run_options(p: argparse.ArgumentParser) -> None:
         "--workers", type=int, default=1, help="questions asked at once (hosted arms only)"
     )
     p.add_argument(
+        "--pause",
+        type=float,
+        default=0.0,
+        help="seconds to wait after each answer, to spare the publishers' rate limits",
+    )
+    p.add_argument(
         "--frozen",
         type=Path,
         default=None,
@@ -66,6 +72,7 @@ def _run_kwargs(args: argparse.Namespace) -> dict:
         "extra_passes": extra,
         "split": args.split,
         "frozen": args.frozen,
+        "pause": args.pause,
     }
 
 

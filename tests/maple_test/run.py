@@ -44,6 +44,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -446,6 +447,7 @@ def run(
     split: str = "all",
     workers: int = 1,
     frozen: Path | None = None,
+    pause: float = 0.0,
 ) -> Path:
     questions = [
         q
@@ -496,6 +498,11 @@ def run(
                     fh.flush()
                 state = "ERROR" if answer.is_error else f"{len(answer.tool_calls)} calls"
                 print(f"{q['id']}#{r} {name}: {state}, {answer.duration_s}s", file=sys.stderr)
+                # --pause: seconds of quiet after each answer, so a long local run does not
+                # trip a publisher's abuse protection (StatCan's www150 blocks a machine after
+                # heavy use: README, "How the key was read"). Use it with --workers 1.
+                if pause > 0:
+                    time.sleep(pause)
 
             # Whole passes, not each question three times in a row: a source that is down
             # for a minute then costs one answer per pass, not three of one question.
