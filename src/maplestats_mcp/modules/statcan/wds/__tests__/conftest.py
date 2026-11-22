@@ -96,3 +96,13 @@ def _code_sets(request: pytest.FixtureRequest) -> None:
         is_optional=True,
         is_reusable=True,
     )
+
+
+@pytest.fixture(autouse=True)
+def _no_kept_slices():
+    """wds_query_table keeps slices for 15 minutes; a test must not see another's."""
+    from maplestats_mcp.modules.statcan.wds import table_query
+
+    table_query.clear_slice_cache()
+    yield
+    table_query.clear_slice_cache()

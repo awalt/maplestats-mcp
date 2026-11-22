@@ -24,10 +24,13 @@ _STDLIB = {
     "csv",
     "datetime",
     "io",
+    "itertools",
     "json",
+    "math",
     "pathlib",
     "re",
     "ssl",
+    "sys",
     "time",
     "unicodedata",
     "xml",
@@ -182,8 +185,29 @@ def _join(*blocks: str) -> str:
 
 
 def _quote(value: str) -> str:
-    # R strings cannot hold a NUL, escaped or not.
-    return json.dumps(value.replace("\x00", ""), ensure_ascii=False)
+    """An R string literal, ASCII only: non-ASCII characters as \\u escapes.
+
+    R reads a script's literals in the session's encoding, so in a C locale (Docker,
+    some Linux servers) a literal "Québec" no longer matched the UTF-8 data; an escape
+    is UTF-8 in any locale (checked with R 4.3, 2026-11-21). R strings cannot hold a
+    NUL, escaped or not.
+    """
+    text = json.dumps(value.replace("\x00", ""), ensure_ascii=False)
+    return "".join(
+        ch
+        if ord(ch) < 128
+        else f"\\u{ord(ch):04x}"
+        if ord(ch) <= 0xFFFF
+        else f"\\U{{{ord(ch):08x}}}"
+        for ch in text
+    )
+
+
+def _r_column(name: str) -> str:
+    """A column in dplyr code: `name` in backticks, or .data[["G\\u00c9O"]] when the name
+    is not ASCII (a symbol cannot hold an escape, and in a C locale a literal `GÉO`
+    named no column: "object 'G\\303\\211O' not found", 2026-11-20)."""
+    return f"`{name}`" if name.isascii() else f".data[[{_quote(name)}]]"
 
 
 def _either(tests: list[str], operator: str) -> str:
@@ -195,7 +219,7 @@ def _either(tests: list[str], operator: str) -> str:
 
 
 def _r_filter(item: Filter) -> str:
-    columns = [f"`{c}`" for c in item.columns]
+    columns = [_r_column(c) for c in item.columns]
     if item.op == "contains":
         return f"str_detect({columns[0]}, fixed({_quote(str(item.value))}, ignore_case = TRUE))"
     if item.op == "terms":
@@ -526,7 +550,7 @@ def render_r(spec: Spec, tool: str) -> tuple[str, list[str]]:
         prepare.append(spec.prepare["r"].body)
     if spec.sort_by:
         packages.append("dplyr")
-        column = f"`{spec.sort_by}`"
+        column = _r_column(spec.sort_by)
         keys = [f"suppressWarnings(as.numeric({column}))", column]
         if spec.sort_descending:
             keys = [f"desc({key})" for key in keys]

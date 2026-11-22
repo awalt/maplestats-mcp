@@ -258,38 +258,44 @@ async def main() -> int:
     try:
         changed = await client.get_changed_series_list()
     except DataLocked as exc:
-        # StatCan locks the changed-series methods from 12am to 8:30am ET (HTTP 409).
+        # StatCan answers the changed-series methods with HTTP 409 from 12am to 8:30am ET,
+        # and on a day with no release ("The product is not released yet", a Saturday,
+        # 2026-11-21). Only these steps are skipped: until 2026-11-21 the script returned
+        # here, and every later step (full-table links, code sets, ...) went unchecked.
         print(f"SKIP: changed series ({str(exc)[:90]})")
-        return 0 if ok else 1
-    ok &= check(True, "changed series today", len(changed.series))
-    if changed.series:
-        first = changed.series[0]
-        by_vec = await client.get_changed_series_data_from_vector(first.vector_id)
-        by_pid = await client.get_changed_series_data_from_cube_pid_coord(
-            first.product_id, first.coordinate
+        changed = None
+    if changed is not None:
+        ok &= check(True, "changed series today", len(changed.series))
+        if changed.series:
+            first = changed.series[0]
+            by_vec = await client.get_changed_series_data_from_vector(first.vector_id)
+            by_pid = await client.get_changed_series_data_from_cube_pid_coord(
+                first.product_id, first.coordinate
+            )
+            ok &= check(
+                by_vec.vector_id == by_pid.vector_id == first.vector_id
+                and by_pid.product_id == first.product_id,
+                "changed data by coordinate is the same series",
+            )
+        # The review's reproduction: this used to return vector 74740 of another table.
+        try:
+            data = await client.get_changed_series_data_from_cube_pid_coord(CPI_PID, CPI_COORDINATE)
+            ok &= check(
+                data.product_id == CPI_PID, "changed data are from the asked table", data.product_id
+            )
+        except NotFound as exc:
+            ok &= check(
+                True, "unchanged series is NotFound, not another table's series", str(exc)[:90]
+            )
+        ok &= (
+            await raises(
+                NotFound,
+                "unchanged vector is NotFound",
+                client.get_changed_series_data_from_vector(CPI_VECTOR),
+            )
+            if not any(s.vector_id == CPI_VECTOR for s in changed.series)
+            else True
         )
-        ok &= check(
-            by_vec.vector_id == by_pid.vector_id == first.vector_id
-            and by_pid.product_id == first.product_id,
-            "changed data by coordinate is the same series",
-        )
-    # The review's reproduction: this used to return vector 74740 of another table.
-    try:
-        data = await client.get_changed_series_data_from_cube_pid_coord(CPI_PID, CPI_COORDINATE)
-        ok &= check(
-            data.product_id == CPI_PID, "changed data are from the asked table", data.product_id
-        )
-    except NotFound as exc:
-        ok &= check(True, "unchanged series is NotFound, not another table's series", str(exc)[:90])
-    ok &= (
-        await raises(
-            NotFound,
-            "unchanged vector is NotFound",
-            client.get_changed_series_data_from_vector(CPI_VECTOR),
-        )
-        if not any(s.vector_id == CPI_VECTOR for s in changed.series)
-        else True
-    )
 
     # wds_get_changed_cube_list
     yesterday = (datetime.now(UTC) - timedelta(days=1)).date().isoformat()
@@ -309,15 +315,16 @@ async def main() -> int:
     ok &= await raises(
         NotFound, "unknown table has no download", client.get_full_table_download_csv(99999999)
     )
-    # The link is for a browser (StatCan said in November 2026 that it blocks
-    # automated full-table downloads; some networks get its captcha): the first note
-    # says so, and another says how the WDS rebuild script gets the table. The step
-    # looked for wds_get_data_from_cube_coord in the first note, which 0.7.0 reworded.
+    # The file answers most networks, some get StatCan's captcha (November 2026): the
+    # first note says what the scripts do there, and another how the WDS rebuild
+    # script gets the table. Until 2026-11-20 the first note said no script relied on
+    # the link.
     ok &= check(
         bool(csv.notes)
         and "captcha" in csv.notes[0]
+        and "rebuild" in csv.notes[0]
         and any("WDS" in note for note in csv.notes[1:]),
-        "full-table notes say why there is no script",
+        "full-table notes say the scripts rebuild through WDS at the captcha",
     )
 
     # wds_get_code_sets: capped, one category, filter.
