@@ -17,7 +17,7 @@ from maplestats_mcp.modules.statcan.wds import client, table_query, tools
 from maplestats_mcp.modules.statcan.wds.schemas import ObservationRow, VectorData, VectorSeries
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import InvalidInput, NotFound
-from maplestats_mcp.shared.remote_zip import ZipMember
+from maplestats_mcp.shared.remote_zip import RangeRefused, ZipMember
 
 PID = 14100287
 HEADER = (
@@ -151,6 +151,67 @@ async def test_a_slice_is_queried_with_one_column_per_dimension(table):
         "Data type": "data_type",
     }
     assert result.citation.startswith("Statistics Canada. Table 14-10-0287-01, Labour force")
+
+
+async def test_a_follow_up_query_on_the_same_slice_reads_it_from_memory(table, monkeypatch):
+    # Agreed with the owner on 2026-11-21: the LFS slice took about 16 s to read, and a
+    # second SQL over the same members and periods is common.
+    opened: list[str] = []
+    real = _FakeStream.blocks
+
+    def counting(self):
+        opened.append("file")
+        return real(self)
+
+    monkeypatch.setattr(_FakeStream, "blocks", counting)
+    first = await _query("SELECT count(*) FROM obs", members={"Geography": ["Alberta"]})
+    second = await _query(
+        "SELECT count(DISTINCT vector_id) FROM obs", members={"Geography": ["Alberta"]}
+    )
+    assert opened == ["file"]
+    assert first.provenance.cached is False and second.provenance.cached is True
+    assert second.input_rows == first.input_rows and second.source == "full-table file"
+    assert "earlier call" in (second.provenance.coverage or "")
+    # Other members, other periods, a new release or an old slice: read again.
+    await _query("SELECT 1 FROM obs", members={"Geography": ["Ontario"]})
+    await _query("SELECT 1 FROM obs", members={"Geography": ["Alberta"]}, start_period="2026")
+    assert len(opened) == 3
+    monkeypatch.setattr(table_query, "SLICE_CACHE_SECONDS", -1)
+    await _query("SELECT 1 FROM obs", members={"Geography": ["Alberta"]})
+    assert len(opened) == 4
+
+
+async def test_kept_slices_stay_under_the_row_limit(table, monkeypatch):
+    monkeypatch.setattr(table_query, "SLICE_CACHE_ROWS", 6)
+    await _query("SELECT 1 FROM obs", members={"Geography": ["Alberta"]})
+    await _query("SELECT 1 FROM obs", members={"Geography": ["Ontario"]})
+    kept = list(table_query._SLICES.values())
+    assert sum(len(k.rows) for k in kept) <= 6
+    # The newest stays; the oldest went first.
+    assert kept and {r[-3] for r in kept[-1].rows} == {"Ontario"}
+
+
+async def test_a_host_that_refuses_ranges_is_read_in_one_pass(table, monkeypatch):
+    # After its outage of 2026-11-21 StatCan's file servers answered five ranged requests
+    # in six with the whole file; the CSV is then read in one download (live: the CPI
+    # and LFS slices came back identical by either route).
+    async def refused(url):
+        raise RangeRefused(f"{url} does not support range requests (HTTP 200).")
+
+    class OnePass:
+        length = None
+
+        def __init__(self, url, wanted, **limits):
+            assert wanted("14100287.csv") and not wanted("14100287_MetaData.csv")
+
+        async def blocks(self):
+            async for block in _FakeStream(None, None).blocks():
+                yield block
+
+    monkeypatch.setattr(table_query, "list_members", refused)
+    monkeypatch.setattr(table_query, "OnePassMember", OnePass)
+    result = await _query("SELECT count(*) FROM obs")
+    assert result.rows == [[15]] and result.source == "full-table file"
 
 
 async def test_members_and_periods_narrow_the_slice(table):

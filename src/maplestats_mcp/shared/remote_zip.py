@@ -35,6 +35,16 @@ from maplestats_mcp.shared.http import (
 )
 from maplestats_mcp.shared.i18n import fr_number
 
+
+class RangeRefused(UpstreamError):
+    """The host answered a range request with the whole file (or gave no size).
+
+    StatCan's file servers did this intermittently after its outage of 2026-11-21: five
+    ranged requests in six came back as HTTP 200 without Accept-Ranges. A reader that
+    needs ranges can read the file in one pass instead (zip_stream.OnePassMember).
+    """
+
+
 _EOCD = b"PK\x05\x06"
 _CENTRAL = b"PK\x01\x02"
 _LOCAL = b"PK\x03\x04"
@@ -207,7 +217,7 @@ async def _range(url: str, start: int, end: int) -> bytes:
         ) from exc
     if response.status_code != 206:
         raise call_error(
-            UpstreamError,
+            RangeRefused,
             f"{url} does not support range requests (HTTP {response.status_code}).",
             f"{url} ne prend pas en charge les requêtes par plage (HTTP {response.status_code}).",
         )
@@ -254,7 +264,7 @@ async def _size(url: str) -> int:
     total = ranged.headers.get("content-range", "").rpartition("/")[2]
     if not total.isdigit():
         raise call_error(
-            UpstreamError,
+            RangeRefused,
             f"{url} reports no size, so it cannot be read by range.",
             f"{url} n'indique pas sa taille ; il ne peut donc pas être lu par plages.",
         )

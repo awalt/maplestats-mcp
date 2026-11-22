@@ -336,3 +336,75 @@ async def test_inflating_runs_in_the_parsing_pool_not_the_default_executor(httpx
     assert (await _read_all(stream)).decode() == text.rstrip("\n")
     assert names
     assert all(name.startswith("maple-parse") for name in names)
+
+
+# OnePassMember ---------------------------------------------------------------------
+
+
+class _Unseekable(io.RawIOBase):
+    """zipfile writes data descriptors (sizes after the data) to an unseekable file, as
+    StatCan's full-table zips have them (flag 0x08, 2026-11-21)."""
+
+    def __init__(self) -> None:
+        self.data = bytearray()
+
+    def writable(self) -> bool:
+        return True
+
+    def write(self, b) -> int:  # type: ignore[override]
+        self.data += b
+        return len(b)
+
+
+def _archive(members: list[tuple[str, bytes]], described: bool) -> bytes:
+    if described:
+        sink = _Unseekable()
+        with zipfile.ZipFile(sink, "w", zipfile.ZIP_DEFLATED) as archive:
+            for name, data in members:
+                with archive.open(name, "w") as handle:
+                    handle.write(data)
+        return bytes(sink.data)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, data in members:
+            archive.writestr(name, data)
+    return buffer.getvalue()
+
+
+async def _one_pass(httpx_mock, body: bytes, **limits) -> list[bytes]:
+    httpx_mock.add_response(url=URL, content=body)
+    stream = zip_stream.OnePassMember(
+        URL,
+        lambda name: name.endswith(".csv") and "MetaData" not in name,
+        max_bytes=limits.get("max_bytes", 10_000_000),
+        max_inflated_bytes=limits.get("max_inflated_bytes", 100_000_000),
+        max_seconds=60,
+        chunk_bytes=limits.get("chunk_bytes", 1024),
+    )
+    return [block async for block in stream.blocks()]
+
+
+@pytest.mark.parametrize("described", [True, False])
+async def test_one_pass_reads_the_data_member_whole_lines(httpx_mock, described):
+    lines = [f'"2026-0{1 + i % 9}","Canada","row {i}"'.encode() for i in range(3000)]
+    csv_bytes = b"\n".join([b'"REF_DATE","GEO","X"', *lines]) + b"\n"
+    body = _archive([("t_MetaData.csv", b"meta\n" * 500), ("t.csv", csv_bytes)], described)
+    assert bool(struct.unpack("<H", body[6:8])[0] & 0x08) is described
+    blocks = await _one_pass(httpx_mock, body)
+    assert len(blocks) > 1
+    assert b"\n".join(blocks).split(b"\n") == csv_bytes.rstrip(b"\n").split(b"\n")
+
+
+async def test_one_pass_stops_at_the_byte_limit(httpx_mock):
+    body = _archive([("t.csv", random.Random(1).randbytes(200_000))], described=True)
+    with pytest.raises(zip_stream.ScanLimitExceeded):
+        await _one_pass(httpx_mock, body, max_bytes=len(body) - 1)
+
+
+async def test_one_pass_reports_a_dropped_download_as_unavailable(httpx_mock):
+    httpx_mock.add_exception(httpx.RemoteProtocolError("stream reset"), url=URL)
+    stream = zip_stream.OnePassMember(
+        URL, lambda name: True, max_bytes=10, max_inflated_bytes=10, max_seconds=5
+    )
+    with pytest.raises(zip_stream.UpstreamUnavailable, match="dropped the download"):
+        _ = [block async for block in stream.blocks()]

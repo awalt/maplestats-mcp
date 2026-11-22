@@ -24,7 +24,10 @@ from __future__ import annotations
 import csv
 import math
 import re
+import time
+from collections import OrderedDict
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
@@ -38,8 +41,8 @@ from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, 
 from maplestats_mcp.shared.executor import run_in_pool
 from maplestats_mcp.shared.limits import join_limits
 from maplestats_mcp.shared.rate_limiter import get_limiter
-from maplestats_mcp.shared.remote_zip import list_members
-from maplestats_mcp.shared.zip_stream import MemberStream, ScanLimitExceeded
+from maplestats_mcp.shared.remote_zip import RangeRefused, list_members
+from maplestats_mcp.shared.zip_stream import MemberStream, OnePassMember, ScanLimitExceeded
 
 # Zipped size past which a table is not read: its download alone would take minutes.
 MAX_ZIP_BYTES = 200 * 1024 * 1024
@@ -71,6 +74,51 @@ _LAST_COLUMNS = (
 )
 _PERIOD = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
 _NAME = re.compile(r"[^a-z0-9]+")
+
+# A slice is kept in memory for the next call on the same slice (agreed with the owner,
+# 2026-11-21): a follow-up query, another SQL over the same members and periods, skips
+# the download, about 16 s for the LFS table. Keyed by the table, its release time,
+# the members and the periods, never the SQL; a new release is a new key. Nothing is
+# written to disk. Bounded in time and in rows, the oldest slice going first: a kept
+# LFS slice of 150,552 rows held 46 MB, and its follow-up query took 6.6 s against 86 s
+# for the first read (2026-11-21).
+SLICE_CACHE_SECONDS = 15 * 60
+SLICE_CACHE_ROWS = 300_000
+
+
+@dataclass
+class _KeptSlice:
+    rows: list[tuple[Any, ...]]
+    seen: int
+    source: str
+    url: str
+    stored: float
+
+
+_SLICES: OrderedDict[tuple[Any, ...], _KeptSlice] = OrderedDict()
+
+
+def clear_slice_cache() -> None:
+    _SLICES.clear()
+
+
+def _kept(key: tuple[Any, ...]) -> _KeptSlice | None:
+    now = time.monotonic()
+    for old in [k for k, v in _SLICES.items() if now - v.stored > SLICE_CACHE_SECONDS]:
+        del _SLICES[old]
+    hit = _SLICES.get(key)
+    if hit is not None:
+        _SLICES.move_to_end(key)
+    return hit
+
+
+def _keep(key: tuple[Any, ...], kept: _KeptSlice) -> None:
+    if not kept.rows or len(kept.rows) > SLICE_CACHE_ROWS:
+        return
+    _SLICES[key] = kept
+    _SLICES.move_to_end(key)
+    while sum(len(v.rows) for v in _SLICES.values()) > SLICE_CACHE_ROWS:
+        _SLICES.popitem(last=False)
 
 
 def dimension_column(name: str, taken: set[str]) -> str:
@@ -113,35 +161,49 @@ class _Slice:
         self.title = str(cube.get("cubeTitleEn") or "")
         self.rows: list[tuple[Any, ...]] = []
         self.seen = 0
+        # One object per distinct text or period: a series repeats its member names,
+        # title, unit and coordinate on every row, so a kept slice (SLICE_CACHE_ROWS)
+        # holds each once instead of once per row.
+        self._shared: dict[Any, Any] = {}
+
+    def _one(self, value: Any) -> Any:
+        return self._shared.setdefault(value, value)
+
+    def _period(self, text: str) -> date | None:
+        key = ("period", text)
+        if key not in self._shared:
+            self._shared[key] = _ref_period(text)
+        return self._shared[key]
 
     def add(self, record: Mapping[str, str], pid: int, table_id: str) -> None:
         if len(self.rows) >= MAX_ROWS:
             raise _TooManyRows
-        names = [record.get("GEO", ""), *(record.get(d, "") for d in self.dims[1:])]
-        status = record.get("STATUS", "") or None
+        one = self._one
+        names = [one(record.get("GEO", "")), *(one(record.get(d, "")) for d in self.dims[1:])]
+        status = one(record.get("STATUS", "") or None)
         scalar = record.get("SCALAR_ID", "0") or "0"
-        series_title = ";".join(n for n in names if n)
+        series_title = one(";".join(n for n in names if n))
         vector = record.get("VECTOR", "").lstrip("v")
         self.rows.append(
             (
                 int(vector) if vector.isdigit() else 0,
                 pid,
                 table_id,
-                record.get("COORDINATE", ""),
-                _ref_period(record.get("REF_DATE", "")),
+                one(record.get("COORDINATE", "")),
+                self._period(record.get("REF_DATE", "")),
                 _number(record.get("VALUE", "")),
                 10 ** int(scalar) if scalar.isdigit() else 1,
                 int(record["DECIMALS"]) if record.get("DECIMALS", "").isdigit() else None,
                 status,
-                record.get("SYMBOL", "") or None,
+                one(record.get("SYMBOL", "") or None),
                 None,
                 series_title,
                 self.title,
-                record.get("UOM", "") or None,
-                record.get("SCALAR_FACTOR", "") or None,
+                one(record.get("UOM", "") or None),
+                one(record.get("SCALAR_FACTOR", "") or None),
                 self.frequency,
-                record.get("GEO", "") or None,
-                query_checks.adjustment(series_title, self.title),
+                one(record.get("GEO", "") or None),
+                one(query_checks.adjustment(series_title, self.title)),
                 status if status in ("E", "F", "x") else None,
                 *names,
             )
@@ -220,6 +282,23 @@ class _ParseState:
             self.rows.add(dict(zip(self.header, record, strict=False)), self.pid, self.table_id)
 
 
+def _too_big(pid: int, size: int) -> InvalidInput:
+    """A table over MAX_ZIP_BYTES zipped: its download alone would take minutes."""
+    return InvalidInput(
+        client._m(
+            f"Table {context.table_number(pid)} is {size // 2**20} MB "
+            f"zipped, over the {MAX_ZIP_BYTES // 2**20} MB this tool reads. Use "
+            "wds_get_data_from_cube_coord for the series you need, or "
+            "wds_get_full_table_download for the file.",
+            f"Le tableau {context.table_number(pid)} pèse "
+            f"{size // 2**20} Mo compressé, au-delà des "
+            f"{MAX_ZIP_BYTES // 2**20} Mo que lit cet outil. Utilisez "
+            "wds_get_data_from_cube_coord pour les séries voulues, ou "
+            "wds_get_full_table_download pour le fichier.",
+        )
+    )
+
+
 async def _from_file(
     pid: int,
     keep: list[set[str] | None],
@@ -235,6 +314,47 @@ async def _from_file(
     # The range reader reports a captcha as a plain HTTP error; check_file knows it.
     if await client.check_file(url) == "blocked":
         raise _Blocked
+    try:
+        return await _from_file_by_range(url, pid, keep, dims, start, end, rows, seconds)
+    except RangeRefused:
+        # StatCan's file servers honoured one ranged request in six after its outage of
+        # 2026-11-21, answering the rest with the whole file: read it once, in order.
+        rows.rows.clear()
+        rows.seen = 0
+    state = _ParseState(dims, keep, start, end, rows, pid, url)
+    stream = OnePassMember(
+        url,
+        lambda name: name.endswith(".csv") and "MetaData" not in name,
+        max_bytes=MAX_ZIP_BYTES,
+        max_inflated_bytes=MAX_ZIP_BYTES * 30,
+        max_seconds=seconds,
+        chunk_bytes=_CHUNK_BYTES,
+    )
+    blocks = stream.blocks()
+    try:
+        async for block in blocks:
+            await run_in_pool(state.feed, block)
+    except ScanLimitExceeded:
+        if stream.length is not None and stream.length > MAX_ZIP_BYTES:
+            raise _too_big(pid, stream.length) from None
+        raise
+    finally:
+        await blocks.aclose()
+    return url
+
+
+async def _from_file_by_range(
+    url: str,
+    pid: int,
+    keep: list[set[str] | None],
+    dims: list[str],
+    start: str | None,
+    end: str | None,
+    rows: _Slice,
+    seconds: float,
+) -> str:
+    """The data CSV read by HTTP range, inflated as it arrives; RangeRefused when the host
+    stops honouring ranges."""
     members, _ = await list_members(url)
     csv_member = next(
         (m for m in members if m.name.endswith(".csv") and "MetaData" not in m.name), None
@@ -242,19 +362,7 @@ async def _from_file(
     if csv_member is None:
         raise UpstreamError(f"{url} holds no data CSV.")
     if csv_member.compressed_size > MAX_ZIP_BYTES:
-        raise InvalidInput(
-            client._m(
-                f"Table {context.table_number(pid)} is {csv_member.compressed_size // 2**20} MB "
-                f"zipped, over the {MAX_ZIP_BYTES // 2**20} MB this tool reads. Use "
-                "wds_get_data_from_cube_coord for the series you need, or "
-                "wds_get_full_table_download for the file.",
-                f"Le tableau {context.table_number(pid)} pèse "
-                f"{csv_member.compressed_size // 2**20} Mo compressé, au-delà des "
-                f"{MAX_ZIP_BYTES // 2**20} Mo que lit cet outil. Utilisez "
-                "wds_get_data_from_cube_coord pour les séries voulues, ou "
-                "wds_get_full_table_download pour le fichier.",
-            )
-        )
+        raise _too_big(pid, csv_member.compressed_size)
     stream = MemberStream(
         url,
         csv_member,
@@ -430,14 +538,28 @@ async def query_table(
     query_checks.check_literals(query_checks.plan(text, dim_columns).literals, known)
     rows = _Slice(cube, dims, frequency)
     seconds = max(10.0, config.get_tool_timeout_seconds() - 40.0)
+    slice_key = (
+        pid,
+        str(cube.get("releaseTime") or ""),
+        tuple(None if k is None else frozenset(k) for k in keep),
+        start_period,
+        end_period,
+    )
+    hit = _kept(slice_key)
     try:
-        try:
-            source_url = await _from_file(pid, keep, dims, start_period, end_period, rows, seconds)
-            source = "full-table file"
-        except _Blocked:
-            rows.rows.clear()
-            source_url = await _from_wds(pid, cube, kept, start_period, end_period, rows, codes)
-            source = "WDS by coordinate"
+        if hit is not None:
+            rows.rows, rows.seen = list(hit.rows), hit.seen
+            source, source_url = hit.source, hit.url
+        else:
+            try:
+                source_url = await _from_file(
+                    pid, keep, dims, start_period, end_period, rows, seconds
+                )
+                source = "full-table file"
+            except _Blocked:
+                rows.rows.clear()
+                source_url = await _from_wds(pid, cube, kept, start_period, end_period, rows, codes)
+                source = "WDS by coordinate"
     except _TooManyRows as exc:
         raise InvalidInput(
             client._m(
@@ -469,6 +591,10 @@ async def query_table(
     # Sorted by series then period, so the sandbox's run-length encoding packs every
     # column that repeats within a series (titles, units, members).
     rows.rows.sort(key=lambda r: (r[0], r[3], r[4] or date.min))
+    if hit is None:
+        _keep(
+            slice_key, _KeptSlice(list(rows.rows), rows.seen, source, source_url, time.monotonic())
+        )
     columns = [(name, kind) for name, kind, _ in query.OBS_COLUMNS]
     columns += [(c, "VARCHAR") for c in dim_columns]
     values = [list(col) for col in zip(*rows.rows, strict=True)]
@@ -511,12 +637,26 @@ async def query_table(
         provenance=make_provenance(
             source="statcan-wds",
             url=source_url,
-            cached=False,
+            cached=hit is not None,
             schema_name="statcan.wds.TableQueryResult",
             coverage=client._m(
-                f"{len(rows.rows):,} rows of {rows.seen:,} read loaded into obs ({source})",
+                f"{len(rows.rows):,} rows of {rows.seen:,} read loaded into obs ({source})"
+                + (
+                    f"; the slice was read for an earlier call, at most "
+                    f"{SLICE_CACHE_SECONDS // 60} minutes ago, and the table has had no "
+                    "release since"
+                    if hit is not None
+                    else ""
+                ),
                 f"{len(rows.rows):,} lignes sur {rows.seen:,} lues chargées dans obs "
-                f"({source})".replace(",", " "),
+                f"({source})".replace(",", " ")
+                + (
+                    f" ; la tranche a été lue pour un appel précédent, il y a au plus "
+                    f"{SLICE_CACHE_SECONDS // 60} minutes, et le tableau n'a pas eu de "
+                    "diffusion depuis"
+                    if hit is not None
+                    else ""
+                ),
             ),
             limits=join_limits(
                 client._m(
