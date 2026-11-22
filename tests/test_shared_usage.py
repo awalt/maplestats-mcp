@@ -58,6 +58,24 @@ def test_refused_requests_are_counted_by_a_fixed_list_of_reasons() -> None:
     assert UsageStats().snapshot()["refused_requests"] == {}
 
 
+def test_forwarding_shape_is_counted_without_addresses() -> None:
+    stats = UsageStats()
+    stats.record_request(1, "public", 1)
+    stats.record_request(2, "private", 3)
+    stats.record_request(2, "private", 2)
+    stats.record_request(9, "203.0.113.5", 1)
+    limit = stats.snapshot()["rate_limit"]
+    assert limit == {
+        "forwarded_for": {
+            "2 entries, last private": 2,
+            "1 entries, last public": 1,
+            "5 entries, last other": 1,
+        },
+        "callers_in_one_window_max": 3,
+    }
+    assert "203.0.113.5" not in json.dumps(stats.snapshot())
+
+
 def test_old_days_are_dropped() -> None:
     stats = UsageStats(("boc_get_observations", "wds_search_cubes"))
     for n in range(MAX_DAYS + 10):

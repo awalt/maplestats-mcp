@@ -82,6 +82,28 @@ async def test_refusals_are_reported_by_reason_without_the_caller():
     assert reasons == ["rate_limited"]
 
 
+async def test_each_request_reports_its_forwarding_shape_and_no_address():
+    # 52.4.10.20 stands for a caller; Python counts documentation ranges as private.
+    seen: list[tuple[int, str, int]] = []
+    app = with_http_security(_ok_app, on_request=lambda *shape: seen.append(shape))
+
+    def via(value: str | None, client=("100.100.0.7", 1)):
+        headers = [(b"x-forwarded-for", value.encode())] if value is not None else []
+        return _scope(headers=headers, client=client)
+
+    await _call(app, via(None))
+    await _call(app, via("52.4.10.20"))
+    await _call(app, via("52.4.10.20, 100.100.0.12"))
+    await _call(app, via("garbage"))
+    assert [(n, last) for n, last, _ in seen] == [
+        (0, "none"),
+        (1, "public"),
+        (2, "private"),  # an internal hop after the caller (100.64.0.0/10 counts)
+        (1, "public"),
+    ]
+    assert all(isinstance(callers, int) and callers >= 1 for *_, callers in seen)
+
+
 async def test_trusted_proxy_reads_the_rightmost_forwarded_address():
     # Azure Container Apps' ingress connects to the app itself and appends the caller's
     # address to X-Forwarded-For; whatever the caller wrote sits to its left. With the

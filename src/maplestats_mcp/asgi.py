@@ -190,6 +190,7 @@ def build_asgi_app():
         trusted_proxy_hops=config.get_trusted_proxy_hops(),
         client_ip_header=config.get_client_ip_header(),
         on_refusal=STATS.record_refusal,
+        on_request=STATS.record_request,
     )
     cors = with_cors(secured, allowed_origins=config.get_allowed_origins())
     png = (ASSETS_DIR / "favicon.png").read_bytes()
