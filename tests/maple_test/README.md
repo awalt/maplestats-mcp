@@ -1162,8 +1162,12 @@ No other question shows the pattern (the old arms right, the new arms wrong). Tw
 the tooling let this through:
 
 - `maple-test.yml` and `smoke.yml` check the v1 to v3 keys but not `build_key_v4_test`.
-- `build_key_v4_test --check` now fails (`KeyError: '2025-09'`): IPPI's October release
-  moved the 13-period window it reads.
+  This is still open: adding it would fail every week until the key is rebuilt, and the
+  2026-11-10 answers would then need the opposite overrides.
+- `build_key_v4_test --check` failed (`KeyError: '2025-09'`), because IPPI's October release
+  moved the latest-13-periods window it reads. Each read is now pinned to the periods the key
+  was built on (`series(..., end=...)`). On 2026-11-22 the check reported N-01 and N-03 and
+  nothing else in the StatCan part.
 
 **Setup.** Arms that start a server on this machine (arose26, mcp-canada, CanData-MCP,
 canada-data-agent, OpenCanadaPublicDataMCP) ran one after another, one question at a time,
@@ -1176,7 +1180,9 @@ The CLI's 5-hour usage limit was reached at 02:33 UTC. After that, every answer 
 as the limit message in about 3 seconds, and a session restart stopped the runs. Those
 answers are set aside, not graded: 13 no-tools answers in `runs_v4/errors/`, and mcp-canada's
 53-answer start in `runs_v4/paused/`. They were asked again, with the harness's own
-`run.ask`, through a wrapper that skips recorded answers and waits out the limit. The
+`run.ask`, through a wrapper that skipped recorded answers and waited out the limit. `run`
+now does both itself: it never records the limit reply, it waits for the reset the reply
+names, and `--resume` carries on in an existing run file. The
 model alone had three run errors (two answers that hit the output limit, one 10-minute
 timeout). One mcp-canada answer (A-02, second pass) ran out of turns after 50 tool calls.
 Those stand, graded abstained.

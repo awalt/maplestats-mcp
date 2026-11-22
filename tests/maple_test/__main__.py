@@ -51,6 +51,11 @@ def _run_options(p: argparse.ArgumentParser) -> None:
         help="seconds to wait after each answer, to spare the publishers' rate limits",
     )
     p.add_argument(
+        "--resume",
+        action="store_true",
+        help="carry on in the newest run file of this arm and model, asking only what it lacks",
+    )
+    p.add_argument(
         "--frozen",
         type=Path,
         default=None,
@@ -73,6 +78,7 @@ def _run_kwargs(args: argparse.Namespace) -> dict:
         "split": args.split,
         "frozen": args.frozen,
         "pause": args.pause,
+        "resume": args.resume,
     }
 
 
