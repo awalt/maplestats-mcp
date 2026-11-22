@@ -299,8 +299,13 @@ async def main() -> int:
 
     # wds_get_changed_cube_list
     yesterday = (datetime.now(UTC) - timedelta(days=1)).date().isoformat()
-    cubes = await client.get_changed_cube_list(yesterday)
-    ok &= check(isinstance(cubes.cubes, list), f"changed cubes {yesterday}", len(cubes.cubes))
+    try:
+        cubes = await client.get_changed_cube_list(yesterday)
+        ok &= check(isinstance(cubes.cubes, list), f"changed cubes {yesterday}", len(cubes.cubes))
+    except DataLocked as exc:
+        # The same 409 as the changed series: a day with no release answers "The product
+        # is not released yet" (a Saturday, checked 2026-11-22).
+        print(f"SKIP: changed cubes {yesterday} ({str(exc)[:90]})")
     ok &= await raises(
         InvalidInput, "changed cubes rejects DD/MM/YYYY", client.get_changed_cube_list("16/09/2026")
     )

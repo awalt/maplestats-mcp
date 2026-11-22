@@ -193,6 +193,11 @@ class UsageStats:
         # by reason only; in memory. Added 2026-11-20, when six steps of the Azure live
         # check failed on refusals that left no trace on the server.
         self.refusals: Counter[str] = Counter()
+        # The shape of X-Forwarded-For on MCP requests (entries, and whether the last is
+        # private), and the most callers the rate limit held at once: whether the
+        # per-client limit tells callers apart behind a proxy. Never an address.
+        self.forwarded: Counter[tuple[int, str]] = Counter()
+        self.callers_max = 0
         self.durations: dict[str, deque[float]] = {}
         # Per tool: [results sized, characters in all of them, the largest]. The
         # size of what the client read, never its content.
@@ -237,6 +242,12 @@ class UsageStats:
     def record_refusal(self, reason: str) -> None:
         """Count one MCP request refused before it reached a tool (a 429 or a 503)."""
         self.refusals[reason if reason in REFUSAL_REASONS else CLIENT_OTHER] += 1
+
+    def record_request(self, entries: int, last: str, callers: int) -> None:
+        """Count one MCP request's X-Forwarded-For shape; keep the most callers seen."""
+        kind = last if last in ("private", "public", "none") else CLIENT_OTHER
+        self.forwarded[(min(entries, 5), kind)] += 1
+        self.callers_max = max(self.callers_max, callers)
 
     def record_size(self, tool: str, chars: int) -> None:
         """Count one result of `chars` characters (the text the client read) for `tool`."""
@@ -446,7 +457,9 @@ class UsageStats:
                 "and tokens estimated at four characters each), upstream host names with "
                 "their error counts, and how many answers a blocked StatCan tool took from "
                 "another official source (by source name), and how many requests the HTTP "
-                "layer refused by reason (rate limit, busy), "
+                "layer refused by reason (rate limit, busy), the shape of X-Forwarded-For "
+                "(how many entries, whether the last is private) and the most callers the "
+                "rate limit held at once, "
                 f"only, in memory; {kept}. Where "
                 "GoatCounter is "
                 "configured, each call's tool name and outcome are also counted there."
@@ -465,6 +478,13 @@ class UsageStats:
             "result_size": sizes,
             "fallbacks": dict(self.fallbacks.most_common()),
             "refused_requests": dict(self.refusals.most_common()),
+            "rate_limit": {
+                "forwarded_for": {
+                    f"{entries} entries, last {kind}": count
+                    for (entries, kind), count in self.forwarded.most_common()
+                },
+                "callers_in_one_window_max": self.callers_max,
+            },
         }
 
 

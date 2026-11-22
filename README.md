@@ -377,8 +377,10 @@ a personal computer. If the server is exposed beyond your machine, set
 `MAPLE_AUTH_TOKEN` and keep `MAPLE_REQUIRE_AUTH=1`. `GET /health` reports uptime and version. `GET /stats`
 is public, needs no token and reports calls per tool name and day, each tool's
 p50 and p95 duration, each upstream host's error counts and circuit-breaker
-state, and how many requests the HTTP layer refused, by reason only (`rate_limited`,
-`client_busy`, `server_busy`; see `MAPLE_USAGE_STATS` and `MAPLE_BREAKER` below). After repeated
+state, how many requests the HTTP layer refused, by reason only (`rate_limited`,
+`client_busy`, `server_busy`), and under `rate_limit` the shape of `X-Forwarded-For`
+(how many entries, whether the last is private; never an address) and the most callers
+the rate limit held at once (see `MAPLE_USAGE_STATS` and `MAPLE_BREAKER` below). After repeated
 failures (timeouts, connection errors, 5xx answers) a host is paused for a
 cooldown: its tools fail at once with an "unavailable" error that says when to
 retry, instead of waiting for another timeout. The `docs://status` resource

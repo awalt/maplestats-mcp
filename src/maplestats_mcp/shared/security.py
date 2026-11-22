@@ -65,6 +65,27 @@ def _header(scope: dict, name: bytes) -> str | None:
     return ", ".join(values) if values else None
 
 
+def _forwarded_shape(scope: dict) -> tuple[int, str]:
+    """How many X-Forwarded-For entries a request carries, and whether the last is a
+    private address ("private"), a public one ("public") or absent ("none").
+
+    On Azure Container Apps (2026-11-22) the per-client limit still refused the live
+    check at 75 requests a minute with MAPLE_TRUST_PROXY_HEADERS on: if the ingress
+    appends an internal hop after the caller's address, the last entry is private and
+    shared, and the caller is one entry further left (MAPLE_TRUSTED_PROXY_HOPS=2).
+    """
+    raw = _header(scope, b"x-forwarded-for") or ""
+    entries = [e.strip() for e in raw.split(",") if e.strip()]
+    if not entries:
+        return 0, "none"
+    try:
+        address = ipaddress.ip_address(entries[-1].split("%")[0])
+    except ValueError:
+        return len(entries), "public"
+    private = address.is_private or address in ipaddress.ip_network("100.64.0.0/10")
+    return len(entries), "private" if private else "public"
+
+
 def _client_key(
     scope: dict,
     *,
@@ -168,6 +189,7 @@ def with_http_security(
     max_requests_per_client: int = 0,
     max_body_bytes: int = MAX_BODY_BYTES,
     on_refusal: Callable[[str], None] | None = None,
+    on_request: Callable[[int, str, int], None] | None = None,
 ) -> ASGIApp:
     """Protect MCP requests while leaving health checks and stdio untouched.
 
@@ -180,6 +202,10 @@ def with_http_security(
     request limit to 0 to disable it for a trusted local-only deployment.
     `on_refusal` is told each refusal's reason ("rate_limited", "client_busy",
     "server_busy"), never who was refused: /stats counts them (shared/usage.py).
+    `on_request` is told, for each MCP request, the shape of its X-Forwarded-For (how
+    many entries, and whether the last is "private", "public" or "none") and how many
+    callers the rate limit holds, never an address: whether the per-client limit
+    tells callers apart behind a proxy can then be read from /stats.
     """
 
     def refused(reason: str) -> None:
@@ -220,6 +246,9 @@ def with_http_security(
                 client_ip_header=client_ip_header,
             )
         )
+        if on_request is not None:
+            entries, last = _forwarded_shape(scope)
+            on_request(entries, last, len(rate_hits) + (client_key not in rate_hits))
         # The rate limit comes before the token check so that guessing tokens
         # spends the guesser's own budget like any other request.
         if rate_limit_requests:
