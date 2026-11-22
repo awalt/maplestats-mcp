@@ -6,34 +6,34 @@
 
 | Arm | Correct | Dev | Test | Answers | USD per answer | Seconds per answer | Flagged for review | JSON decided | Run errors |
 | :-- | --: | --: | --: | --: | --: | --: | --: | --: | --: |
-| arose26 | 49.1% | 47.7% | 52.4% | 84 | 0.022 | 12.2 | 15.5% | 71.4% | 0 |
-| canada_data_agent | 32.4% | 28.1% | 42.9% | 84 | 0.018 | 12.1 | 16.7% | 78.6% | 0 |
-| candata_mcp | 51.4% | 47.1% | 61.9% | 84 | 0.039 | 15.4 | 21.4% | 60.7% | 0 |
+| arose26 | 51.9% | 47.7% | 61.9% | 84 | 0.022 | 12.2 | 15.5% | 71.4% | 0 |
+| canada_data_agent | 35.2% | 28.1% | 52.4% | 84 | 0.018 | 12.1 | 16.7% | 78.6% | 0 |
+| candata_mcp | 54.2% | 47.1% | 71.4% | 84 | 0.039 | 15.4 | 21.4% | 60.7% | 0 |
 | maplestats-local | 90.7% | 92.8% | 85.7% | 84 | 0.048 | 24.0 | 10.7% | 77.4% | 0 |
 | maplestats_hosted | 86.6% | 81.0% | 100.0% | 84 | 0.048 | 13.7 | 11.9% | 72.6% | 0 |
-| mcp_canada | 51.9% | 47.7% | 61.9% | 84 | 0.070 | 21.5 | 25.0% | 60.7% | 1 |
-| mcp_statcan | 44.4% | 41.2% | 52.4% | 84 | 0.025 | 13.5 | 19.0% | 64.3% | 0 |
+| mcp_canada | 54.6% | 47.7% | 71.4% | 84 | 0.070 | 21.5 | 25.0% | 60.7% | 1 |
+| mcp_statcan | 47.2% | 41.2% | 61.9% | 84 | 0.025 | 13.5 | 19.0% | 64.3% | 0 |
 | no_tools | 11.1% | 9.8% | 14.3% | 84 | 0.094 | 43.8 | 44.0% | 52.4% | 3 |
-| opencanada | 46.8% | 44.4% | 52.4% | 84 | 0.037 | 19.1 | 20.2% | 64.3% | 0 |
+| opencanada | 49.5% | 44.4% | 61.9% | 84 | 0.037 | 19.1 | 20.2% | 64.3% | 0 |
 | openmcp | 58.3% | 56.9% | 61.9% | 84 | 0.063 | 93.9 | 23.8% | 58.3% | 0 |
-| pipeworx | 61.1% | 60.8% | 61.9% | 84 | 0.077 | 26.2 | 13.1% | 71.4% | 0 |
+| pipeworx | 63.9% | 60.8% | 71.4% | 84 | 0.077 | 26.2 | 13.1% | 71.4% | 0 |
 | statcan2 | 30.1% | 26.8% | 38.1% | 84 | 0.045 | 13.4 | 21.4% | 50.0% | 0 |
 
 ## By source
 
 | Arm | boc | cmhc | federal | international | municipal | provincial | statcan |
 | :-- | --: | --: | --: | --: | --: | --: | --: |
-| arose26 | 100.0% (8) | 73.3% (5) | 0.0% (11) | 16.7% (6) | 0.0% (3) | 0.0% (6) | 68.7% (33) |
-| canada_data_agent | 37.5% (8) | 80.0% (5) | 9.1% (11) | 16.7% (6) | 33.3% (3) | 0.0% (6) | 40.4% (33) |
-| candata_mcp | 75.0% (8) | 80.0% (5) | 18.2% (11) | 16.7% (6) | 0.0% (3) | 16.7% (6) | 69.7% (33) |
+| arose26 | 100.0% (8) | 73.3% (5) | 0.0% (11) | 16.7% (6) | 0.0% (3) | 0.0% (6) | 74.7% (33) |
+| canada_data_agent | 37.5% (8) | 80.0% (5) | 9.1% (11) | 16.7% (6) | 33.3% (3) | 0.0% (6) | 46.5% (33) |
+| candata_mcp | 75.0% (8) | 80.0% (5) | 18.2% (11) | 16.7% (6) | 0.0% (3) | 16.7% (6) | 75.8% (33) |
 | maplestats-local | 100.0% (8) | 100.0% (5) | 100.0% (11) | 100.0% (6) | 100.0% (3) | 100.0% (6) | 79.8% (33) |
 | maplestats_hosted | 100.0% (8) | 53.3% (5) | 90.9% (11) | 100.0% (6) | 33.3% (3) | 100.0% (6) | 86.9% (33) |
-| mcp_canada | 100.0% (8) | 60.0% (5) | 45.5% (11) | 16.7% (6) | 0.0% (3) | 33.3% (6) | 55.6% (33) |
-| mcp_statcan | 75.0% (8) | 66.7% (5) | 0.0% (11) | 16.7% (6) | 0.0% (3) | 0.0% (6) | 65.7% (33) |
+| mcp_canada | 100.0% (8) | 60.0% (5) | 45.5% (11) | 16.7% (6) | 0.0% (3) | 33.3% (6) | 61.6% (33) |
+| mcp_statcan | 75.0% (8) | 66.7% (5) | 0.0% (11) | 16.7% (6) | 0.0% (3) | 0.0% (6) | 71.7% (33) |
 | no_tools | 0.0% (8) | 40.0% (5) | 0.0% (11) | 16.7% (6) | 0.0% (3) | 0.0% (6) | 15.2% (33) |
-| opencanada | 100.0% (8) | 60.0% (5) | 27.3% (11) | 16.7% (6) | 0.0% (3) | 0.0% (6) | 56.6% (33) |
+| opencanada | 100.0% (8) | 60.0% (5) | 27.3% (11) | 16.7% (6) | 0.0% (3) | 0.0% (6) | 62.6% (33) |
 | openmcp | 62.5% (8) | 40.0% (5) | 45.5% (11) | 66.7% (6) | 33.3% (3) | 16.7% (6) | 72.7% (33) |
-| pipeworx | 100.0% (8) | 80.0% (5) | 36.4% (11) | 100.0% (6) | 0.0% (3) | 0.0% (6) | 66.7% (33) |
+| pipeworx | 100.0% (8) | 80.0% (5) | 36.4% (11) | 100.0% (6) | 0.0% (3) | 0.0% (6) | 72.7% (33) |
 | statcan2 | 25.0% (8) | 60.0% (5) | 9.1% (11) | 16.7% (6) | 33.3% (3) | 0.0% (6) | 41.4% (33) |
 
 ## Judge
@@ -333,17 +333,17 @@
 | M-15 | dev | openmcp | 0 | partial* | regex | correct (0.68) | settled |
 | M-15 | dev | pipeworx | 0 | hallucinated | regex | correct (0.60) | open |
 | M-15 | dev | statcan2 | 0 | hallucinated | regex | abstained (0.60) | open |
-| N-01 | test | arose26 | 0 | hallucinated | regex | hallucinated (0.93) |  |
-| N-01 | test | canada_data_agent | 0 | hallucinated | regex | hallucinated (0.96) |  |
-| N-01 | test | candata_mcp | 0 | hallucinated | regex | hallucinated (0.95) |  |
+| N-01 | test | arose26 | 0 | correct* | regex | hallucinated (0.93) |  |
+| N-01 | test | canada_data_agent | 0 | correct* | regex | hallucinated (0.96) |  |
+| N-01 | test | candata_mcp | 0 | correct* | regex | hallucinated (0.95) |  |
 | N-01 | test | maplestats-local | 0 | correct | json | correct (0.90) |  |
 | N-01 | test | maplestats_hosted | 0 | correct | json | correct (0.90) |  |
-| N-01 | test | mcp_canada | 0 | hallucinated | regex | hallucinated (0.93) |  |
-| N-01 | test | mcp_statcan | 0 | hallucinated | regex | hallucinated (0.95) |  |
+| N-01 | test | mcp_canada | 0 | correct* | regex | hallucinated (0.93) |  |
+| N-01 | test | mcp_statcan | 0 | correct* | regex | hallucinated (0.95) |  |
 | N-01 | test | no_tools | 0 | hallucinated | regex | abstained (0.96) | open |
-| N-01 | test | opencanada | 0 | hallucinated | regex | hallucinated (0.95) |  |
+| N-01 | test | opencanada | 0 | correct* | regex | hallucinated (0.95) |  |
 | N-01 | test | openmcp | 0 | correct | json | correct (0.88) |  |
-| N-01 | test | pipeworx | 0 | hallucinated | regex | hallucinated (0.93) |  |
+| N-01 | test | pipeworx | 0 | correct* | regex | hallucinated (0.93) |  |
 | N-01 | test | statcan2 | 0 | abstained | regex | abstained (0.80) |  |
 | N-02 | test | arose26 | 0 | correct | json | correct (0.93) |  |
 | N-02 | test | canada_data_agent | 0 | correct | json | correct (0.93) |  |
@@ -357,17 +357,17 @@
 | N-02 | test | openmcp | 0 | correct | json | correct (0.93) |  |
 | N-02 | test | pipeworx | 0 | correct | json | correct (0.93) |  |
 | N-02 | test | statcan2 | 0 | correct | json | correct (0.93) |  |
-| N-03 | test | arose26 | 0 | hallucinated | regex | hallucinated (0.60) | open |
-| N-03 | test | canada_data_agent | 0 | hallucinated | regex | hallucinated (0.72) |  |
-| N-03 | test | candata_mcp | 0 | hallucinated | regex | hallucinated (0.72) |  |
+| N-03 | test | arose26 | 0 | correct* | regex | hallucinated (0.60) | settled |
+| N-03 | test | canada_data_agent | 0 | correct* | regex | hallucinated (0.72) |  |
+| N-03 | test | candata_mcp | 0 | correct* | regex | hallucinated (0.72) |  |
 | N-03 | test | maplestats-local | 0 | abstained | json | abstained (0.93) |  |
 | N-03 | test | maplestats_hosted | 0 | correct | json | correct (0.90) |  |
-| N-03 | test | mcp_canada | 0 | hallucinated | regex | hallucinated (0.80) |  |
-| N-03 | test | mcp_statcan | 0 | hallucinated | regex | hallucinated (0.72) |  |
+| N-03 | test | mcp_canada | 0 | correct* | regex | hallucinated (0.80) |  |
+| N-03 | test | mcp_statcan | 0 | correct* | regex | hallucinated (0.72) |  |
 | N-03 | test | no_tools | 0 | hallucinated | regex | abstained (0.95) | open |
-| N-03 | test | opencanada | 0 | hallucinated | regex | hallucinated (0.72) |  |
+| N-03 | test | opencanada | 0 | correct* | regex | hallucinated (0.72) |  |
 | N-03 | test | openmcp | 0 | correct | json | correct (0.90) |  |
-| N-03 | test | pipeworx | 0 | hallucinated | regex | hallucinated (0.85) |  |
+| N-03 | test | pipeworx | 0 | correct* | regex | hallucinated (0.85) |  |
 | N-03 | test | statcan2 | 0 | abstained | regex | abstained (0.85) |  |
 | N-04 | test | arose26 | 0 | correct | json | correct (0.93) |  |
 | N-04 | test | canada_data_agent | 0 | correct | json | correct (0.90) |  |

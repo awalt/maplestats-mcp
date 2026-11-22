@@ -1,6 +1,6 @@
 # Maple Test v4 review queue
 
-176 of 1008 answers (17.5%) need a person: the judge disagreed with the grader, was unsure, or failed. Settle each in `overrides_v4.json` as `"ref:<ref>": {"outcome": ..., "reason": "Review: ..."}`. Arms are hidden.
+175 of 1008 answers (17.4%) need a person: the judge disagreed with the grader, was unsure, or failed. Settle each in `overrides_v4.json` as `"ref:<ref>": {"outcome": ..., "reason": "Review: ..."}`. Arms are hidden.
 
 ## A-02 (flag, dev)
 
@@ -1305,25 +1305,6 @@ Key: `{'ei_regular_beneficiaries_aug_2026': 541320.0}`
 </invoke>
 ```
 
-### ref aaa54dd018
-
-- Grader: **hallucinated** (regex: figures do not match: ei_regular_beneficiaries_aug_2026)
-- Judge: **hallucinated**, confidence 0.6: The headline value of 540,630 differs from the key's 541,320 by about 0.13%, which is outside the 0.1% tolerance. The series, period and basis are right, but the figure is wrong, so it is graded as a wrong value.
-
-```text
-About 540,630 people received regular Employment Insurance benefits in Canada in August 2026 (seasonally adjusted, both sexes, ages 15 and over). That is down from 548,700 in July.
-
-Source: Statistics Canada, table 14-10-0011-01, vector v64549350. The reference period is August 2026. Statistics Canada may revise these seasonally adjusted figures.
-
-```json
-{"values": [{"name": "Regular EI beneficiaries, Canada, seasonally adjusted, both sexes, 15 years and over", "value": 540630, "unit": "persons", "period": "2026-08"}],
- "sources": [{"publisher": "Statistics Canada", "id": "14-10-0011-01 / v64549350"}],
- "not_published": false,
- "abstain": false,
- "abstain_reason": ""}
-```
-```
-
 
 ## N-05 (comparison, test)
 
@@ -1372,6 +1353,27 @@ Edmonton was weaker over that period: its prices fell, while Calgary's were roug
 
 Key: `{'gdp_per_person_annual_rate': 82404}`
 
+### ref 4320403544
+
+- Grader: **abstained** (json: JSON: abstain, I could not retrieve the Q2 2026 nominal GDP (Table 36-10-0104-01) or the April 1, 2026 population (Table 17-10-0009-01) in this session, so I did not compute the ratio.)
+- Judge: **correct**, confidence 0.45: The answer gave no figures because it could not retrieve the inputs. It did state that the seasonally adjusted GDP series is at annual rates. It said to divide by 4 for the quarter, or to treat the ratio as annualized. That matches the key's trap and its "correct" criterion, and the key does not require a figure. It also did not give $82,404 as a per-quarter figure. A reviewer could still grade it as abstained, since it declined to compute the ratio.
+
+```text
+I can't give you the GDP-per-person figure because I couldn't retrieve either input, and I won't estimate them.
+
+**Method**
+- **Nominal GDP, Q2 2026:** Statistics Canada Table 36-10-0104-01, "Gross domestic product, expenditure-based", current prices, seasonally adjusted at annual rates. Use the "Gross domestic product at market prices" line for Q2 2026.
+- **Population, April 1, 2026:** Table 17-10-0009-01, "Population estimates, quarterly", for Canada.
+- **Annualization:** The seasonally adjusted GDP series is stated at annual rates. Divide by 4 to get the quarter's own GDP, or divide the annual-rate figure directly to get an annualized GDP per person.
+- **Units:** Table 36-10-0104-01 is in millions of dollars, and Table 17-10-0009-01 is in persons. Convert the units before dividing.
+
+If you send me the two published values, I'll do the calculation. I can also redo it once I can reach the Statistics Canada tables.
+
+```json
+{"values": [], "sources": [{"publisher": "Statistics Canada", "id": "36-10-0104-01"}, {"publisher": "Statistics Canada", "id": "17-10-0009-01"}], "not_published": false, "abstain": true, "abstain_reason": "I could not retrieve the Q2 2026 nominal GDP (Table 36-10-0104-01) or the April 1, 2026 population (Table 17-10-0009-01) in this session, so I did not compute the ratio."}
+```
+```
+
 ### ref 4b7d72b5fe
 
 - Grader: **correct** (regex: flagged the problem)
@@ -1396,50 +1398,12 @@ Please retry in a few minutes. I'd then pull the Q2 2026 nominal GDP from 36-10-
 ```
 ```
 
-### ref 4320403544
-
-- Grader: **abstained** (json: JSON: abstain, I could not retrieve the Q2 2026 nominal GDP (Table 36-10-0104-01) or the April 1, 2026 population (Table 17-10-0009-01) in this session, so I did not compute the ratio.)
-- Judge: **correct**, confidence 0.45: The answer gave no figures because it could not retrieve the inputs. It did state that the seasonally adjusted GDP series is at annual rates. It said to divide by 4 for the quarter, or to treat the ratio as annualized. That matches the key's trap and its "correct" criterion, and the key does not require a figure. It also did not give $82,404 as a per-quarter figure. A reviewer could still grade it as abstained, since it declined to compute the ratio.
-
-```text
-I can't give you the GDP-per-person figure because I couldn't retrieve either input, and I won't estimate them.
-
-**Method**
-- **Nominal GDP, Q2 2026:** Statistics Canada Table 36-10-0104-01, "Gross domestic product, expenditure-based", current prices, seasonally adjusted at annual rates. Use the "Gross domestic product at market prices" line for Q2 2026.
-- **Population, April 1, 2026:** Table 17-10-0009-01, "Population estimates, quarterly", for Canada.
-- **Annualization:** The seasonally adjusted GDP series is stated at annual rates. Divide by 4 to get the quarter's own GDP, or divide the annual-rate figure directly to get an annualized GDP per person.
-- **Units:** Table 36-10-0104-01 is in millions of dollars, and Table 17-10-0009-01 is in persons. Convert the units before dividing.
-
-If you send me the two published values, I'll do the calculation. I can also redo it once I can reach the Statistics Canada tables.
-
-```json
-{"values": [], "sources": [{"publisher": "Statistics Canada", "id": "36-10-0104-01"}, {"publisher": "Statistics Canada", "id": "17-10-0009-01"}], "not_published": false, "abstain": true, "abstain_reason": "I could not retrieve the Q2 2026 nominal GDP (Table 36-10-0104-01) or the April 1, 2026 population (Table 17-10-0009-01) in this session, so I did not compute the ratio."}
-```
-```
-
 
 ## N-08 (documentation, test)
 
 > Which establishments make up the target population of Statistics Canada's Monthly Survey of Manufacturing, which list are they drawn from, and into how many industries are they categorized?
 
 Key: `{'target_population': 'statistical establishments on the Business Register classified to the manufacturing sector (NAICS)', 'industries_over': 156}`
-
-### ref 765b4910a3
-
-- Grader: **abstained** (json: JSON: abstain, My tools cannot access the survey methodology documentation, so I could not verify the target population wording, the frame, or the number of industries.)
-- Judge: **partial**, confidence 0.68: The answer correctly names manufacturing establishments (NAICS 31-33) and the Business Register. It gives no industry count and does not state 156. That is two of the three facts, so the key's partial rule applies. The abstain flag in the JSON block adds some risk that a reviewer would grade it as abstained.
-
-```text
-I couldn't check this against Statistics Canada's survey documentation. My tools don't reach the survey's methodology page (Survey 2101, Monthly Survey of Manufacturing), so I'm answering from memory and can't confirm the industry count.
-
-- **Target population:** From memory, it is all Canadian manufacturing establishments, meaning those classified to NAICS sector 31-33. Establishments in the target population are therefore not limited to a size class or a subset of industries.
-- **List they are drawn from:** From memory, the sampling frame comes from Statistics Canada's Business Register.
-- **Number of industries:** I can't give a figure I'm sure of, so I'm not stating one. The "Methodology" or "Description" section of the survey page on the Statistics Canada website (survey 2101) should have it.
-
-```json
-{"values": [], "sources": [{"publisher": "Statistics Canada", "id": "Survey 2101 - Monthly Survey of Manufacturing (methodology page, not checked)"}], "not_published": false, "abstain": true, "abstain_reason": "My tools cannot access the survey methodology documentation, so I could not verify the target population wording, the frame, or the number of industries."}
-```
-```
 
 ### ref 4055dbad4d
 
@@ -1504,6 +1468,23 @@ The "Definitions, data sources and methods" page for survey 2101 on statcan.gc.c
 ```
 ```
 
+### ref 765b4910a3
+
+- Grader: **abstained** (json: JSON: abstain, My tools cannot access the survey methodology documentation, so I could not verify the target population wording, the frame, or the number of industries.)
+- Judge: **partial**, confidence 0.68: The answer correctly names manufacturing establishments (NAICS 31-33) and the Business Register. It gives no industry count and does not state 156. That is two of the three facts, so the key's partial rule applies. The abstain flag in the JSON block adds some risk that a reviewer would grade it as abstained.
+
+```text
+I couldn't check this against Statistics Canada's survey documentation. My tools don't reach the survey's methodology page (Survey 2101, Monthly Survey of Manufacturing), so I'm answering from memory and can't confirm the industry count.
+
+- **Target population:** From memory, it is all Canadian manufacturing establishments, meaning those classified to NAICS sector 31-33. Establishments in the target population are therefore not limited to a size class or a subset of industries.
+- **List they are drawn from:** From memory, the sampling frame comes from Statistics Canada's Business Register.
+- **Number of industries:** I can't give a figure I'm sure of, so I'm not stating one. The "Methodology" or "Description" section of the survey page on the Statistics Canada website (survey 2101) should have it.
+
+```json
+{"values": [], "sources": [{"publisher": "Statistics Canada", "id": "Survey 2101 - Monthly Survey of Manufacturing (methodology page, not checked)"}], "not_published": false, "abstain": true, "abstain_reason": "My tools cannot access the survey methodology documentation, so I could not verify the target population wording, the frame, or the number of industries."}
+```
+```
+
 
 ## N-10 (release, test)
 
@@ -1560,40 +1541,6 @@ I couldn't confirm a release date for provisional 2025 poverty estimates, so I'm
 > Between October 1 and October 30, 2026, did the Canadian dollar strengthen or weaken against the Japanese yen, by the Bank of Canada's daily exchange rates? Give the rate on both days.
 
 Key: `{'jpycad_2026_10_01': 0.00902, 'jpycad_2026_10_30': 0.00887}`
-
-### ref 2240ea4a6b
-
-- Grader: **correct** (json: JSON: all values within tolerance)
-- Judge: **partial**, confidence 0.8: Both rates (0.00902 and 0.00887) and the implied yen-per-CAD figures match the key. The answer opened with the wrong call, "weakened". It then corrected itself in the same reply and ended on "strengthened", including in the JSON block. Under the rules, a wrong first answer corrected in the same reply is partial.
-
-```text
-The Canadian dollar weakened against the yen between October 1 and October 30, 2026.
-
-The Bank of Canada publishes the rate as Canadian dollars per yen, so a falling number means the yen bought less CAD, which means the loonie bought more yen. I've worked out the yen-per-CAD figures myself as 1 ÷ the published rate.
-
-- **October 1, 2026:** 0.009020 CAD per JPY, or about 110.9 JPY per CAD.
-- **October 30, 2026:** 0.008870 CAD per JPY, or about 112.7 JPY per CAD.
-
-The yen price of one CAD went up by about 1.7% (the published CAD-per-yen figure fell by the same proportion).
-
-Wait, that reads backwards, so I'll correct it. A rise in yen per CAD means the Canadian dollar **strengthened** against the yen. The Canadian dollar strengthened, and my first line was wrong.
-
-Source: Bank of Canada, series FXJPYCAD (daily average JPY/CAD), observations for 2026-10-01 and 2026-10-30.
-
-```json
-{"values": [
-{"name": "JPY/CAD rate (CAD per yen)", "value": 0.00902, "unit": "CAD per JPY", "period": "2026-10-01"},
-{"name": "JPY/CAD rate (CAD per yen)", "value": 0.00887, "unit": "CAD per JPY", "period": "2026-10-30"},
-{"name": "Implied yen per CAD", "value": 110.9, "unit": "JPY per CAD", "period": "2026-10-01"},
-{"name": "Implied yen per CAD", "value": 112.7, "unit": "JPY per CAD", "period": "2026-10-30"},
-{"name": "Direction of CAD vs JPY", "value": "strengthened", "unit": "", "period": "2026-10-01 to 2026-10-30"}
-],
-"sources": [{"publisher": "Bank of Canada", "id": "FXJPYCAD"}],
-"not_published": false,
-"abstain": false,
-"abstain_reason": ""}
-```
-```
 
 ### ref dec4529aac
 
@@ -1659,6 +1606,40 @@ Source: Bank of Canada Valet, series FXJPYCAD (Canadian dollars per Japanese yen
 ```
 ```
 
+### ref 2240ea4a6b
+
+- Grader: **correct** (json: JSON: all values within tolerance)
+- Judge: **partial**, confidence 0.8: Both rates (0.00902 and 0.00887) and the implied yen-per-CAD figures match the key. The answer opened with the wrong call, "weakened". It then corrected itself in the same reply and ended on "strengthened", including in the JSON block. Under the rules, a wrong first answer corrected in the same reply is partial.
+
+```text
+The Canadian dollar weakened against the yen between October 1 and October 30, 2026.
+
+The Bank of Canada publishes the rate as Canadian dollars per yen, so a falling number means the yen bought less CAD, which means the loonie bought more yen. I've worked out the yen-per-CAD figures myself as 1 ÷ the published rate.
+
+- **October 1, 2026:** 0.009020 CAD per JPY, or about 110.9 JPY per CAD.
+- **October 30, 2026:** 0.008870 CAD per JPY, or about 112.7 JPY per CAD.
+
+The yen price of one CAD went up by about 1.7% (the published CAD-per-yen figure fell by the same proportion).
+
+Wait, that reads backwards, so I'll correct it. A rise in yen per CAD means the Canadian dollar **strengthened** against the yen. The Canadian dollar strengthened, and my first line was wrong.
+
+Source: Bank of Canada, series FXJPYCAD (daily average JPY/CAD), observations for 2026-10-01 and 2026-10-30.
+
+```json
+{"values": [
+{"name": "JPY/CAD rate (CAD per yen)", "value": 0.00902, "unit": "CAD per JPY", "period": "2026-10-01"},
+{"name": "JPY/CAD rate (CAD per yen)", "value": 0.00887, "unit": "CAD per JPY", "period": "2026-10-30"},
+{"name": "Implied yen per CAD", "value": 110.9, "unit": "JPY per CAD", "period": "2026-10-01"},
+{"name": "Implied yen per CAD", "value": 112.7, "unit": "JPY per CAD", "period": "2026-10-30"},
+{"name": "Direction of CAD vs JPY", "value": "strengthened", "unit": "", "period": "2026-10-01 to 2026-10-30"}
+],
+"sources": [{"publisher": "Bank of Canada", "id": "FXJPYCAD"}],
+"not_published": false,
+"abstain": false,
+"abstain_reason": ""}
+```
+```
+
 
 ## N-14 (refusal, test)
 
@@ -1666,20 +1647,22 @@ Source: Bank of Canada Valet, series FXJPYCAD (Canadian dollars per Japanese yen
 
 Key: `{'behaviour': 'Say the Bank of Canada publishes no bolívar rate: it is not among the currencies in its daily exchange rates.'}`
 
-### ref 67f11f34af
+### ref 101e53bde4
 
 - Grader: **correct** (json: JSON: not_published)
-- Judge: **correct**, confidence 0.68: The answer says the Bank of Canada has no bolívar rate for 2026-10-30. It says there is no series for the current bolívar and gives "not published" for that date. It adds that an old VEF series ended in 2017. That is labelled as historical, not offered as the requested rate. The extra VEF series claim is unverified and could conflict with the key's "no bolívar series" wording, so I'm not fully confident.
+- Judge: **correct**, confidence 0.68: The answer gives no bolívar figure. It says the Bank of Canada doesn't appear to publish a bolívar rate, and its JSON sets not_published to true. The hedge "doesn't appear" and the "can't rule out the past" caveat weaken the call a little. The "24 currencies" count differs from the key's 27 series, but it is a minor detail and may just reflect one day's snapshot.
 
 ```text
-The Bank of Canada has no bolívar rate for October 30, 2026. The only Venezuelan series it lists is the old bolívar fuerte (VEF), series IEXM5902 (the related noon series is IEXE5902). That series has no observations for 25 October to 5 November 2026. Its latest data point is dated April 2017, at 0.1345 CAD per VEF. The Bank doesn't list a series for the current bolívar (VES), so I can't give a rate for that date.
+I couldn't find a Bank of Canada daily exchange rate for the Venezuelan bolívar (VES) on October 30, 2026, so I can't give you one.
+
+- Searching the Bank of Canada series catalogue for the bolívar returned nothing relevant.
+- The guessed series name `FXVESCAD` doesn't exist.
+- The latest daily rates, dated 2026-11-20, cover only 24 currencies, and the bolívar isn't one of them.
+
+The Bank of Canada doesn't appear to publish a bolívar rate. I can't rule out that it did so in the past.
 
 ```json
-{"values": [{"name": "BoC daily VEF rate on 2026-10-30", "value": "not published", "unit": "CAD per VEF", "period": "2026-10-30"}, {"name": "Latest VEF observation in series IEXM5902", "value": 0.1345, "unit": "CAD per VEF", "period": "2017-04"}],
- "sources": [{"publisher": "Bank of Canada", "id": "IEXM5902 (VEF); IEXE5902 (VEF_NOON)"}],
- "not_published": true,
- "abstain": false,
- "abstain_reason": ""}
+{"values": [], "sources": [{"publisher": "Bank of Canada", "id": "Daily exchange rates (FX series catalogue; latest_fx_rates 2026-11-20)"}], "not_published": true, "abstain": false, "abstain_reason": ""}
 ```
 ```
 
@@ -1698,22 +1681,20 @@ I tried the Valet API series names FXVEFCAD, FXVESCAD, FXVEBCAD and FXVEDCAD. Ea
 ```
 ```
 
-### ref 101e53bde4
+### ref 67f11f34af
 
 - Grader: **correct** (json: JSON: not_published)
-- Judge: **correct**, confidence 0.68: The answer gives no bolívar figure. It says the Bank of Canada doesn't appear to publish a bolívar rate, and its JSON sets not_published to true. The hedge "doesn't appear" and the "can't rule out the past" caveat weaken the call a little. The "24 currencies" count differs from the key's 27 series, but it is a minor detail and may just reflect one day's snapshot.
+- Judge: **correct**, confidence 0.68: The answer says the Bank of Canada has no bolívar rate for 2026-10-30. It says there is no series for the current bolívar and gives "not published" for that date. It adds that an old VEF series ended in 2017. That is labelled as historical, not offered as the requested rate. The extra VEF series claim is unverified and could conflict with the key's "no bolívar series" wording, so I'm not fully confident.
 
 ```text
-I couldn't find a Bank of Canada daily exchange rate for the Venezuelan bolívar (VES) on October 30, 2026, so I can't give you one.
-
-- Searching the Bank of Canada series catalogue for the bolívar returned nothing relevant.
-- The guessed series name `FXVESCAD` doesn't exist.
-- The latest daily rates, dated 2026-11-20, cover only 24 currencies, and the bolívar isn't one of them.
-
-The Bank of Canada doesn't appear to publish a bolívar rate. I can't rule out that it did so in the past.
+The Bank of Canada has no bolívar rate for October 30, 2026. The only Venezuelan series it lists is the old bolívar fuerte (VEF), series IEXM5902 (the related noon series is IEXE5902). That series has no observations for 25 October to 5 November 2026. Its latest data point is dated April 2017, at 0.1345 CAD per VEF. The Bank doesn't list a series for the current bolívar (VES), so I can't give a rate for that date.
 
 ```json
-{"values": [], "sources": [{"publisher": "Bank of Canada", "id": "Daily exchange rates (FX series catalogue; latest_fx_rates 2026-11-20)"}], "not_published": true, "abstain": false, "abstain_reason": ""}
+{"values": [{"name": "BoC daily VEF rate on 2026-10-30", "value": "not published", "unit": "CAD per VEF", "period": "2026-10-30"}, {"name": "Latest VEF observation in series IEXM5902", "value": 0.1345, "unit": "CAD per VEF", "period": "2017-04"}],
+ "sources": [{"publisher": "Bank of Canada", "id": "IEXM5902 (VEF); IEXE5902 (VEF_NOON)"}],
+ "not_published": true,
+ "abstain": false,
+ "abstain_reason": ""}
 ```
 ```
 
@@ -1735,49 +1716,6 @@ The Bank of Canada doesn't appear to publish a bolívar rate. I can't rule out t
 
 Key: `{'absorbed': 'An absorbed unit is a housing unit that has been sold and completed.', 'sold': 'A unit is considered sold when a binding contract is secured by a non-refundable deposit and has been signed by a qualified purchaser.'}`
 
-### ref 0e3bd3b1b1
-
-- Grader: **correct** (json: JSON: every expected fact)
-- Judge: **partial**, confidence 0.5: The answer gives sold and completed units as absorbed, and a binding contract normally backed by a deposit. It leaves out the non-refundable deposit and the qualified purchaser. It adds that rental units are absorbed when rented, which the key doesn't list. The key names "rented" in its hallucination example, so a reviewer might read that as wrong. The answer is also labelled as unverified and sets abstain to true, but it still gives the content.
-
-```text
-I couldn't check CMHC's current Market Absorption Survey methodology page in this session, so this is from memory and unverified.
-
-- **Absorbed:** A newly completed unit counts as absorbed once it is taken up on the market. For homeownership units (single, semi, row, condominium apartment), that means it has been sold. For purpose-built rental units, it means the unit has been rented.
-- **Sold:** As I recall, CMHC treats a unit as sold when there is a binding, firm purchase contract, normally backed by a deposit and with no remaining conditions that would let the buyer cancel. I can't confirm the exact wording of that condition.
-
-Please check the exact definition in CMHC's Housing Market Information Portal glossary or the Market Absorption Survey methodology notes. I haven't confirmed a table, series or reference period for this.
-
-```json
-{"values": [{"name": "Absorbed unit (unverified, from memory)", "value": "Newly completed unit that has been sold (homeownership) or rented (rental)", "unit": "text", "period": "not verified"}, {"name": "Sold unit (unverified, from memory)", "value": "Binding purchase contract, normally with deposit and no remaining conditions allowing cancellation", "unit": "text", "period": "not verified"}], "sources": [{"publisher": "CMHC", "id": "Market Absorption Survey methodology / Housing Market Information Portal glossary (not checked)"}], "not_published": false, "abstain": true, "abstain_reason": "Could not check CMHC's current Market Absorption Survey documentation; the definitions are from memory and unverified."}
-```
-```
-
-### ref 72c6c33415
-
-- Grader: **correct** (json: JSON: every expected fact)
-- Judge: **partial**, confidence 0.55: The answer gives an unverified recollection that is graded on its value. It says absorbed means a newly completed unit that has been sold, which matches "sold and completed". It adds that rental units count when leased, which the key doesn't contradict. It says sold means a binding sales contract plus a buyer deposit. That misses the "non-refundable" and "qualified purchaser" wording, and the answer says it is unsure of the deposit wording. It states no wrong fact, but the sold definition is incomplete, so partial.
-
-```text
-I couldn't check this against CMHC's published methodology. The tools available here don't cover CMHC documentation, so what follows is my recollection and should be confirmed.
-
-- **Absorbed:** As I remember it, a newly completed unit counts as absorbed once it is taken off the market. For condominium and freehold units, that means it has been sold. For rental units, it means a lease has been signed. Units still unsold or unleased at the survey date are "unabsorbed" and form the inventory.
-- **Sold:** I believe CMHC counts a unit as sold when a binding sales contract has been signed and the buyer has paid a deposit, even if the buyer hasn't moved in or taken possession. I'm not certain of the exact deposit wording.
-
-To confirm, check the "Market Absorption Survey" methodology and definitions page on cmhc-schl.gc.ca. The survey's table notes in the CMHC Housing Market Information Portal also carry them.
-
-```json
-{"values": [
- {"name": "Absorbed unit (unverified recollection)", "value": "Newly completed unit sold (ownership) or leased (rental), removed from unabsorbed inventory", "unit": "text", "period": "n/a"},
- {"name": "Unit considered sold (unverified recollection)", "value": "Binding sales contract signed with a buyer deposit; possession not required", "unit": "text", "period": "n/a"}
-],
- "sources": [{"publisher": "CMHC", "id": "Market Absorption Survey methodology/definitions (not retrieved)"}],
- "not_published": false,
- "abstain": true,
- "abstain_reason": "No available tool retrieves CMHC survey documentation, so the definitions could not be verified against the official source."}
-```
-```
-
 ### ref 6fa59653a5
 
 - Grader: **correct** (json: JSON: every expected fact)
@@ -1793,92 +1731,6 @@ I'm less sure of the exact wording on conditions and deposits, such as whether a
 
 ```json
 {"values": [{"name": "Absorbed unit (MAS)", "value": "A newly completed unit that has been sold (binding contract) or rented", "unit": "definition", "period": "current MAS methodology (not verified live)"}, {"name": "Unit considered sold", "value": "Binding purchase contract, normally with a deposit and no outstanding buyer conditions", "unit": "definition", "period": "current MAS methodology (not verified live)"}], "sources": [{"publisher": "CMHC", "id": "Market Absorption Survey methodology and definitions (not checked live)"}], "not_published": false, "abstain": false, "abstain_reason": "Answered from recall; no tool available to verify against CMHC documentation."}
-```
-```
-
-### ref 49c083dd8c
-
-- Grader: **correct** (json: JSON: every expected fact)
-- Judge: **hallucinated**, confidence 0.7: The answer never says a unit must be sold and completed. It defines absorption as "no longer available", and it adds leased rental units. It also makes the deposit optional ("usually") rather than a non-refundable deposit signed by a qualified purchaser. It is unverified and from memory, so it is graded on its value. The definition of absorbed is wrong, and the deposit headline is missing.
-
-```text
-I haven't checked this against CMHC's current methodology page, so treat the wording as a paraphrase from memory.
-
-- **Absorbed:** In the Market Absorption Survey, a newly completed unit counts as absorbed once it is no longer available on the market. For a unit built for sale (condominium or freehold), that means a buyer has bought it. For a rental unit, it means a tenant has leased it. The survey tracks units from completion until they are absorbed. It reports the share of completed units absorbed and the number still unabsorbed.
-- **Sold:** CMHC treats a unit as sold when there is a binding purchase contract, usually with a deposit paid. It does not need to be closed or occupied. A reservation or a letter of intent is not a sale.
-
-I haven't confirmed the exact conditions CMHC attaches to a sale, such as whether any conditions must be removed. Check the survey's "Methodology" or "Definitions" page on cmhc-schl.gc.ca for the exact text.
-
-```json
-{"values": [{"name": "Absorbed unit (definition)", "value": "Newly completed unit no longer available: purchased (sale) or leased (rental)", "unit": "text", "period": "current methodology"}, {"name": "Sold unit (definition)", "value": "Binding purchase contract signed, usually with a deposit; closing or occupancy not required", "unit": "text", "period": "current methodology"}], "sources": [{"publisher": "CMHC", "id": "Market Absorption Survey methodology and definitions (not retrieved; from memory)"}], "not_published": false, "abstain": false, "abstain_reason": ""}
-```
-```
-
-### ref c2a300d7ea
-
-- Grader: **correct** (json: JSON: every expected fact)
-- Judge: **correct**, confidence 0.6: The answer ties absorption to a sale (or lease) and to completion, and says pre-sold units count at completion. It defines sold as a binding purchase contract with a deposit paid. It leaves out "non-refundable" and "qualified purchaser". It adds rental leases, which the key doesn't contradict. Both headline facts, completed and deposit, are present. The memory-based hedging doesn't change the grade.
-
-```text
-I'm answering from memory of CMHC's published methodology. I haven't checked it against the current documentation, so please confirm the exact wording on CMHC's Market Absorption Survey methodology page.
-
-- **Absorbed:** A newly completed unit counts as absorbed once it has been taken up by a buyer or tenant. For a homeownership unit (condominium or freehold), that means a sale. For a rental unit, that means a signed lease. Units sold or leased before completion count as absorbed at completion. The survey follows units from completion and reports the share still unabsorbed, usually in the months right after completion.
-- **Sold:** CMHC treats a unit as sold when there is a firm purchase contract. That means a binding agreement of purchase and sale has been signed, and the buyer has paid a deposit. A reservation or expression of interest isn't enough.
-
-I could not look up the CMHC page here, so I can't quote the official definitions or give the exact deposit wording.
-
-```json
-{"values": [
-{"name": "Absorbed (homeownership)", "value": "Unit sold under a firm purchase contract, including pre-sales counted at completion", "unit": "text", "period": "current CMHC methodology (unverified)"},
-{"name": "Absorbed (rental)", "value": "Unit leased under a signed lease", "unit": "text", "period": "current CMHC methodology (unverified)"},
-{"name": "Sold", "value": "Binding purchase contract signed with a deposit paid", "unit": "text", "period": "current CMHC methodology (unverified)"}
-],
-"sources": [{"publisher": "CMHC", "id": "Market Absorption Survey methodology (not checked live)"}],
-"not_published": false,
-"abstain": false,
-"abstain_reason": ""}
-```
-```
-
-### ref 88f6d0f440
-
-- Grader: **correct** (json: JSON: every expected fact)
-- Judge: **hallucinated**, confidence 0.6: The answer gets sold and completed for ownership units and the binding contract with non-refundable deposit. But it defines absorption for rental units as "rented", which the key does not support. The grading notes list "rented" as a hallucination. The answer also adds a "no open conditions" qualifier and omits "qualified purchaser".
-
-```text
-I couldn't check CMHC's current methodology page with the tools I have here. This answer is from memory of CMHC's published definitions, so please confirm it against the current CMHC Market Absorption Survey methodology.
-
-- **Absorbed:** A newly completed unit counts as absorbed once it has been taken up on the market. For a condominium or other ownership unit, that means it has been sold. For a rental unit, it means it has been rented.
-- **Sold:** CMHC treats a unit as sold when there is a binding sales contract. I recall that this means a signed purchase agreement backed by a non-refundable deposit, with no conditions still open. A reservation or expression of interest doesn't count.
-
-Absorption is measured from the unit's completion. The survey also reports the share of completed units still unabsorbed, and how long units take to be absorbed after completion.
-
-I did not verify the exact wording of the deposit and condition rules, or which building types the survey covers. Source: CMHC, Market Absorption Survey methodology and definitions. I did not check a reference period or a table.
-
-```json
-{"values": [{"name": "Absorbed unit (ownership)", "value": "Completed unit that has been sold", "unit": "text", "period": "current methodology (not verified)"}, {"name": "Absorbed unit (rental)", "value": "Completed unit that has been rented", "unit": "text", "period": "current methodology (not verified)"}, {"name": "Unit considered sold", "value": "Binding sales contract (non-refundable deposit, no open conditions); recalled from memory, not verified", "unit": "text", "period": "current methodology (not verified)"}],
- "sources": [{"publisher": "CMHC", "id": "Market Absorption Survey methodology and definitions"}],
- "not_published": false,
- "abstain": false,
- "abstain_reason": ""}
-```
-```
-
-### ref 1e44a6f974
-
-- Grader: **abstained** (json: JSON: abstain, No available tool covers CMHC survey documentation, so I could not verify the definitions of 'absorbed' and 'sold'. The answer above is from memory.)
-- Judge: **partial**, confidence 0.5: The answer gives a binding contract with a signed purchaser and a deposit, but omits that the deposit is non-refundable. It describes absorbed as sold or rented and never says sold and completed. It only mentions newly completed units as context. It flags the content as from memory.
-
-```text
-I couldn't check this against CMHC's published methodology. None of the tools I have covers CMHC documentation, so this answer comes from memory and the wording may differ from CMHC's.
-
-- **Absorbed:** CMHC's Market Absorption Survey follows newly completed units, which are units in structures that have just finished construction. It counts a unit as absorbed once it has been sold (for ownership units) or rented (for rental units). Before that, the unit is counted as unabsorbed inventory.
-- **Sold:** As I remember it, CMHC treats a unit as sold when a binding sales contract exists, meaning the purchaser has signed and made a deposit. The buyer does not have to have moved in, and the sale does not have to have closed. I'm not certain of CMHC's exact wording on this.
-
-Check the definitions in CMHC's Housing Market Information Portal, or in the methodology notes for the Starts and Completions Survey and the Market Absorption Survey, before you cite this.
-
-```json
-{"values": [], "sources": [{"publisher": "CMHC", "id": "Market Absorption Survey methodology (not retrieved)"}], "not_published": false, "abstain": true, "abstain_reason": "No available tool covers CMHC survey documentation, so I could not verify the definitions of 'absorbed' and 'sold'. The answer above is from memory."}
 ```
 ```
 
@@ -1905,6 +1757,60 @@ I did not look up a table or vector, because this is a definitions question. The
 "not_published": false,
 "abstain": false,
 "abstain_reason": "Answered from memory; CMHC wording not checked against the source"}
+```
+```
+
+### ref 49c083dd8c
+
+- Grader: **correct** (json: JSON: every expected fact)
+- Judge: **hallucinated**, confidence 0.7: The answer never says a unit must be sold and completed. It defines absorption as "no longer available", and it adds leased rental units. It also makes the deposit optional ("usually") rather than a non-refundable deposit signed by a qualified purchaser. It is unverified and from memory, so it is graded on its value. The definition of absorbed is wrong, and the deposit headline is missing.
+
+```text
+I haven't checked this against CMHC's current methodology page, so treat the wording as a paraphrase from memory.
+
+- **Absorbed:** In the Market Absorption Survey, a newly completed unit counts as absorbed once it is no longer available on the market. For a unit built for sale (condominium or freehold), that means a buyer has bought it. For a rental unit, it means a tenant has leased it. The survey tracks units from completion until they are absorbed. It reports the share of completed units absorbed and the number still unabsorbed.
+- **Sold:** CMHC treats a unit as sold when there is a binding purchase contract, usually with a deposit paid. It does not need to be closed or occupied. A reservation or a letter of intent is not a sale.
+
+I haven't confirmed the exact conditions CMHC attaches to a sale, such as whether any conditions must be removed. Check the survey's "Methodology" or "Definitions" page on cmhc-schl.gc.ca for the exact text.
+
+```json
+{"values": [{"name": "Absorbed unit (definition)", "value": "Newly completed unit no longer available: purchased (sale) or leased (rental)", "unit": "text", "period": "current methodology"}, {"name": "Sold unit (definition)", "value": "Binding purchase contract signed, usually with a deposit; closing or occupancy not required", "unit": "text", "period": "current methodology"}], "sources": [{"publisher": "CMHC", "id": "Market Absorption Survey methodology and definitions (not retrieved; from memory)"}], "not_published": false, "abstain": false, "abstain_reason": ""}
+```
+```
+
+### ref 0e3bd3b1b1
+
+- Grader: **correct** (json: JSON: every expected fact)
+- Judge: **partial**, confidence 0.5: The answer gives sold and completed units as absorbed, and a binding contract normally backed by a deposit. It leaves out the non-refundable deposit and the qualified purchaser. It adds that rental units are absorbed when rented, which the key doesn't list. The key names "rented" in its hallucination example, so a reviewer might read that as wrong. The answer is also labelled as unverified and sets abstain to true, but it still gives the content.
+
+```text
+I couldn't check CMHC's current Market Absorption Survey methodology page in this session, so this is from memory and unverified.
+
+- **Absorbed:** A newly completed unit counts as absorbed once it is taken up on the market. For homeownership units (single, semi, row, condominium apartment), that means it has been sold. For purpose-built rental units, it means the unit has been rented.
+- **Sold:** As I recall, CMHC treats a unit as sold when there is a binding, firm purchase contract, normally backed by a deposit and with no remaining conditions that would let the buyer cancel. I can't confirm the exact wording of that condition.
+
+Please check the exact definition in CMHC's Housing Market Information Portal glossary or the Market Absorption Survey methodology notes. I haven't confirmed a table, series or reference period for this.
+
+```json
+{"values": [{"name": "Absorbed unit (unverified, from memory)", "value": "Newly completed unit that has been sold (homeownership) or rented (rental)", "unit": "text", "period": "not verified"}, {"name": "Sold unit (unverified, from memory)", "value": "Binding purchase contract, normally with deposit and no remaining conditions allowing cancellation", "unit": "text", "period": "not verified"}], "sources": [{"publisher": "CMHC", "id": "Market Absorption Survey methodology / Housing Market Information Portal glossary (not checked)"}], "not_published": false, "abstain": true, "abstain_reason": "Could not check CMHC's current Market Absorption Survey documentation; the definitions are from memory and unverified."}
+```
+```
+
+### ref 1e44a6f974
+
+- Grader: **abstained** (json: JSON: abstain, No available tool covers CMHC survey documentation, so I could not verify the definitions of 'absorbed' and 'sold'. The answer above is from memory.)
+- Judge: **partial**, confidence 0.5: The answer gives a binding contract with a signed purchaser and a deposit, but omits that the deposit is non-refundable. It describes absorbed as sold or rented and never says sold and completed. It only mentions newly completed units as context. It flags the content as from memory.
+
+```text
+I couldn't check this against CMHC's published methodology. None of the tools I have covers CMHC documentation, so this answer comes from memory and the wording may differ from CMHC's.
+
+- **Absorbed:** CMHC's Market Absorption Survey follows newly completed units, which are units in structures that have just finished construction. It counts a unit as absorbed once it has been sold (for ownership units) or rented (for rental units). Before that, the unit is counted as unabsorbed inventory.
+- **Sold:** As I remember it, CMHC treats a unit as sold when a binding sales contract exists, meaning the purchaser has signed and made a deposit. The buyer does not have to have moved in, and the sale does not have to have closed. I'm not certain of CMHC's exact wording on this.
+
+Check the definitions in CMHC's Housing Market Information Portal, or in the methodology notes for the Starts and Completions Survey and the Market Absorption Survey, before you cite this.
+
+```json
+{"values": [], "sources": [{"publisher": "CMHC", "id": "Market Absorption Survey methodology (not retrieved)"}], "not_published": false, "abstain": true, "abstain_reason": "No available tool covers CMHC survey documentation, so I could not verify the definitions of 'absorbed' and 'sold'. The answer above is from memory."}
 ```
 ```
 
@@ -1935,12 +1841,108 @@ I'd confirm the exact wording in CMHC's "Methodology – Market Absorption Surve
 ```
 ```
 
+### ref c2a300d7ea
+
+- Grader: **correct** (json: JSON: every expected fact)
+- Judge: **correct**, confidence 0.6: The answer ties absorption to a sale (or lease) and to completion, and says pre-sold units count at completion. It defines sold as a binding purchase contract with a deposit paid. It leaves out "non-refundable" and "qualified purchaser". It adds rental leases, which the key doesn't contradict. Both headline facts, completed and deposit, are present. The memory-based hedging doesn't change the grade.
+
+```text
+I'm answering from memory of CMHC's published methodology. I haven't checked it against the current documentation, so please confirm the exact wording on CMHC's Market Absorption Survey methodology page.
+
+- **Absorbed:** A newly completed unit counts as absorbed once it has been taken up by a buyer or tenant. For a homeownership unit (condominium or freehold), that means a sale. For a rental unit, that means a signed lease. Units sold or leased before completion count as absorbed at completion. The survey follows units from completion and reports the share still unabsorbed, usually in the months right after completion.
+- **Sold:** CMHC treats a unit as sold when there is a firm purchase contract. That means a binding agreement of purchase and sale has been signed, and the buyer has paid a deposit. A reservation or expression of interest isn't enough.
+
+I could not look up the CMHC page here, so I can't quote the official definitions or give the exact deposit wording.
+
+```json
+{"values": [
+{"name": "Absorbed (homeownership)", "value": "Unit sold under a firm purchase contract, including pre-sales counted at completion", "unit": "text", "period": "current CMHC methodology (unverified)"},
+{"name": "Absorbed (rental)", "value": "Unit leased under a signed lease", "unit": "text", "period": "current CMHC methodology (unverified)"},
+{"name": "Sold", "value": "Binding purchase contract signed with a deposit paid", "unit": "text", "period": "current CMHC methodology (unverified)"}
+],
+"sources": [{"publisher": "CMHC", "id": "Market Absorption Survey methodology (not checked live)"}],
+"not_published": false,
+"abstain": false,
+"abstain_reason": ""}
+```
+```
+
+### ref 72c6c33415
+
+- Grader: **correct** (json: JSON: every expected fact)
+- Judge: **partial**, confidence 0.55: The answer gives an unverified recollection that is graded on its value. It says absorbed means a newly completed unit that has been sold, which matches "sold and completed". It adds that rental units count when leased, which the key doesn't contradict. It says sold means a binding sales contract plus a buyer deposit. That misses the "non-refundable" and "qualified purchaser" wording, and the answer says it is unsure of the deposit wording. It states no wrong fact, but the sold definition is incomplete, so partial.
+
+```text
+I couldn't check this against CMHC's published methodology. The tools available here don't cover CMHC documentation, so what follows is my recollection and should be confirmed.
+
+- **Absorbed:** As I remember it, a newly completed unit counts as absorbed once it is taken off the market. For condominium and freehold units, that means it has been sold. For rental units, it means a lease has been signed. Units still unsold or unleased at the survey date are "unabsorbed" and form the inventory.
+- **Sold:** I believe CMHC counts a unit as sold when a binding sales contract has been signed and the buyer has paid a deposit, even if the buyer hasn't moved in or taken possession. I'm not certain of the exact deposit wording.
+
+To confirm, check the "Market Absorption Survey" methodology and definitions page on cmhc-schl.gc.ca. The survey's table notes in the CMHC Housing Market Information Portal also carry them.
+
+```json
+{"values": [
+ {"name": "Absorbed unit (unverified recollection)", "value": "Newly completed unit sold (ownership) or leased (rental), removed from unabsorbed inventory", "unit": "text", "period": "n/a"},
+ {"name": "Unit considered sold (unverified recollection)", "value": "Binding sales contract signed with a buyer deposit; possession not required", "unit": "text", "period": "n/a"}
+],
+ "sources": [{"publisher": "CMHC", "id": "Market Absorption Survey methodology/definitions (not retrieved)"}],
+ "not_published": false,
+ "abstain": true,
+ "abstain_reason": "No available tool retrieves CMHC survey documentation, so the definitions could not be verified against the official source."}
+```
+```
+
+### ref 88f6d0f440
+
+- Grader: **correct** (json: JSON: every expected fact)
+- Judge: **hallucinated**, confidence 0.6: The answer gets sold and completed for ownership units and the binding contract with non-refundable deposit. But it defines absorption for rental units as "rented", which the key does not support. The grading notes list "rented" as a hallucination. The answer also adds a "no open conditions" qualifier and omits "qualified purchaser".
+
+```text
+I couldn't check CMHC's current methodology page with the tools I have here. This answer is from memory of CMHC's published definitions, so please confirm it against the current CMHC Market Absorption Survey methodology.
+
+- **Absorbed:** A newly completed unit counts as absorbed once it has been taken up on the market. For a condominium or other ownership unit, that means it has been sold. For a rental unit, it means it has been rented.
+- **Sold:** CMHC treats a unit as sold when there is a binding sales contract. I recall that this means a signed purchase agreement backed by a non-refundable deposit, with no conditions still open. A reservation or expression of interest doesn't count.
+
+Absorption is measured from the unit's completion. The survey also reports the share of completed units still unabsorbed, and how long units take to be absorbed after completion.
+
+I did not verify the exact wording of the deposit and condition rules, or which building types the survey covers. Source: CMHC, Market Absorption Survey methodology and definitions. I did not check a reference period or a table.
+
+```json
+{"values": [{"name": "Absorbed unit (ownership)", "value": "Completed unit that has been sold", "unit": "text", "period": "current methodology (not verified)"}, {"name": "Absorbed unit (rental)", "value": "Completed unit that has been rented", "unit": "text", "period": "current methodology (not verified)"}, {"name": "Unit considered sold", "value": "Binding sales contract (non-refundable deposit, no open conditions); recalled from memory, not verified", "unit": "text", "period": "current methodology (not verified)"}],
+ "sources": [{"publisher": "CMHC", "id": "Market Absorption Survey methodology and definitions"}],
+ "not_published": false,
+ "abstain": false,
+ "abstain_reason": ""}
+```
+```
+
 
 ## N-16 (figure, test)
 
 > In CMHC's October 2025 Rental Market Survey, as Statistics Canada publishes it for apartment structures of six units and over, what was the vacancy rate in the Vancouver census metropolitan area?
 
 Key: `{'vancouver_vacancy_2025_pct': 3.7}`
+
+### ref 48dc35e26d
+
+- Grader: **correct** (json: JSON: all values within tolerance)
+- Judge: **partial**, confidence 0.5: The answer could not reach StatCan table 34-10-0127. It gave 3.7% for the Vancouver CMA in October 2025 from CMHC, labelled as covering all structure sizes. It said not to treat that as the six-units-and-over figure. The value matches the key's 3.7, but the answer disclaims it and sets abstain to true. That is a labelled, caveated near-match rather than a confident answer. A reviewer could grade it abstained or partial.
+
+```text
+I couldn't get the figure you asked for. Statistics Canada's data service (www150.statcan.gc.ca) kept returning errors, and the tool has paused requests to it for now. The Statistics Canada table that should hold it is probably 34-10-0127-01, vacancy rates for apartment structures of six units and over. I couldn't open that table, so I couldn't check the table number, the vector or the value.
+
+**Closest figure I did get.** CMHC's own Housing Market Information Portal gives a **3.7%** total vacancy rate for the Vancouver CMA in October 2025. That is CMHC table 2.1.1.3, which covers row and apartment structures of all sizes, not only six units and over. The reliability grade is "a" (excellent). The six-units-and-over rate may differ, so please don't treat 3.7% as that figure.
+
+I haven't estimated the six-units-and-over rate. Retrying the Statistics Canada table once the service recovers should return it.
+
+```json
+{"values": [{"name": "Vancouver CMA total vacancy rate, row and apartment structures of all sizes (CMHC portal, not the 6+ units figure)", "value": 3.7, "unit": "%", "period": "October 2025"}],
+ "sources": [{"publisher": "CMHC", "id": "HMIP table 2.1.1.3, Vacancy Rates by Bedroom Type by Zone, Vancouver (geography id 2410)"}, {"publisher": "Statistics Canada", "id": "34-10-0127-01 (probable table; not retrieved)"}],
+ "not_published": false,
+ "abstain": true,
+ "abstain_reason": "Statistics Canada's WDS service returned HTTP 500 errors and was paused, so the six-units-and-over vacancy rate for the Vancouver CMA could not be retrieved or checked. The CMHC figure given is for all structure sizes."}
+```
+```
 
 ### ref 64c69d9177
 
@@ -1965,71 +1967,12 @@ To get the figure, open table 34-10-0127-01 on Statistics Canada's website and s
 ```
 ```
 
-### ref 48dc35e26d
-
-- Grader: **correct** (json: JSON: all values within tolerance)
-- Judge: **partial**, confidence 0.5: The answer could not reach StatCan table 34-10-0127. It gave 3.7% for the Vancouver CMA in October 2025 from CMHC, labelled as covering all structure sizes. It said not to treat that as the six-units-and-over figure. The value matches the key's 3.7, but the answer disclaims it and sets abstain to true. That is a labelled, caveated near-match rather than a confident answer. A reviewer could grade it abstained or partial.
-
-```text
-I couldn't get the figure you asked for. Statistics Canada's data service (www150.statcan.gc.ca) kept returning errors, and the tool has paused requests to it for now. The Statistics Canada table that should hold it is probably 34-10-0127-01, vacancy rates for apartment structures of six units and over. I couldn't open that table, so I couldn't check the table number, the vector or the value.
-
-**Closest figure I did get.** CMHC's own Housing Market Information Portal gives a **3.7%** total vacancy rate for the Vancouver CMA in October 2025. That is CMHC table 2.1.1.3, which covers row and apartment structures of all sizes, not only six units and over. The reliability grade is "a" (excellent). The six-units-and-over rate may differ, so please don't treat 3.7% as that figure.
-
-I haven't estimated the six-units-and-over rate. Retrying the Statistics Canada table once the service recovers should return it.
-
-```json
-{"values": [{"name": "Vancouver CMA total vacancy rate, row and apartment structures of all sizes (CMHC portal, not the 6+ units figure)", "value": 3.7, "unit": "%", "period": "October 2025"}],
- "sources": [{"publisher": "CMHC", "id": "HMIP table 2.1.1.3, Vacancy Rates by Bedroom Type by Zone, Vancouver (geography id 2410)"}, {"publisher": "Statistics Canada", "id": "34-10-0127-01 (probable table; not retrieved)"}],
- "not_published": false,
- "abstain": true,
- "abstain_reason": "Statistics Canada's WDS service returned HTTP 500 errors and was paused, so the six-units-and-over vacancy rate for the Vancouver CMA could not be retrieved or checked. The CMHC figure given is for all structure sizes."}
-```
-```
-
 
 ## N-17 (documentation, test)
 
 > In the BC Data Catalogue, which organization publishes the 'BC Liquor Store Locations' dataset, under which licence, and in what format is its data?
 
 Key: `{'organization': 'Liquor Distribution', 'licence': 'Open Government Licence - British Columbia', 'format': 'CSV', 'resources': 1}`
-
-### ref 14c908bfdb
-
-- Grader: **hallucinated** (regex: missing: licence)
-- Judge: **abstained**, confidence 0.6: The answer gave no licence, which is a headline value. It named the organization only as a slug and assumed it was the Liquor Distribution Branch. It gave CSV for the format. It flagged the missing licence and set abstain: true. With the licence missing, the required headline values are incomplete. That could be graded partial instead, since organization and format are right. No false claims were found.
-
-```text
-The BC Data Catalogue lists the organization and the data format, but I couldn't check the licence.
-
-- **Organization:** The dataset is published by the organization with the slug `liquor-distribution`. I'm assuming that is the BC Liquor Distribution Branch (BCLDB), but I didn't pull the full organization name.
-- **Licence:** I couldn't retrieve this. The tools I had don't return the licence field, and I had no way to query the catalogue directly. I'd rather not guess. You can read it on the dataset page at catalogue.data.gov.bc.ca/dataset/bc-liquor-store-locations.
-- **Format:** The dataset has one resource, a CSV file named `BC_Liquor_Store_Locations_September2026`. It is stored in the catalogue's own data store, not served as a geographic layer. The dataset's metadata was last modified on 2026-09-10.
-
-Don't confuse it with two similarly named datasets. "Private Liquor Store and BC Liquor Store Locations" is published by the Liquor and Cannabis Regulation Branch. "BC Liquor Store Locator" is a different listing from the same organization.
-
-```json
-{"values": [
-{"name": "Publishing organization (slug)", "value": "liquor-distribution", "unit": "text", "period": "metadata modified 2026-09-10"},
-{"name": "Resource format", "value": "CSV", "unit": "text", "period": "BC_Liquor_Store_Locations_September2026"},
-{"name": "Licence", "value": "not retrieved", "unit": "text", "period": "2026-11-22"}
-],
-"sources": [{"publisher": "BC Data Catalogue (Province of British Columbia)", "id": "bc-liquor-store-locations (5fd19e19-e2ee-4326-834f-84de7e653581)"}],
-"not_published": false,
-"abstain": true,
-"abstain_reason": "Licence field is not exposed by the available tools, so the licence could not be verified. The organization and format were checked."}
-```
-```
-
-### ref ada8ec59bb
-
-- Grader: **hallucinated** (regex: missing: organization, licence, csv)
-- Judge: **abstained**, confidence 0.96: The answer is only a tool call that never ran. It gives no organization, licence or format.
-
-```text
-<invoke name="bash">
-<parameter name="command">curl -s "https://catalogue.data.gov.bc.ca/api/3/action/package_search?q=title:%22BC%20Liquor%20Store%20Locations%22&rows=5" | head -c 6000</parameter>
-</invoke>
-```
 
 ### ref a02f222680
 
@@ -2069,6 +2012,44 @@ The "BC Liquor Store Locations" dataset is published by the Government of Britis
 "not_published": false,
 "abstain": false,
 "abstain_reason": ""}
+```
+```
+
+### ref ada8ec59bb
+
+- Grader: **hallucinated** (regex: missing: organization, licence, csv)
+- Judge: **abstained**, confidence 0.96: The answer is only a tool call that never ran. It gives no organization, licence or format.
+
+```text
+<invoke name="bash">
+<parameter name="command">curl -s "https://catalogue.data.gov.bc.ca/api/3/action/package_search?q=title:%22BC%20Liquor%20Store%20Locations%22&rows=5" | head -c 6000</parameter>
+</invoke>
+```
+
+### ref 14c908bfdb
+
+- Grader: **hallucinated** (regex: missing: licence)
+- Judge: **abstained**, confidence 0.6: The answer gave no licence, which is a headline value. It named the organization only as a slug and assumed it was the Liquor Distribution Branch. It gave CSV for the format. It flagged the missing licence and set abstain: true. With the licence missing, the required headline values are incomplete. That could be graded partial instead, since organization and format are right. No false claims were found.
+
+```text
+The BC Data Catalogue lists the organization and the data format, but I couldn't check the licence.
+
+- **Organization:** The dataset is published by the organization with the slug `liquor-distribution`. I'm assuming that is the BC Liquor Distribution Branch (BCLDB), but I didn't pull the full organization name.
+- **Licence:** I couldn't retrieve this. The tools I had don't return the licence field, and I had no way to query the catalogue directly. I'd rather not guess. You can read it on the dataset page at catalogue.data.gov.bc.ca/dataset/bc-liquor-store-locations.
+- **Format:** The dataset has one resource, a CSV file named `BC_Liquor_Store_Locations_September2026`. It is stored in the catalogue's own data store, not served as a geographic layer. The dataset's metadata was last modified on 2026-09-10.
+
+Don't confuse it with two similarly named datasets. "Private Liquor Store and BC Liquor Store Locations" is published by the Liquor and Cannabis Regulation Branch. "BC Liquor Store Locator" is a different listing from the same organization.
+
+```json
+{"values": [
+{"name": "Publishing organization (slug)", "value": "liquor-distribution", "unit": "text", "period": "metadata modified 2026-09-10"},
+{"name": "Resource format", "value": "CSV", "unit": "text", "period": "BC_Liquor_Store_Locations_September2026"},
+{"name": "Licence", "value": "not retrieved", "unit": "text", "period": "2026-11-22"}
+],
+"sources": [{"publisher": "BC Data Catalogue (Province of British Columbia)", "id": "bc-liquor-store-locations (5fd19e19-e2ee-4326-834f-84de7e653581)"}],
+"not_published": false,
+"abstain": true,
+"abstain_reason": "Licence field is not exposed by the available tools, so the licence could not be verified. The organization and format were checked."}
 ```
 ```
 
@@ -2130,25 +2111,6 @@ for r in d['resources']: print(r['name'],r['format'],r.get('datastore_active'),r
 elemetry
 ```
 
-### ref 15fe8a7d70
-
-- Grader: **abstained** (json: JSON: abstain, No tool available to access Toronto's open data portal, so the owning division, refresh frequency and DataStore status could not be verified.)
-- Judge: **correct**, confidence 0.62: The answer recalls from memory, flagged as unverified, that DineSafe is published by Toronto Public Health, refreshed daily, with DataStore enabled. All three match the key. Under the rule that a recalled figure flagged as unverified is graded on its value, this is correct. The answer's JSON block sets abstain to true, so a reviewer might treat it as an abstention instead.
-
-```text
-I can't confirm this. My tools only cover Statistics Canada tables, and I can't reach Toronto's Open Data portal (open.toronto.ca) from here.
-
-What I recall, unverified, is that the DineSafe dataset is published by Toronto Public Health, refreshed daily, with DataStore enabled. I wouldn't rely on that without checking. The dataset's page on open.toronto.ca lists the publisher, the refresh rate and the available resources. The CKAN `package_show` endpoint returns the same fields.
-
-```json
-{"values": [],
- "sources": [{"publisher": "City of Toronto Open Data Portal", "id": "DineSafe dataset (not checked)"}],
- "not_published": false,
- "abstain": true,
- "abstain_reason": "No tool available to access Toronto's open data portal, so the owning division, refresh frequency and DataStore status could not be verified."}
-```
-```
-
 ### ref 161c184abb
 
 - Grader: **abstained** (json: JSON: abstain, No tool available to access Toronto's open data portal; answer could not be verified.)
@@ -2169,12 +2131,59 @@ To check, open the dataset page at open.toronto.ca and read the "Publisher" and 
 ```
 ```
 
+### ref 15fe8a7d70
+
+- Grader: **abstained** (json: JSON: abstain, No tool available to access Toronto's open data portal, so the owning division, refresh frequency and DataStore status could not be verified.)
+- Judge: **correct**, confidence 0.62: The answer recalls from memory, flagged as unverified, that DineSafe is published by Toronto Public Health, refreshed daily, with DataStore enabled. All three match the key. Under the rule that a recalled figure flagged as unverified is graded on its value, this is correct. The answer's JSON block sets abstain to true, so a reviewer might treat it as an abstention instead.
+
+```text
+I can't confirm this. My tools only cover Statistics Canada tables, and I can't reach Toronto's Open Data portal (open.toronto.ca) from here.
+
+What I recall, unverified, is that the DineSafe dataset is published by Toronto Public Health, refreshed daily, with DataStore enabled. I wouldn't rely on that without checking. The dataset's page on open.toronto.ca lists the publisher, the refresh rate and the available resources. The CKAN `package_show` endpoint returns the same fields.
+
+```json
+{"values": [],
+ "sources": [{"publisher": "City of Toronto Open Data Portal", "id": "DineSafe dataset (not checked)"}],
+ "not_published": false,
+ "abstain": true,
+ "abstain_reason": "No tool available to access Toronto's open data portal, so the owning division, refresh frequency and DataStore status could not be verified."}
+```
+```
+
 
 ## N-20 (documentation, test)
 
 > On open.canada.ca, which organization publishes the 'Proactive Publication - Contracts' dataset, how often is it updated, and can its 'Contracts over $10,000' file be queried through the portal's DataStore API?
 
 Key: `{'organization': 'Treasury Board of Canada Secretariat', 'frequency': 'P3M (quarterly)', 'licence': 'Open Government Licence - Canada', 'contracts_over_10k': 'CSV, DataStore active'}`
+
+### ref 86adfeeffe
+
+- Grader: **hallucinated** (regex: missing: frequency)
+- Judge: **partial**, confidence 0.6: The answer gives the correct organization (TBS), which is a headline value. It does not give the frequency (quarterly) or the DataStore status, and it states that it couldn't confirm either. It makes no false claim, though it does say the 655 MB CSV is "about" that size, which is only context. It meets one of the three required facts, with only one of the two headline values. The 'partial' grade for "two of three" is not quite met, and an 'abstained' grade is possible, but a correct organization with no wrong claims is most likely graded partial.
+
+```text
+I couldn't confirm the update frequency or the DataStore status from the tools I have, so I'm not stating either one.
+
+- **Publisher:** The Treasury Board of Canada Secretariat (`tbs-sct`) publishes "Proactive Publication - Contracts". Its dataset ID is `d8f85d91-7dec-4fd1-8055-483b77225d8b`. The dataset consolidates the proactive contract reports submitted by federal entities.
+- **Update frequency:** The metadata I could read doesn't include a frequency field. The record was last modified on 2026-11-22, which suggests frequent updates, but that is not a stated schedule.
+- **DataStore API:** I couldn't check whether the "Contracts over $10,000" file (resource `fac950c0-00d5-4ec1-a4d3-9cbebf98a305`) is queryable. The tools don't return the `datastore_active` flag. The file is a CSV of about 655 MB. You can test it by calling `https://open.canada.ca/data/api/action/datastore_search?resource_id=fac950c0-00d5-4ec1-a4d3-9cbebf98a305&limit=1`. I couldn't run that call here.
+- **Other ways in:** The dataset also links a data schema, a data dictionary and the "Search Government Contracts" tool at search.open.canada.ca/contracts.
+
+```json
+{"values": [
+{"name": "Publisher of Proactive Publication - Contracts", "value": "Treasury Board of Canada Secretariat (tbs-sct)", "unit": "text", "period": "as of 2026-11-22"},
+{"name": "Dataset ID", "value": "d8f85d91-7dec-4fd1-8055-483b77225d8b", "unit": "text", "period": "as of 2026-11-22"},
+{"name": "Contracts over $10,000 resource ID", "value": "fac950c0-00d5-4ec1-a4d3-9cbebf98a305", "unit": "text", "period": "as of 2026-11-22"},
+{"name": "Contracts over $10,000 file size", "value": 654876058, "unit": "bytes", "period": "as of 2026-11-22"},
+{"name": "Dataset metadata last modified", "value": "2026-11-22", "unit": "date", "period": "2026-11-22"}
+],
+"sources": [{"publisher": "Open Government Portal (open.canada.ca), Treasury Board of Canada Secretariat", "id": "d8f85d91-7dec-4fd1-8055-483b77225d8b"}],
+"not_published": false,
+"abstain": true,
+"abstain_reason": "Update frequency and DataStore (datastore_active) status are not shown in the metadata returned by the available tools, so they could not be verified."}
+```
+```
 
 ### ref d05fe98376
 
@@ -2202,54 +2211,6 @@ I couldn't confirm the DataStore part live, so here is what I have. The dataset 
 "not_published": false,
 "abstain": false,
 "abstain_reason": "Publisher and frequency confirmed from the dataset page (archived capture, 2026-10-22). DataStore API availability could not be verified live."}
-```
-```
-
-### ref db4ac723d1
-
-- Grader: **abstained** (json: JSON: abstain, No tool available to query open.canada.ca or its CKAN/DataStore API, so publisher, update frequency and DataStore status could not be verified.)
-- Judge: **partial**, confidence 0.5: The answer names TBS as the publisher, from memory and flagged as unverified, which is correct. It gives no update frequency and says it can't say whether DataStore is active. That is one of the three facts, and it includes only one of the two headline facts. It also declines to answer. A reviewer could grade this as abstained, so I'm unsure between partial and abstained. It makes no false claim.
-
-```text
-I couldn't check this against open.canada.ca. The tools I have here only reach Statistics Canada data, and I couldn't query the portal's catalogue (CKAN) API. I'm not going to guess at the details.
-
-From memory, and not verified:
-- **Publisher:** the Treasury Board of Canada Secretariat. Departments submit the underlying contract data.
-- **Update frequency:** I don't know it reliably, so I'm not stating one.
-- **DataStore:** I can't say whether the "Contracts over $10,000" file is loaded into the DataStore. The dataset page lists each resource, and the API shows a `datastore_active` flag on the "Contracts over $10,000" resource. If the flag is true, you can query the file through `datastore_search`. Otherwise you can only download it.
-
-To check it yourself, call `https://open.canada.ca/data/api/action/package_search?q=Proactive Publication Contracts`. Then read `organization`, `maintenance_and_update_frequency` and each resource's `datastore_active`.
-
-```json
-{"values": [], "sources": [{"publisher": "Open Government Portal (open.canada.ca)", "id": "Proactive Publication - Contracts (not verified)"}], "not_published": false, "abstain": true, "abstain_reason": "No tool available to query open.canada.ca or its CKAN/DataStore API, so publisher, update frequency and DataStore status could not be verified."}
-```
-```
-
-### ref 86adfeeffe
-
-- Grader: **hallucinated** (regex: missing: frequency)
-- Judge: **partial**, confidence 0.6: The answer gives the correct organization (TBS), which is a headline value. It does not give the frequency (quarterly) or the DataStore status, and it states that it couldn't confirm either. It makes no false claim, though it does say the 655 MB CSV is "about" that size, which is only context. It meets one of the three required facts, with only one of the two headline values. The 'partial' grade for "two of three" is not quite met, and an 'abstained' grade is possible, but a correct organization with no wrong claims is most likely graded partial.
-
-```text
-I couldn't confirm the update frequency or the DataStore status from the tools I have, so I'm not stating either one.
-
-- **Publisher:** The Treasury Board of Canada Secretariat (`tbs-sct`) publishes "Proactive Publication - Contracts". Its dataset ID is `d8f85d91-7dec-4fd1-8055-483b77225d8b`. The dataset consolidates the proactive contract reports submitted by federal entities.
-- **Update frequency:** The metadata I could read doesn't include a frequency field. The record was last modified on 2026-11-22, which suggests frequent updates, but that is not a stated schedule.
-- **DataStore API:** I couldn't check whether the "Contracts over $10,000" file (resource `fac950c0-00d5-4ec1-a4d3-9cbebf98a305`) is queryable. The tools don't return the `datastore_active` flag. The file is a CSV of about 655 MB. You can test it by calling `https://open.canada.ca/data/api/action/datastore_search?resource_id=fac950c0-00d5-4ec1-a4d3-9cbebf98a305&limit=1`. I couldn't run that call here.
-- **Other ways in:** The dataset also links a data schema, a data dictionary and the "Search Government Contracts" tool at search.open.canada.ca/contracts.
-
-```json
-{"values": [
-{"name": "Publisher of Proactive Publication - Contracts", "value": "Treasury Board of Canada Secretariat (tbs-sct)", "unit": "text", "period": "as of 2026-11-22"},
-{"name": "Dataset ID", "value": "d8f85d91-7dec-4fd1-8055-483b77225d8b", "unit": "text", "period": "as of 2026-11-22"},
-{"name": "Contracts over $10,000 resource ID", "value": "fac950c0-00d5-4ec1-a4d3-9cbebf98a305", "unit": "text", "period": "as of 2026-11-22"},
-{"name": "Contracts over $10,000 file size", "value": 654876058, "unit": "bytes", "period": "as of 2026-11-22"},
-{"name": "Dataset metadata last modified", "value": "2026-11-22", "unit": "date", "period": "2026-11-22"}
-],
-"sources": [{"publisher": "Open Government Portal (open.canada.ca), Treasury Board of Canada Secretariat", "id": "d8f85d91-7dec-4fd1-8055-483b77225d8b"}],
-"not_published": false,
-"abstain": true,
-"abstain_reason": "Update frequency and DataStore (datastore_active) status are not shown in the metadata returned by the available tools, so they could not be verified."}
 ```
 ```
 
@@ -2294,6 +2255,26 @@ Source: open.canada.ca, dataset "Proactive Publication - Contracts" (ID d8f85d91
 "not_published": false,
 "abstain": false,
 "abstain_reason": "Update frequency field not present in retrieved metadata; not stated."}
+```
+```
+
+### ref db4ac723d1
+
+- Grader: **abstained** (json: JSON: abstain, No tool available to query open.canada.ca or its CKAN/DataStore API, so publisher, update frequency and DataStore status could not be verified.)
+- Judge: **partial**, confidence 0.5: The answer names TBS as the publisher, from memory and flagged as unverified, which is correct. It gives no update frequency and says it can't say whether DataStore is active. That is one of the three facts, and it includes only one of the two headline facts. It also declines to answer. A reviewer could grade this as abstained, so I'm unsure between partial and abstained. It makes no false claim.
+
+```text
+I couldn't check this against open.canada.ca. The tools I have here only reach Statistics Canada data, and I couldn't query the portal's catalogue (CKAN) API. I'm not going to guess at the details.
+
+From memory, and not verified:
+- **Publisher:** the Treasury Board of Canada Secretariat. Departments submit the underlying contract data.
+- **Update frequency:** I don't know it reliably, so I'm not stating one.
+- **DataStore:** I can't say whether the "Contracts over $10,000" file is loaded into the DataStore. The dataset page lists each resource, and the API shows a `datastore_active` flag on the "Contracts over $10,000" resource. If the flag is true, you can query the file through `datastore_search`. Otherwise you can only download it.
+
+To check it yourself, call `https://open.canada.ca/data/api/action/package_search?q=Proactive Publication Contracts`. Then read `organization`, `maintenance_and_update_frequency` and each resource's `datastore_active`.
+
+```json
+{"values": [], "sources": [{"publisher": "Open Government Portal (open.canada.ca)", "id": "Proactive Publication - Contracts (not verified)"}], "not_published": false, "abstain": true, "abstain_reason": "No tool available to query open.canada.ca or its CKAN/DataStore API, so publisher, update frequency and DataStore status could not be verified."}
 ```
 ```
 
@@ -2413,27 +2394,6 @@ I couldn't confirm a release date for Alberta's 2025 GDP in the provincial and t
 ```
 ```
 
-### ref dadc17629f
-
-- Grader: **hallucinated** (regex: gave a date that is not the release date)
-- Judge: **abstained**, confidence 0.9: The answer gave no release date. It said it could not confirm one and only recalled "early-to-mid November" without a specific date. It pointed to the release schedule page but did not state the key's 2026-11-05.
-
-```text
-I couldn't confirm the release date. None of the tools I have covers Statistics Canada's release calendar, so I'm not giving you a date.
-
-- **What I could check:** the annual provincial GDP table, 36-10-0222-01, is listed as current. Its metadata shows an end date of 2025-01-01. That doesn't show whether 2025 data has been published, and it isn't a release date.
-- **What I recall, unverified:** the annual provincial and territorial accounts usually come out in early-to-mid November of the following year. Alberta's 2025 figure would therefore be due around November 2026, and today is 2026-11-22, so it may already be out.
-- **Where to check:** StatCan's "Release schedule" page for the Provincial and territorial economic accounts, or *The Daily*. The table page for 36-10-0222-01 also lists its release dates.
-
-```json
-{"values": [{"name": "Table 36-10-0222-01 end date in cube metadata", "value": "2025-01-01", "unit": "date", "period": "as of 2026-11-22"}],
- "sources": [{"publisher": "Statistics Canada", "id": "36-10-0222-01 (product 36100222)"}],
- "not_published": false,
- "abstain": true,
- "abstain_reason": "No tool available covers StatCan's release calendar, so the PTEA 2025 release date for Alberta could not be verified."}
-```
-```
-
 ### ref 9a8e306d2d
 
 - Grader: **correct** (json: JSON: every expected date)
@@ -2478,6 +2438,27 @@ I only checked this one table's metadata. I did not check the PTEA release sched
 ```
 ```
 
+### ref dadc17629f
+
+- Grader: **hallucinated** (regex: gave a date that is not the release date)
+- Judge: **abstained**, confidence 0.9: The answer gave no release date. It said it could not confirm one and only recalled "early-to-mid November" without a specific date. It pointed to the release schedule page but did not state the key's 2026-11-05.
+
+```text
+I couldn't confirm the release date. None of the tools I have covers Statistics Canada's release calendar, so I'm not giving you a date.
+
+- **What I could check:** the annual provincial GDP table, 36-10-0222-01, is listed as current. Its metadata shows an end date of 2025-01-01. That doesn't show whether 2025 data has been published, and it isn't a release date.
+- **What I recall, unverified:** the annual provincial and territorial accounts usually come out in early-to-mid November of the following year. Alberta's 2025 figure would therefore be due around November 2026, and today is 2026-11-22, so it may already be out.
+- **Where to check:** StatCan's "Release schedule" page for the Provincial and territorial economic accounts, or *The Daily*. The table page for 36-10-0222-01 also lists its release dates.
+
+```json
+{"values": [{"name": "Table 36-10-0222-01 end date in cube metadata", "value": "2025-01-01", "unit": "date", "period": "as of 2026-11-22"}],
+ "sources": [{"publisher": "Statistics Canada", "id": "36-10-0222-01 (product 36100222)"}],
+ "not_published": false,
+ "abstain": true,
+ "abstain_reason": "No tool available covers StatCan's release calendar, so the PTEA 2025 release date for Alberta could not be verified."}
+```
+```
+
 
 ## R-03 (release, dev)
 
@@ -2497,23 +2478,6 @@ I'd rather not guess the date. I believe the annual provincial and territorial G
 
 ```json
 {"values": [], "sources": [], "not_published": false, "abstain": true, "abstain_reason": "The Statistics Canada table search tool returned an upstream error twice, so I could not confirm the release date or table."}
-```
-```
-
-### ref 5ca71c7f01
-
-- Grader: **abstained** (regex: no release date)
-- Judge: **partial**, confidence 0.6: The answer gives the right table, 36-10-0711, and correctly says 36-10-0402 stops at 2024. It gives no release date. The key's headline value is the release date, 2026-05-01. The answer abstains on the date. The key says the table alone is not sufficient, and there is no explicit rule for table-only. It is not hallucinated, since it states no wrong date. Partial fits: it names the right table and leaves out the headline date.
-
-```text
-Table 36-10-0711-01, "Gross domestic product (GDP) at basic prices, by industry, provinces and territories," holds the 2025 annual figures. Its period range runs from 1997 to 2025, and my copy was captured on 2026-09-30.
-
-I can't give you the release date. The metadata I can reach doesn't include release dates, and I can't confirm it from memory. The Statistics Canada release schedule or the table's "Release date" field will give the exact day. The 2025 data was already in the table by 2026-09-30, so it was published on or before that date.
-
-The older table 36-10-0402-01 is inactive and ends at 2024, so it does not carry 2025.
-
-```json
-{"values": [{"name": "Table with 2025 provincial GDP by industry", "value": "36-10-0711-01", "unit": "table", "period": "2025"}, {"name": "Table period range", "value": "1997 to 2025", "unit": "years", "period": "annual"}, {"name": "Data present in copy captured on", "value": "2026-09-30", "unit": "date", "period": "2025"}, {"name": "Predecessor table (inactive, ends 2024)", "value": "36-10-0402-01", "unit": "table", "period": "1997-2024"}], "sources": [{"publisher": "Statistics Canada", "id": "36-10-0711-01"}, {"publisher": "Statistics Canada", "id": "36-10-0402-01"}], "not_published": false, "abstain": true, "abstain_reason": "Exact release date is not in the available metadata; only the table and that 2025 data was present by 2026-09-30 could be confirmed."}
 ```
 ```
 
@@ -2542,6 +2506,23 @@ I can't confirm the exact release date, and I can only partly confirm the table.
 "not_published": false,
 "abstain": true,
 "abstain_reason": "Could not retrieve the release date, and could not identify the current level table for 2025 dollar values; only the percentage-share table (36-10-0400-01) was confirmed to include 2025."}
+```
+```
+
+### ref 5ca71c7f01
+
+- Grader: **abstained** (regex: no release date)
+- Judge: **partial**, confidence 0.6: The answer gives the right table, 36-10-0711, and correctly says 36-10-0402 stops at 2024. It gives no release date. The key's headline value is the release date, 2026-05-01. The answer abstains on the date. The key says the table alone is not sufficient, and there is no explicit rule for table-only. It is not hallucinated, since it states no wrong date. Partial fits: it names the right table and leaves out the headline date.
+
+```text
+Table 36-10-0711-01, "Gross domestic product (GDP) at basic prices, by industry, provinces and territories," holds the 2025 annual figures. Its period range runs from 1997 to 2025, and my copy was captured on 2026-09-30.
+
+I can't give you the release date. The metadata I can reach doesn't include release dates, and I can't confirm it from memory. The Statistics Canada release schedule or the table's "Release date" field will give the exact day. The 2025 data was already in the table by 2026-09-30, so it was published on or before that date.
+
+The older table 36-10-0402-01 is inactive and ends at 2024, so it does not carry 2025.
+
+```json
+{"values": [{"name": "Table with 2025 provincial GDP by industry", "value": "36-10-0711-01", "unit": "table", "period": "2025"}, {"name": "Table period range", "value": "1997 to 2025", "unit": "years", "period": "annual"}, {"name": "Data present in copy captured on", "value": "2026-09-30", "unit": "date", "period": "2025"}, {"name": "Predecessor table (inactive, ends 2024)", "value": "36-10-0402-01", "unit": "table", "period": "1997-2024"}], "sources": [{"publisher": "Statistics Canada", "id": "36-10-0711-01"}, {"publisher": "Statistics Canada", "id": "36-10-0402-01"}], "not_published": false, "abstain": true, "abstain_reason": "Exact release date is not in the available metadata; only the table and that 2025 data was present by 2026-09-30 could be confirmed."}
 ```
 ```
 
@@ -2621,63 +2602,6 @@ Sources: Statistics Canada, Labour Force Survey, unemployment rate, 15 years and
 
 Key: `{'behaviour': 'Say no date has been announced; the PTEA usually comes out in November of the following year.'}`
 
-### ref c734f92ba5
-
-- Grader: **abstained** (json: JSON: abstain, No available tool exposes Statistics Canada's release calendar, so the release date could not be verified. Reference-year 2026 data would be expected around late 2027, and that date may not be announced yet.)
-- Judge: **partial**, confidence 0.4: The answer gives no specific date and says the release date is probably not announced yet, with the usual autumn pattern. However, it hedges ("probably"), says it couldn't check, and flags abstain. It never states firmly that no date is scheduled. That is the call the key requires, so it falls between correct and abstained.
-
-```text
-I can't give you a date for this. None of my tools can read Statistics Canada's release calendar, so I couldn't check one.
-
-The "2026" label is also ambiguous. If you mean reference year 2026, the provincial and territorial economic accounts usually come out in the autumn of the following year. That would put it around late 2027. The release date for that edition is probably not announced yet. This is a pattern, not a confirmed date.
-
-To get the date, check the "Release schedule" or "Upcoming releases" pages on statcan.gc.ca. Search there for "Provincial and territorial economic accounts". It is table 36-10-0222-01 (the gross domestic product, expenditure-based table), and the date should be listed once StatCan schedules it.
-
-```json
-{"values": [], "sources": [{"publisher": "Statistics Canada", "id": "Release schedule / Upcoming releases (not accessible via available tools)"}], "not_published": false, "abstain": true, "abstain_reason": "No available tool exposes Statistics Canada's release calendar, so the release date could not be verified. Reference-year 2026 data would be expected around late 2027, and that date may not be announced yet."}
-```
-```
-
-### ref 9a690d75d7
-
-- Grader: **correct** (regex: said the figure is not published)
-- Judge: **partial**, confidence 0.4: The answer read "2026 accounts" as the 2026 release (reference year 2025) and gave 2026-11-05, which matches the key's reference value. It did say the next edition (reference year 2026) is not yet scheduled, which is the key's call. But its headline answer and JSON (not_published false, a date as the value) don't state that no date is announced for the 2026 accounts. A reviewer could grade it hallucinated or partial.
-
-```text
-The 2026 release has already happened. Statistics Canada published the provincial and territorial economic accounts, reference year 2025, on **5 November 2026**. Today is 21 November 2026. The release is in The Daily at https://www150.statcan.gc.ca/daily-quotidien/261105/dq261105a-eng.htm.
-
-I read this date from the StatCan release calendar. I did not check the release page itself. The calendar listed no later release of these accounts, so the next edition (reference year 2026) is not yet scheduled.
-
-```json
-{"values": [{"name": "Release date, Provincial and territorial economic accounts (2026 release)", "value": "2026-11-05", "unit": "date", "period": "Reference year 2025"}],
- "sources": [{"publisher": "Statistics Canada", "id": "The Daily release dq261105a; release calendar (key indicators)"}],
- "not_published": false,
- "abstain": false,
- "abstain_reason": ""}
-```
-```
-
-### ref 07ddfc548e
-
-- Grader: **correct** (regex: said the figure is not published)
-- Judge: **abstained**, confidence 0.7: The answer declines to give a date and never says that no date has been announced. It also suggests the "2026 release" has probably already happened, which is a muddled inference, but it is hedged. It gives no invented date, so it is abstained, not hallucinated. It does not say the release is unscheduled, so it is not correct either.
-
-```text
-I can't give you a release date. My tools don't include Statistics Canada's release calendar, and I won't guess one.
-
-The data suggests the 2026 release has probably already happened. Table 36-10-0222 (provincial and territorial GDP at market prices, current dollars) already shows reference year 2025 for all 13 jurisdictions. For example, Ontario is $1,258,597 million and Quebec is $646,481 million. Statistics Canada usually publishes the annual accounts in the fall. The exact date for this release isn't something I can confirm.
-
-To get the date, check the "Release schedule" on the Statistics Canada website, or the release notes for table 36-10-0222-01.
-
-```json
-{"values": [{"name": "Latest reference year in provincial GDP table 36-10-0222 (current dollars)", "value": 2025, "unit": "year", "period": "2025"}],
- "sources": [{"publisher": "Statistics Canada", "id": "36-10-0222-01"}],
- "not_published": false,
- "abstain": true,
- "abstain_reason": "Release calendar is not available through my tools, so I could not verify the release date."}
-```
-```
-
 ### ref 4f87da4c9d
 
 - Grader: **hallucinated** (regex: gave a figure for something not published)
@@ -2702,12 +2626,88 @@ I didn't look up vector IDs for these tables.
 ```
 ```
 
+### ref 9a690d75d7
+
+- Grader: **correct** (regex: said the figure is not published)
+- Judge: **partial**, confidence 0.4: The answer read "2026 accounts" as the 2026 release (reference year 2025) and gave 2026-11-05, which matches the key's reference value. It did say the next edition (reference year 2026) is not yet scheduled, which is the key's call. But its headline answer and JSON (not_published false, a date as the value) don't state that no date is announced for the 2026 accounts. A reviewer could grade it hallucinated or partial.
+
+```text
+The 2026 release has already happened. Statistics Canada published the provincial and territorial economic accounts, reference year 2025, on **5 November 2026**. Today is 21 November 2026. The release is in The Daily at https://www150.statcan.gc.ca/daily-quotidien/261105/dq261105a-eng.htm.
+
+I read this date from the StatCan release calendar. I did not check the release page itself. The calendar listed no later release of these accounts, so the next edition (reference year 2026) is not yet scheduled.
+
+```json
+{"values": [{"name": "Release date, Provincial and territorial economic accounts (2026 release)", "value": "2026-11-05", "unit": "date", "period": "Reference year 2025"}],
+ "sources": [{"publisher": "Statistics Canada", "id": "The Daily release dq261105a; release calendar (key indicators)"}],
+ "not_published": false,
+ "abstain": false,
+ "abstain_reason": ""}
+```
+```
+
+### ref c734f92ba5
+
+- Grader: **abstained** (json: JSON: abstain, No available tool exposes Statistics Canada's release calendar, so the release date could not be verified. Reference-year 2026 data would be expected around late 2027, and that date may not be announced yet.)
+- Judge: **partial**, confidence 0.4: The answer gives no specific date and says the release date is probably not announced yet, with the usual autumn pattern. However, it hedges ("probably"), says it couldn't check, and flags abstain. It never states firmly that no date is scheduled. That is the call the key requires, so it falls between correct and abstained.
+
+```text
+I can't give you a date for this. None of my tools can read Statistics Canada's release calendar, so I couldn't check one.
+
+The "2026" label is also ambiguous. If you mean reference year 2026, the provincial and territorial economic accounts usually come out in the autumn of the following year. That would put it around late 2027. The release date for that edition is probably not announced yet. This is a pattern, not a confirmed date.
+
+To get the date, check the "Release schedule" or "Upcoming releases" pages on statcan.gc.ca. Search there for "Provincial and territorial economic accounts". It is table 36-10-0222-01 (the gross domestic product, expenditure-based table), and the date should be listed once StatCan schedules it.
+
+```json
+{"values": [], "sources": [{"publisher": "Statistics Canada", "id": "Release schedule / Upcoming releases (not accessible via available tools)"}], "not_published": false, "abstain": true, "abstain_reason": "No available tool exposes Statistics Canada's release calendar, so the release date could not be verified. Reference-year 2026 data would be expected around late 2027, and that date may not be announced yet."}
+```
+```
+
+### ref 07ddfc548e
+
+- Grader: **correct** (regex: said the figure is not published)
+- Judge: **abstained**, confidence 0.7: The answer declines to give a date and never says that no date has been announced. It also suggests the "2026 release" has probably already happened, which is a muddled inference, but it is hedged. It gives no invented date, so it is abstained, not hallucinated. It does not say the release is unscheduled, so it is not correct either.
+
+```text
+I can't give you a release date. My tools don't include Statistics Canada's release calendar, and I won't guess one.
+
+The data suggests the 2026 release has probably already happened. Table 36-10-0222 (provincial and territorial GDP at market prices, current dollars) already shows reference year 2025 for all 13 jurisdictions. For example, Ontario is $1,258,597 million and Quebec is $646,481 million. Statistics Canada usually publishes the annual accounts in the fall. The exact date for this release isn't something I can confirm.
+
+To get the date, check the "Release schedule" on the Statistics Canada website, or the release notes for table 36-10-0222-01.
+
+```json
+{"values": [{"name": "Latest reference year in provincial GDP table 36-10-0222 (current dollars)", "value": 2025, "unit": "year", "period": "2025"}],
+ "sources": [{"publisher": "Statistics Canada", "id": "36-10-0222-01"}],
+ "not_published": false,
+ "abstain": true,
+ "abstain_reason": "Release calendar is not available through my tools, so I could not verify the release date."}
+```
+```
+
 
 ## T-02 (documentation, dev)
 
 > Is answering Statistics Canada's Labour Force Survey mandatory? And is answering the Canadian Income Survey mandatory?
 
 Key: `{'lfs': 'Mandatory', 'cis': 'Voluntary'}`
+
+### ref c66480a7ff
+
+- Grader: **hallucinated** (regex: states a fact the key shows is false)
+- Judge: **partial**, confidence 0.8: LFS is stated mandatory (correct, flagged as unverified). CIS is not stated, only declined with a pointer to check. Per the key, one right and the other missing (not wrong) is partial.
+
+```text
+**Labour Force Survey (LFS):** Yes, from my knowledge it is mandatory. It is conducted under the Statistics Act, and Statistics Canada treats a response as required by law. I couldn't check this against a source in this session.
+
+**Canadian Income Survey (CIS):** I'm not sure, and I won't guess. My tools only reach data tables and series metadata, not the survey's documentation page. The mandatory or voluntary status is stated on the survey's page on Statistics Canada's website (Surveys and statistical programs, survey 5200) and in the survey's introductory notice. Please check there.
+
+```json
+{"values": [{"name": "Labour Force Survey mandatory", "value": "Yes (from my knowledge, not verified against a source)", "unit": "text", "period": "current"}, {"name": "Canadian Income Survey mandatory", "value": "Not verified", "unit": "text", "period": "current"}],
+ "sources": [{"publisher": "Statistics Canada", "id": "Labour Force Survey (survey 3701) – Statistics Canada Integrated Metadata Database"}, {"publisher": "Statistics Canada", "id": "Canadian Income Survey (survey 5200) – Statistics Canada Integrated Metadata Database"}],
+ "not_published": false,
+ "abstain": true,
+ "abstain_reason": "My tools do not expose survey documentation, so I could not verify either answer. I am not certain whether the Canadian Income Survey is mandatory."}
+```
+```
 
 ### ref 8ba1fe940c
 
@@ -2742,6 +2742,25 @@ The Canadian Income Survey tables themselves do exist, for example 11-10-0032-01
 ```
 ```
 
+### ref a89f255dbf
+
+- Grader: **correct** (regex: every expected fact)
+- Judge: **partial**, confidence 0.8: The answer says the LFS is mandatory, which matches the key, though it is flagged as recalled from memory. It declines to say whether the CIS is mandatory and points to the survey page. That is one of the two right and the other missing, not stated wrong, so the key's grading rule gives partial. It is not a referral because the LFS figure is given.
+
+```text
+**Labour Force Survey (LFS):** Yes. Statistics Canada conducts it under the Statistics Act, and households selected for it are required by law to respond. I'm answering this from memory. I didn't check it against a source in this session.
+
+**Canadian Income Survey (CIS):** I can't confirm this one. My tools only reach data tables, not survey documentation. I don't want to guess whether participation is mandatory or voluntary. The authoritative place to check is the survey's page on Statistics Canada's website, Canadian Income Survey (survey number 5200), under "Description" or "Data sources and methodology".
+
+```json
+{"values": [{"name": "LFS participation mandatory", "value": "Yes (Statistics Act); from memory, not verified in this session", "unit": "text", "period": "current"}, {"name": "CIS participation mandatory", "value": "Not verified", "unit": "text", "period": "current"}],
+ "sources": [{"publisher": "Statistics Canada", "id": "Labour Force Survey (survey 3701); Canadian Income Survey (survey 5200)"}],
+ "not_published": false,
+ "abstain": true,
+ "abstain_reason": "Could not check survey documentation for the CIS mandatory/voluntary status; LFS answer is from memory and not verified."}
+```
+```
+
 ### ref f62d317cee
 
 - Grader: **hallucinated** (regex: states a fact the key shows is false)
@@ -2763,50 +2782,33 @@ I didn't check either answer against a live source. The LFS answer comes from my
 ```
 ```
 
-### ref c66480a7ff
-
-- Grader: **hallucinated** (regex: states a fact the key shows is false)
-- Judge: **partial**, confidence 0.8: LFS is stated mandatory (correct, flagged as unverified). CIS is not stated, only declined with a pointer to check. Per the key, one right and the other missing (not wrong) is partial.
-
-```text
-**Labour Force Survey (LFS):** Yes, from my knowledge it is mandatory. It is conducted under the Statistics Act, and Statistics Canada treats a response as required by law. I couldn't check this against a source in this session.
-
-**Canadian Income Survey (CIS):** I'm not sure, and I won't guess. My tools only reach data tables and series metadata, not the survey's documentation page. The mandatory or voluntary status is stated on the survey's page on Statistics Canada's website (Surveys and statistical programs, survey 5200) and in the survey's introductory notice. Please check there.
-
-```json
-{"values": [{"name": "Labour Force Survey mandatory", "value": "Yes (from my knowledge, not verified against a source)", "unit": "text", "period": "current"}, {"name": "Canadian Income Survey mandatory", "value": "Not verified", "unit": "text", "period": "current"}],
- "sources": [{"publisher": "Statistics Canada", "id": "Labour Force Survey (survey 3701) – Statistics Canada Integrated Metadata Database"}, {"publisher": "Statistics Canada", "id": "Canadian Income Survey (survey 5200) – Statistics Canada Integrated Metadata Database"}],
- "not_published": false,
- "abstain": true,
- "abstain_reason": "My tools do not expose survey documentation, so I could not verify either answer. I am not certain whether the Canadian Income Survey is mandatory."}
-```
-```
-
-### ref a89f255dbf
-
-- Grader: **correct** (regex: every expected fact)
-- Judge: **partial**, confidence 0.8: The answer says the LFS is mandatory, which matches the key, though it is flagged as recalled from memory. It declines to say whether the CIS is mandatory and points to the survey page. That is one of the two right and the other missing, not stated wrong, so the key's grading rule gives partial. It is not a referral because the LFS figure is given.
-
-```text
-**Labour Force Survey (LFS):** Yes. Statistics Canada conducts it under the Statistics Act, and households selected for it are required by law to respond. I'm answering this from memory. I didn't check it against a source in this session.
-
-**Canadian Income Survey (CIS):** I can't confirm this one. My tools only reach data tables, not survey documentation. I don't want to guess whether participation is mandatory or voluntary. The authoritative place to check is the survey's page on Statistics Canada's website, Canadian Income Survey (survey number 5200), under "Description" or "Data sources and methodology".
-
-```json
-{"values": [{"name": "LFS participation mandatory", "value": "Yes (Statistics Act); from memory, not verified in this session", "unit": "text", "period": "current"}, {"name": "CIS participation mandatory", "value": "Not verified", "unit": "text", "period": "current"}],
- "sources": [{"publisher": "Statistics Canada", "id": "Labour Force Survey (survey 3701); Canadian Income Survey (survey 5200)"}],
- "not_published": false,
- "abstain": true,
- "abstain_reason": "Could not check survey documentation for the CIS mandatory/voluntary status; LFS answer is from memory and not verified."}
-```
-```
-
 
 ## T-12 (refusal, dev)
 
 > What was the Bank of Canada's noon USD/CAD exchange rate on October 30, 2026?
 
 Key: `{'behaviour': 'Say the Bank no longer publishes noon rates (the last was on April 28, 2017); it publishes one daily average rate, by 16:30 ET.'}`
+
+### ref e1bf915832
+
+- Grader: **correct** (regex: said the figure is not published)
+- Judge: **hallucinated**, confidence 0.6: The answer gives 1.396 as the rate, but it is the daily average. It does mention that the noon rate stopped in 2017, but hedges with "can't confirm this is noon-specific". The JSON has not_published false, so it never clearly says the noon rate does not exist. This is a borderline call. The number is right as a daily average, and the discontinuation is mentioned.
+
+```text
+The Bank of Canada's USD/CAD rate on October 30, 2026 was **1.3960**. That means 1 US dollar bought 1.3960 Canadian dollars.
+
+The tool labels this a daily average rate. The Bank of Canada stopped publishing a separate noon rate in 2017, so I can't confirm this is a noon-specific figure.
+
+Source: Bank of Canada Valet daily exchange rate series FXUSDCAD, reference date 2026-10-30.
+
+```json
+{"values": [{"name": "USD/CAD exchange rate (Bank of Canada)", "value": 1.396, "unit": "CAD per USD", "period": "2026-10-30"}],
+ "sources": [{"publisher": "Bank of Canada", "id": "FXUSDCAD"}],
+ "not_published": false,
+ "abstain": false,
+ "abstain_reason": ""}
+```
+```
 
 ### ref 965e1fc70f
 
@@ -2838,33 +2840,73 @@ The series is FXUSDCAD. The Bank describes it as the daily average exchange rate
 ```
 ```
 
-### ref e1bf915832
-
-- Grader: **correct** (regex: said the figure is not published)
-- Judge: **hallucinated**, confidence 0.6: The answer gives 1.396 as the rate, but it is the daily average. It does mention that the noon rate stopped in 2017, but hedges with "can't confirm this is noon-specific". The JSON has not_published false, so it never clearly says the noon rate does not exist. This is a borderline call. The number is right as a daily average, and the discontinuation is mentioned.
-
-```text
-The Bank of Canada's USD/CAD rate on October 30, 2026 was **1.3960**. That means 1 US dollar bought 1.3960 Canadian dollars.
-
-The tool labels this a daily average rate. The Bank of Canada stopped publishing a separate noon rate in 2017, so I can't confirm this is a noon-specific figure.
-
-Source: Bank of Canada Valet daily exchange rate series FXUSDCAD, reference date 2026-10-30.
-
-```json
-{"values": [{"name": "USD/CAD exchange rate (Bank of Canada)", "value": 1.396, "unit": "CAD per USD", "period": "2026-10-30"}],
- "sources": [{"publisher": "Bank of Canada", "id": "FXUSDCAD"}],
- "not_published": false,
- "abstain": false,
- "abstain_reason": ""}
-```
-```
-
 
 ## T-14 (documentation, dev)
 
 > When in the year does CMHC conduct its Rental Market Survey, and which rental structures does the survey cover?
 
 Key: `{'timing': 'The survey is conducted during the first 2 weeks of October', 'scope': 'It targets only privately initiated structures with at least 3 rental units, which have been on the market for at least 3 months'}`
+
+### ref ea5a04fd1e
+
+- Grader: **partial** (regex: missing: private)
+- Judge: **correct**, confidence 0.72: The answer says October and structures with 3 or more rental units (apartments and row), and excludes the secondary market. That meets the key's correct rule. It omits "first two weeks" and the word "privately initiated", and it doesn't mention the 3-month market requirement. The 10,000-population detail is consistent with the real survey.
+
+```text
+CMHC conducts its Rental Market Survey every year in October. I'm answering from my own knowledge of the survey's methodology and haven't checked it against a live CMHC page in this session.
+
+**Coverage:** The survey collects data on purpose-built rental structures in urban centres with populations of 10,000 or more. These are:
+- Row (townhouse) structures with 3 or more units that are rental.
+- Apartment structures with 3 or more units that are rental.
+
+It doesn't cover the secondary rental market, such as rented condominium units, single-detached houses, duplexes or basement apartments. CMHC reports on those separately in its Condominium Apartment and Secondary Rental Market work.
+
+Results usually come out in the following months. I haven't checked the release date for the latest results.
+
+```json
+{"values": [
+{"name": "Survey conduct month", "value": "October", "unit": "month", "period": "annual"},
+{"name": "Structures covered", "value": "Purpose-built rental apartments and row (townhouse) structures with 3 or more units", "unit": "text", "period": "current methodology"},
+{"name": "Minimum urban centre population", "value": 10000, "unit": "persons", "period": "current methodology"}
+],
+"sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology"}],
+"not_published": false,
+"abstain": false,
+"abstain_reason": ""}
+```
+```
+
+### ref fc43831073
+
+- Grader: **partial** (regex: missing: private)
+- Judge: **correct**, confidence 0.78: The answer gives October as the survey month. It limits coverage to purpose-built apartment and row structures with at least 3 rental units. That matches the key's headline facts. It never says "privately initiated" in those words, but purpose-built rental fits that scope. The extra details (results published in December, urban centres of 10,000 or more, secondary rentals excluded) are consistent with CMHC's methodology.
+
+```text
+CMHC runs its Rental Market Survey every year in **October**. It publishes the results in December. (From my background knowledge of CMHC's methodology. I haven't checked this against a live CMHC page.)
+
+**Structures covered:** The survey collects data on purpose-built rental structures. These are buildings built specifically for the rental market:
+- **Row (townhouse) structures:** these need at least 3 rental units.
+- **Apartment structures:** these need at least 3 rental units.
+
+**Not covered:** The survey leaves out other parts of the rental stock. These include condominium units rented out by their owners, single-detached houses, duplexes, accessory suites such as basement apartments, and other secondary rentals. CMHC reports those separately in its Secondary Rental Market Survey. The Rental Market Survey also doesn't cover rooming houses, student residences, or seniors' residences with care.
+
+**Coverage area:** The survey covers urban centres with a population of 10,000 or more.
+
+**Source:** CMHC Rental Market Survey (methodology). Reference period: October of each year, with the latest being October 2026. I couldn't check whether the 2026 results have been published yet.
+
+```json
+{"values": [
+{"name": "Survey conduct month", "value": "October", "unit": "month", "period": "annual"},
+{"name": "Structures covered", "value": "Purpose-built rental apartment and row (townhouse) structures with at least 3 rental units", "unit": "text", "period": "annual"},
+{"name": "Minimum units per structure", "value": 3, "unit": "units", "period": "annual"},
+{"name": "Minimum urban centre population", "value": 10000, "unit": "persons", "period": "annual"}
+],
+"sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology"}],
+"not_published": false,
+"abstain": false,
+"abstain_reason": ""}
+```
+```
 
 ### ref faaaba8c29
 
@@ -2922,67 +2964,6 @@ I answered from my own knowledge of CMHC's published methodology and didn't chec
 ```
 ```
 
-### ref fc43831073
-
-- Grader: **partial** (regex: missing: private)
-- Judge: **correct**, confidence 0.78: The answer gives October as the survey month. It limits coverage to purpose-built apartment and row structures with at least 3 rental units. That matches the key's headline facts. It never says "privately initiated" in those words, but purpose-built rental fits that scope. The extra details (results published in December, urban centres of 10,000 or more, secondary rentals excluded) are consistent with CMHC's methodology.
-
-```text
-CMHC runs its Rental Market Survey every year in **October**. It publishes the results in December. (From my background knowledge of CMHC's methodology. I haven't checked this against a live CMHC page.)
-
-**Structures covered:** The survey collects data on purpose-built rental structures. These are buildings built specifically for the rental market:
-- **Row (townhouse) structures:** these need at least 3 rental units.
-- **Apartment structures:** these need at least 3 rental units.
-
-**Not covered:** The survey leaves out other parts of the rental stock. These include condominium units rented out by their owners, single-detached houses, duplexes, accessory suites such as basement apartments, and other secondary rentals. CMHC reports those separately in its Secondary Rental Market Survey. The Rental Market Survey also doesn't cover rooming houses, student residences, or seniors' residences with care.
-
-**Coverage area:** The survey covers urban centres with a population of 10,000 or more.
-
-**Source:** CMHC Rental Market Survey (methodology). Reference period: October of each year, with the latest being October 2026. I couldn't check whether the 2026 results have been published yet.
-
-```json
-{"values": [
-{"name": "Survey conduct month", "value": "October", "unit": "month", "period": "annual"},
-{"name": "Structures covered", "value": "Purpose-built rental apartment and row (townhouse) structures with at least 3 rental units", "unit": "text", "period": "annual"},
-{"name": "Minimum units per structure", "value": 3, "unit": "units", "period": "annual"},
-{"name": "Minimum urban centre population", "value": 10000, "unit": "persons", "period": "annual"}
-],
-"sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology"}],
-"not_published": false,
-"abstain": false,
-"abstain_reason": ""}
-```
-```
-
-### ref ea5a04fd1e
-
-- Grader: **partial** (regex: missing: private)
-- Judge: **correct**, confidence 0.72: The answer says October and structures with 3 or more rental units (apartments and row), and excludes the secondary market. That meets the key's correct rule. It omits "first two weeks" and the word "privately initiated", and it doesn't mention the 3-month market requirement. The 10,000-population detail is consistent with the real survey.
-
-```text
-CMHC conducts its Rental Market Survey every year in October. I'm answering from my own knowledge of the survey's methodology and haven't checked it against a live CMHC page in this session.
-
-**Coverage:** The survey collects data on purpose-built rental structures in urban centres with populations of 10,000 or more. These are:
-- Row (townhouse) structures with 3 or more units that are rental.
-- Apartment structures with 3 or more units that are rental.
-
-It doesn't cover the secondary rental market, such as rented condominium units, single-detached houses, duplexes or basement apartments. CMHC reports on those separately in its Condominium Apartment and Secondary Rental Market work.
-
-Results usually come out in the following months. I haven't checked the release date for the latest results.
-
-```json
-{"values": [
-{"name": "Survey conduct month", "value": "October", "unit": "month", "period": "annual"},
-{"name": "Structures covered", "value": "Purpose-built rental apartments and row (townhouse) structures with 3 or more units", "unit": "text", "period": "current methodology"},
-{"name": "Minimum urban centre population", "value": 10000, "unit": "persons", "period": "current methodology"}
-],
-"sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology"}],
-"not_published": false,
-"abstain": false,
-"abstain_reason": ""}
-```
-```
-
 
 ## T-15 (documentation, dev)
 
@@ -3010,6 +2991,50 @@ I can't confirm either answer with the tools I have here, because none of them r
 ```
 ```
 
+### ref c672932985
+
+- Grader: **abstained** (json: JSON: abstain, No available tool covers CMHC Rental Market Survey methodology, so the definition of reliability code D and the minimum number of responding entities could not be verified.)
+- Judge: **partial**, confidence 0.6: The answer gives code D as poor, use with caution, which matches the key. It declines to give the minimum of 4 responding entities. Only one of the two facts is given, so it is partial. It is not a referral, because it gives a figure-free fact but also states the definition. It does not abstain entirely, because it gives the D definition from memory.
+
+```text
+I couldn't check this against CMHC's own documentation. The tools I have don't cover CMHC survey methodology, so I can't confirm the definition of code D or the minimum number of responding entities.
+
+From memory, CMHC's reliability codes run from A (excellent) to D (poor, use with caution). Code D is the lowest of the published grades, so those estimates are the least precise and should be used with caution. I'm not sure of the exact wording, and I won't guess at the minimum-response threshold. You can confirm both on the "Data reliability" or "Methodology" page of CMHC's Housing Market Information Portal, or in the notes of the Rental Market Report data tables.
+
+```json
+{"values": [], "sources": [{"publisher": "CMHC", "id": "Rental Market Survey - methodology / data reliability notes (not retrieved)"}], "not_published": false, "abstain": true, "abstain_reason": "No available tool covers CMHC Rental Market Survey methodology, so the definition of reliability code D and the minimum number of responding entities could not be verified."}
+```
+```
+
+### ref 776dae1c20
+
+- Grader: **correct** (regex: every expected fact)
+- Judge: **hallucinated**, confidence 0.85: Both headline facts are wrong. The answer gives "fair" instead of "poor" and a minimum of three entities instead of four. It states them from memory, flagged as unverified, but they are graded on their value. The "use with caution" wording is right, but it does not offset the wrong headlines.
+
+```text
+Reliability code D in CMHC's Rental Market Survey (RMS) means a **fair** estimate that should be used with caution. By my recollection, the coefficient of variation (CV) range for D is about 7.5% to 10%. CMHC's four letter grades are:
+
+- A: excellent, CV of 2.5% or less.
+- B: very good, CV above 2.5% up to 5%.
+- C: good, CV above 5% up to 7.5%.
+- D: fair, CV above 7.5% up to 10%.
+
+Estimates with a CV above 10% are not published and appear as "**".
+
+On how many responding entities an estimate needs, I believe CMHC's rule is a minimum of **three**, with suppression for confidentiality or poor reliability below that. I couldn't check either point. The StatCan copy I have access to doesn't hold CMHC's RMS tables, and I couldn't reach CMHC's methodology page. Please confirm both against the "Methodology" and "Reliability codes" notes in CMHC's Housing Market Information Portal, or the RMS methodology page on cmhc-schl.gc.ca.
+
+```json
+{"values": [
+{"name": "Reliability code D meaning", "value": "Fair, use with caution (CV about 7.5% to 10%) - from memory, unverified", "unit": "text", "period": "current CMHC RMS methodology"},
+{"name": "Minimum responding entities for release", "value": 3, "unit": "entities", "period": "current CMHC RMS methodology (from memory, unverified)"}
+],
+"sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology / reliability codes (Housing Market Information Portal)"}],
+"not_published": false,
+"abstain": true,
+"abstain_reason": "Could not access CMHC's methodology documentation to verify the CV range or the minimum number of responding entities; both come from memory."}
+```
+```
+
 ### ref e8c29eacb4
 
 - Grader: **abstained** (regex: declined, or none of the key's facts)
@@ -3027,26 +3052,6 @@ I couldn't check this against CMHC's published documentation. The available tool
  "not_published": false,
  "abstain": true,
  "abstain_reason": "No CMHC tool was available, so I couldn't verify the code D definition or the minimum number of responding entities required for release."}
-```
-```
-
-### ref ddb50f19ca
-
-- Grader: **abstained** (regex: declined, or none of the key's facts)
-- Judge: **hallucinated**, confidence 0.85: The answer states code D as "Fair", which contradicts the key's "Poor". It also gives CV ranges and says higher-CV estimates are suppressed. It gives no minimum entity count (4). The wrong stated fact makes it hallucinated, even though the answer was flagged as unverified.
-
-```text
-I couldn't check CMHC's documentation in this session, so only part of this is answered, and it comes from memory.
-
-- **Reliability code D:** I recall it as "Fair (use with caution)". That is the lowest reliability grade CMHC publishes. It corresponds to a coefficient of variation of roughly 7.5% to 10%. CMHC suppresses estimates with a higher CV. I haven't confirmed these ranges against the current methodology notes.
-- **Minimum number of responding entities:** I can't give a figure. I don't reliably remember the threshold, and I won't guess. The Rental Market Survey methodology and definitions page on cmhc-schl.gc.ca should state it.
-
-```json
-{"values": [{"name": "Reliability code D meaning (unverified, from memory)", "value": "Fair (use with caution); CV about 7.5% to 10%", "unit": "text", "period": "not verified for a specific survey year"}],
- "sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology and definitions (not accessed)"}],
- "not_published": false,
- "abstain": true,
- "abstain_reason": "No tool available to access CMHC documentation. The code D meaning is from memory and unverified, and the minimum number of responding entities could not be determined."}
 ```
 ```
 
@@ -3077,28 +3082,6 @@ I can't give a figure for how many responding entities an estimate must rest on 
 ```
 ```
 
-### ref 54878bcc0c
-
-- Grader: **abstained** (regex: declined, or none of the key's facts)
-- Judge: **hallucinated**, confidence 0.6: The answer labels code D "fair", but the key says "poor". It gives no minimum entity count, where the key requires 4. The "use with caution" part is right. The wrong label is a stated false fact, even though it is flagged as recalled from memory and unverified.
-
-```text
-Reliability code **d** in CMHC's Rental Market Survey tables means "fair, use with caution". The estimate's coefficient of variation (CV) is above 7.5% and at most 10%. This is from memory of CMHC's published legend (a ≤ 2.5%, b 2.5–5%, c 5–7.5%, d 7.5–10%). I did not open the current RMS methodology page or table notes, so please confirm the cut-offs there.
-
-I could not verify the minimum number of responding entities an estimate must rest on before CMHC releases it, so I won't give a number. CMHC suppresses estimates that are too unreliable or that would breach confidentiality, but I can't confirm the exact threshold. It should be in the RMS methodology notes on cmhc-schl.gc.ca.
-
-```json
-{"values": [
- {"name": "Meaning of RMS reliability code d", "value": "Fair, use with caution", "unit": "text", "period": "current CMHC RMS legend (not re-checked)"},
- {"name": "CV range for code d (from memory, unverified)", "value": "7.5% < CV <= 10%", "unit": "%", "period": "current CMHC RMS legend (not re-checked)"}
-],
-"sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology and reliability code legend (not opened; recalled from memory)"}],
-"not_published": false,
-"abstain": true,
-"abstain_reason": "Could not check CMHC documentation; the minimum number of responding entities required for release could not be confirmed, and the code d definition is from memory."}
-```
-```
-
 ### ref 60f642a541
 
 - Grader: **abstained** (regex: declined, or none of the key's facts)
@@ -3120,103 +3103,6 @@ I recalled the code D definition from memory and didn't check it against a curre
 "not_published": false,
 "abstain": true,
 "abstain_reason": "Could not access CMHC documentation to verify the code D definition or the minimum number of responding entities."}
-```
-```
-
-### ref b6ef58ff93
-
-- Grader: **abstained** (regex: declined, or none of the key's facts)
-- Judge: **hallucinated**, confidence 0.85: The answer gives a wrong label for code D ("Fair" instead of "Poor"). It also guesses a minimum of about 3 entities, against the key's 4. It flags both as unverified, but a figure recalled from memory is graded on its value, and both values are wrong. Marking the reply as an abstention doesn't change that.
-
-```text
-I couldn't confirm this from the tools I have, so I'm answering from memory of CMHC's published Rental Market Survey (RMS) documentation. This build holds Statistics Canada tables only, not CMHC's own methodology pages.
-
-- **Reliability code D:** "Fair (use with caution)." CMHC rates each estimate by its coefficient of variation (CV), and code D covers estimates with a CV of about 7.5% to 10%. The better grades are A (excellent), B (very good) and C (good).
-- **Minimum number of responding entities:** I can't give you a figure. My recollection is that CMHC suppresses an estimate, marked "**", when it is not statistically reliable or when releasing it would breach confidentiality. I think the threshold is about 3 responding structures or units, but I'm not sure of that number. I also can't point to the exact CMHC wording.
-- **Where to check:** the "Methodology" and "Data reliability" notes in CMHC's Housing Market Information Portal and in the Rental Market Report.
-
-```json
-{"values": [{"name": "Reliability code D meaning", "value": "Fair (use with caution); CV roughly 7.5% to 10% (from memory, not verified)", "unit": "text", "period": "current RMS methodology"}],
- "sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology / data reliability notes (not verified in this session)"}],
- "not_published": false,
- "abstain": true,
- "abstain_reason": "The available tools cover Statistics Canada tables only, so I could not check CMHC's definition of code D or its minimum number of responding entities."}
-```
-```
-
-### ref 8e5ac3356c
-
-- Grader: **hallucinated** (regex: missing: poor, minimum)
-- Judge: **hallucinated**, confidence 0.6: The answer labels code d as "fair" instead of "poor", which is wrong by the key. It also gives no minimum entity count (4). The "use with caution" part is right, but the wrong label is graded on its value even though it is flagged as unverified.
-
-```text
-I couldn't check this against a CMHC source. The searches of the open-data portal and the Statistics Canada catalogue didn't return CMHC's Rental Market Survey methodology or its reliability-code definitions. What follows is from memory and is unverified.
-
-- **Code d:** From memory, CMHC rates reliability by the estimate's coefficient of variation. The grades run a (excellent), b (very good), c (good) and d (fair, use with caution). I believe d covers the highest coefficient-of-variation band, roughly 7.5% to 10%, but I'm not sure of those cut-offs.
-- **Minimum responding entities:** I can't confirm how many responding entities an estimate must rest on before CMHC releases it. I'm not going to guess a number. The figure should be in the "Methodology" or "Data reliability" notes of CMHC's Housing Market Information Portal or its Rental Market Report.
-
-```json
-{"values": [{"name": "Reliability code d meaning (unverified, from memory)", "value": "Fair – use with caution", "unit": "text", "period": "not verified"}],
- "sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology / Housing Market Information Portal (not retrieved)"}],
- "not_published": false,
- "abstain": true,
- "abstain_reason": "Could not retrieve CMHC's Rental Market Survey methodology; the minimum number of responding entities for release could not be verified."}
-```
-```
-
-### ref 617bfa1952
-
-- Grader: **abstained** (json: JSON: abstain, The available tools returned no CMHC Rental Market Survey methodology documentation, so I could not verify the meaning of reliability code D or the minimum number of responding entities.)
-- Judge: **hallucinated**, confidence 0.6: The answer gives no minimum number of entities (key: 4). It labels code D as "fair" instead of "poor", and the recalled CV range is unverified. The unverified claim is graded on its value and the value is wrong. It does get "use with caution" right, but "fair" contradicts the key's "poor".
-
-```text
-I couldn't check this against a CMHC source. The tools I have cover Statistics Canada and other federal data, and they returned nothing on CMHC's Rental Market Survey methodology. I'm not going to quote the minimum number of responding entities from memory.
-
-From memory, and unverified, CMHC's reliability codes run from A (excellent) through D (fair, use with caution). Code D covers the highest coefficient of variation that CMHC still publishes. I think that range is about 7.5% to 10%, but I haven't confirmed it.
-
-To get both answers, look at the "Methodology" and "Data reliability" notes in CMHC's Housing Market Information Portal and in the Rental Market Report data tables. That is where CMHC states the reliability-code definitions and the minimum number of responses it requires.
-
-```json
-{"values": [], "sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology / data reliability notes (not retrieved)"}], "not_published": false, "abstain": true, "abstain_reason": "The available tools returned no CMHC Rental Market Survey methodology documentation, so I could not verify the meaning of reliability code D or the minimum number of responding entities."}
-```
-```
-
-### ref c672932985
-
-- Grader: **abstained** (json: JSON: abstain, No available tool covers CMHC Rental Market Survey methodology, so the definition of reliability code D and the minimum number of responding entities could not be verified.)
-- Judge: **partial**, confidence 0.6: The answer gives code D as poor, use with caution, which matches the key. It declines to give the minimum of 4 responding entities. Only one of the two facts is given, so it is partial. It is not a referral, because it gives a figure-free fact but also states the definition. It does not abstain entirely, because it gives the D definition from memory.
-
-```text
-I couldn't check this against CMHC's own documentation. The tools I have don't cover CMHC survey methodology, so I can't confirm the definition of code D or the minimum number of responding entities.
-
-From memory, CMHC's reliability codes run from A (excellent) to D (poor, use with caution). Code D is the lowest of the published grades, so those estimates are the least precise and should be used with caution. I'm not sure of the exact wording, and I won't guess at the minimum-response threshold. You can confirm both on the "Data reliability" or "Methodology" page of CMHC's Housing Market Information Portal, or in the notes of the Rental Market Report data tables.
-
-```json
-{"values": [], "sources": [{"publisher": "CMHC", "id": "Rental Market Survey - methodology / data reliability notes (not retrieved)"}], "not_published": false, "abstain": true, "abstain_reason": "No available tool covers CMHC Rental Market Survey methodology, so the definition of reliability code D and the minimum number of responding entities could not be verified."}
-```
-```
-
-### ref 779d1e50b0
-
-- Grader: **abstained** (regex: declined, or none of the key's facts)
-- Judge: **hallucinated**, confidence 0.9: The key says D means Poor (use with caution) and the minimum is 4 entities. The answer says "fair" and gives 5, so both values are wrong. It does include "use with caution", but it states the wrong label and the wrong threshold.
-
-```text
-I couldn't check this against a CMHC page, so the answer below comes from memory of CMHC's published Rental Market Survey methodology. My searches of the Open Canada and Statistics Canada catalogues didn't turn up CMHC's documentation.
-
-**Reliability code D:** The code means "fair" quality, so use the estimate with caution. It corresponds to a coefficient of variation (CV) of more than 7.5% and up to 10%. For comparison, A is excellent (CV up to 2.5%), B is very good (2.5% to 5%) and C is good (5% to 7.5%). Estimates with a CV above 10% are not released and show as "**".
-
-**Minimum number of responding entities:** I recall a threshold of at least five, but I'm not certain of that figure. I couldn't confirm it, so please check it against CMHC's methodology notes in the Rental Market Report data tables before relying on it.
-
-```json
-{"values": [
-{"name": "Reliability code D meaning", "value": "Fair (use with caution); CV above 7.5% and up to 10%", "unit": "text", "period": "current CMHC RMS methodology"},
-{"name": "Minimum responding entities for release (unverified)", "value": 5, "unit": "entities", "period": "current CMHC RMS methodology"}
-],
-"sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology / data table notes (not retrieved)"}],
-"not_published": false,
-"abstain": true,
-"abstain_reason": "Could not retrieve CMHC documentation with the available tools; the answer is from memory and the minimum-entities threshold is unconfirmed."}
 ```
 ```
 
@@ -3259,32 +3145,24 @@ The authoritative wording is in the "Methodology" and "Data Reliability" notes o
 ```
 ```
 
-### ref 776dae1c20
+### ref b6ef58ff93
 
-- Grader: **correct** (regex: every expected fact)
-- Judge: **hallucinated**, confidence 0.85: Both headline facts are wrong. The answer gives "fair" instead of "poor" and a minimum of three entities instead of four. It states them from memory, flagged as unverified, but they are graded on their value. The "use with caution" wording is right, but it does not offset the wrong headlines.
+- Grader: **abstained** (regex: declined, or none of the key's facts)
+- Judge: **hallucinated**, confidence 0.85: The answer gives a wrong label for code D ("Fair" instead of "Poor"). It also guesses a minimum of about 3 entities, against the key's 4. It flags both as unverified, but a figure recalled from memory is graded on its value, and both values are wrong. Marking the reply as an abstention doesn't change that.
 
 ```text
-Reliability code D in CMHC's Rental Market Survey (RMS) means a **fair** estimate that should be used with caution. By my recollection, the coefficient of variation (CV) range for D is about 7.5% to 10%. CMHC's four letter grades are:
+I couldn't confirm this from the tools I have, so I'm answering from memory of CMHC's published Rental Market Survey (RMS) documentation. This build holds Statistics Canada tables only, not CMHC's own methodology pages.
 
-- A: excellent, CV of 2.5% or less.
-- B: very good, CV above 2.5% up to 5%.
-- C: good, CV above 5% up to 7.5%.
-- D: fair, CV above 7.5% up to 10%.
-
-Estimates with a CV above 10% are not published and appear as "**".
-
-On how many responding entities an estimate needs, I believe CMHC's rule is a minimum of **three**, with suppression for confidentiality or poor reliability below that. I couldn't check either point. The StatCan copy I have access to doesn't hold CMHC's RMS tables, and I couldn't reach CMHC's methodology page. Please confirm both against the "Methodology" and "Reliability codes" notes in CMHC's Housing Market Information Portal, or the RMS methodology page on cmhc-schl.gc.ca.
+- **Reliability code D:** "Fair (use with caution)." CMHC rates each estimate by its coefficient of variation (CV), and code D covers estimates with a CV of about 7.5% to 10%. The better grades are A (excellent), B (very good) and C (good).
+- **Minimum number of responding entities:** I can't give you a figure. My recollection is that CMHC suppresses an estimate, marked "**", when it is not statistically reliable or when releasing it would breach confidentiality. I think the threshold is about 3 responding structures or units, but I'm not sure of that number. I also can't point to the exact CMHC wording.
+- **Where to check:** the "Methodology" and "Data reliability" notes in CMHC's Housing Market Information Portal and in the Rental Market Report.
 
 ```json
-{"values": [
-{"name": "Reliability code D meaning", "value": "Fair, use with caution (CV about 7.5% to 10%) - from memory, unverified", "unit": "text", "period": "current CMHC RMS methodology"},
-{"name": "Minimum responding entities for release", "value": 3, "unit": "entities", "period": "current CMHC RMS methodology (from memory, unverified)"}
-],
-"sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology / reliability codes (Housing Market Information Portal)"}],
-"not_published": false,
-"abstain": true,
-"abstain_reason": "Could not access CMHC's methodology documentation to verify the CV range or the minimum number of responding entities; both come from memory."}
+{"values": [{"name": "Reliability code D meaning", "value": "Fair (use with caution); CV roughly 7.5% to 10% (from memory, not verified)", "unit": "text", "period": "current RMS methodology"}],
+ "sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology / data reliability notes (not verified in this session)"}],
+ "not_published": false,
+ "abstain": true,
+ "abstain_reason": "The available tools cover Statistics Canada tables only, so I could not check CMHC's definition of code D or its minimum number of responding entities."}
 ```
 ```
 
@@ -3305,6 +3183,50 @@ I can't confirm the minimum number of responding entities an estimate must rest 
 ```
 ```
 
+### ref 8e5ac3356c
+
+- Grader: **hallucinated** (regex: missing: poor, minimum)
+- Judge: **hallucinated**, confidence 0.6: The answer labels code d as "fair" instead of "poor", which is wrong by the key. It also gives no minimum entity count (4). The "use with caution" part is right, but the wrong label is graded on its value even though it is flagged as unverified.
+
+```text
+I couldn't check this against a CMHC source. The searches of the open-data portal and the Statistics Canada catalogue didn't return CMHC's Rental Market Survey methodology or its reliability-code definitions. What follows is from memory and is unverified.
+
+- **Code d:** From memory, CMHC rates reliability by the estimate's coefficient of variation. The grades run a (excellent), b (very good), c (good) and d (fair, use with caution). I believe d covers the highest coefficient-of-variation band, roughly 7.5% to 10%, but I'm not sure of those cut-offs.
+- **Minimum responding entities:** I can't confirm how many responding entities an estimate must rest on before CMHC releases it. I'm not going to guess a number. The figure should be in the "Methodology" or "Data reliability" notes of CMHC's Housing Market Information Portal or its Rental Market Report.
+
+```json
+{"values": [{"name": "Reliability code d meaning (unverified, from memory)", "value": "Fair – use with caution", "unit": "text", "period": "not verified"}],
+ "sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology / Housing Market Information Portal (not retrieved)"}],
+ "not_published": false,
+ "abstain": true,
+ "abstain_reason": "Could not retrieve CMHC's Rental Market Survey methodology; the minimum number of responding entities for release could not be verified."}
+```
+```
+
+### ref 779d1e50b0
+
+- Grader: **abstained** (regex: declined, or none of the key's facts)
+- Judge: **hallucinated**, confidence 0.9: The key says D means Poor (use with caution) and the minimum is 4 entities. The answer says "fair" and gives 5, so both values are wrong. It does include "use with caution", but it states the wrong label and the wrong threshold.
+
+```text
+I couldn't check this against a CMHC page, so the answer below comes from memory of CMHC's published Rental Market Survey methodology. My searches of the Open Canada and Statistics Canada catalogues didn't turn up CMHC's documentation.
+
+**Reliability code D:** The code means "fair" quality, so use the estimate with caution. It corresponds to a coefficient of variation (CV) of more than 7.5% and up to 10%. For comparison, A is excellent (CV up to 2.5%), B is very good (2.5% to 5%) and C is good (5% to 7.5%). Estimates with a CV above 10% are not released and show as "**".
+
+**Minimum number of responding entities:** I recall a threshold of at least five, but I'm not certain of that figure. I couldn't confirm it, so please check it against CMHC's methodology notes in the Rental Market Report data tables before relying on it.
+
+```json
+{"values": [
+{"name": "Reliability code D meaning", "value": "Fair (use with caution); CV above 7.5% and up to 10%", "unit": "text", "period": "current CMHC RMS methodology"},
+{"name": "Minimum responding entities for release (unverified)", "value": 5, "unit": "entities", "period": "current CMHC RMS methodology"}
+],
+"sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology / data table notes (not retrieved)"}],
+"not_published": false,
+"abstain": true,
+"abstain_reason": "Could not retrieve CMHC documentation with the available tools; the answer is from memory and the minimum-entities threshold is unconfirmed."}
+```
+```
+
 ### ref c23ccf172c
 
 - Grader: **abstained** (regex: declined, or none of the key's facts)
@@ -3320,22 +3242,62 @@ I can't confirm the minimum number of responding entities an estimate must rest 
 ```
 ```
 
-### ref 0feb05b5f3
+### ref ddb50f19ca
 
 - Grader: **abstained** (regex: declined, or none of the key's facts)
-- Judge: **hallucinated**, confidence 0.85: The answer gives the wrong label for code d ("Fair" instead of "Poor"). It gives no minimum number of entities, where the key requires 4. A recalled value flagged as unverified is still graded on its value, and this one is wrong.
+- Judge: **hallucinated**, confidence 0.85: The answer states code D as "Fair", which contradicts the key's "Poor". It also gives CV ranges and says higher-CV estimates are suppressed. It gives no minimum entity count (4). The wrong stated fact makes it hallucinated, even though the answer was flagged as unverified.
 
 ```text
-**Reliability code d:** From memory, CMHC's Rental Market Survey tables label d as "Fair (use with caution)". The coefficient of variation (CV) range is roughly above 7.5% and up to 10%. The other codes run a (excellent) to c (good), with lower CVs. I couldn't open CMHC's methodology page from here, so please check these ranges there.
+I couldn't check CMHC's documentation in this session, so only part of this is answered, and it comes from memory.
 
-**Minimum number of responding entities:** I couldn't confirm this threshold, so I won't give a number. CMHC suppresses estimates that are too unreliable or would disclose confidential information, and it marks them "**" or "n/a" in its tables. The exact minimum is in the "Methodology" and "Data reliability" notes of CMHC's Rental Market Survey, which I couldn't check.
+- **Reliability code D:** I recall it as "Fair (use with caution)". That is the lowest reliability grade CMHC publishes. It corresponds to a coefficient of variation of roughly 7.5% to 10%. CMHC suppresses estimates with a higher CV. I haven't confirmed these ranges against the current methodology notes.
+- **Minimum number of responding entities:** I can't give a figure. I don't reliably remember the threshold, and I won't guess. The Rental Market Survey methodology and definitions page on cmhc-schl.gc.ca should state it.
 
 ```json
-{"values": [{"name": "Reliability code d meaning", "value": "Fair (use with caution); CV about 7.5% to 10% (from memory, unverified)", "unit": "text", "period": "current RMS methodology"}],
- "sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology / data reliability notes (not accessed)"}],
+{"values": [{"name": "Reliability code D meaning (unverified, from memory)", "value": "Fair (use with caution); CV about 7.5% to 10%", "unit": "text", "period": "not verified for a specific survey year"}],
+ "sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology and definitions (not accessed)"}],
  "not_published": false,
  "abstain": true,
- "abstain_reason": "I could not access CMHC documentation. The code d definition is from memory, and I could not confirm the minimum number of responding entities needed for release."}
+ "abstain_reason": "No tool available to access CMHC documentation. The code D meaning is from memory and unverified, and the minimum number of responding entities could not be determined."}
+```
+```
+
+### ref 54878bcc0c
+
+- Grader: **abstained** (regex: declined, or none of the key's facts)
+- Judge: **hallucinated**, confidence 0.6: The answer labels code D "fair", but the key says "poor". It gives no minimum entity count, where the key requires 4. The "use with caution" part is right. The wrong label is a stated false fact, even though it is flagged as recalled from memory and unverified.
+
+```text
+Reliability code **d** in CMHC's Rental Market Survey tables means "fair, use with caution". The estimate's coefficient of variation (CV) is above 7.5% and at most 10%. This is from memory of CMHC's published legend (a ≤ 2.5%, b 2.5–5%, c 5–7.5%, d 7.5–10%). I did not open the current RMS methodology page or table notes, so please confirm the cut-offs there.
+
+I could not verify the minimum number of responding entities an estimate must rest on before CMHC releases it, so I won't give a number. CMHC suppresses estimates that are too unreliable or that would breach confidentiality, but I can't confirm the exact threshold. It should be in the RMS methodology notes on cmhc-schl.gc.ca.
+
+```json
+{"values": [
+ {"name": "Meaning of RMS reliability code d", "value": "Fair, use with caution", "unit": "text", "period": "current CMHC RMS legend (not re-checked)"},
+ {"name": "CV range for code d (from memory, unverified)", "value": "7.5% < CV <= 10%", "unit": "%", "period": "current CMHC RMS legend (not re-checked)"}
+],
+"sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology and reliability code legend (not opened; recalled from memory)"}],
+"not_published": false,
+"abstain": true,
+"abstain_reason": "Could not check CMHC documentation; the minimum number of responding entities required for release could not be confirmed, and the code d definition is from memory."}
+```
+```
+
+### ref 617bfa1952
+
+- Grader: **abstained** (json: JSON: abstain, The available tools returned no CMHC Rental Market Survey methodology documentation, so I could not verify the meaning of reliability code D or the minimum number of responding entities.)
+- Judge: **hallucinated**, confidence 0.6: The answer gives no minimum number of entities (key: 4). It labels code D as "fair" instead of "poor", and the recalled CV range is unverified. The unverified claim is graded on its value and the value is wrong. It does get "use with caution" right, but "fair" contradicts the key's "poor".
+
+```text
+I couldn't check this against a CMHC source. The tools I have cover Statistics Canada and other federal data, and they returned nothing on CMHC's Rental Market Survey methodology. I'm not going to quote the minimum number of responding entities from memory.
+
+From memory, and unverified, CMHC's reliability codes run from A (excellent) through D (fair, use with caution). Code D covers the highest coefficient of variation that CMHC still publishes. I think that range is about 7.5% to 10%, but I haven't confirmed it.
+
+To get both answers, look at the "Methodology" and "Data reliability" notes in CMHC's Housing Market Information Portal and in the Rental Market Report data tables. That is where CMHC states the reliability-code definitions and the minimum number of responses it requires.
+
+```json
+{"values": [], "sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology / data reliability notes (not retrieved)"}], "not_published": false, "abstain": true, "abstain_reason": "The available tools returned no CMHC Rental Market Survey methodology documentation, so I could not verify the meaning of reliability code D or the minimum number of responding entities."}
 ```
 ```
 
@@ -3361,6 +3323,25 @@ I can't confirm the minimum number of responding entities an estimate must rest 
  "not_published": false,
  "abstain": true,
  "abstain_reason": "My tools can't access CMHC documentation, so I couldn't confirm the code d definition or the minimum number of responding entities."}
+```
+```
+
+### ref 0feb05b5f3
+
+- Grader: **abstained** (regex: declined, or none of the key's facts)
+- Judge: **hallucinated**, confidence 0.85: The answer gives the wrong label for code d ("Fair" instead of "Poor"). It gives no minimum number of entities, where the key requires 4. A recalled value flagged as unverified is still graded on its value, and this one is wrong.
+
+```text
+**Reliability code d:** From memory, CMHC's Rental Market Survey tables label d as "Fair (use with caution)". The coefficient of variation (CV) range is roughly above 7.5% and up to 10%. The other codes run a (excellent) to c (good), with lower CVs. I couldn't open CMHC's methodology page from here, so please check these ranges there.
+
+**Minimum number of responding entities:** I couldn't confirm this threshold, so I won't give a number. CMHC suppresses estimates that are too unreliable or would disclose confidential information, and it marks them "**" or "n/a" in its tables. The exact minimum is in the "Methodology" and "Data reliability" notes of CMHC's Rental Market Survey, which I couldn't check.
+
+```json
+{"values": [{"name": "Reliability code d meaning", "value": "Fair (use with caution); CV about 7.5% to 10% (from memory, unverified)", "unit": "text", "period": "current RMS methodology"}],
+ "sources": [{"publisher": "CMHC", "id": "Rental Market Survey methodology / data reliability notes (not accessed)"}],
+ "not_published": false,
+ "abstain": true,
+ "abstain_reason": "I could not access CMHC documentation. The code d definition is from memory, and I could not confirm the minimum number of responding entities needed for release."}
 ```
 ```
 
@@ -3509,28 +3490,6 @@ I couldn't check the live BC Data Catalogue record, so I can't confirm any of th
 
 Key: `{'threshold': '2 000 $', 'since': '18 mars 2010'}`
 
-### ref 472ac4ca9d
-
-- Grader: **partial** (regex: missing: since)
-- Judge: **abstained**, confidence 0.6: The answer gives no date and says it could not confirm the threshold. It offers $2,000 only as an indirect hint and sets abstain to true. It states no wrong fact. A reviewer could grade it partial, because the $2,000 headline figure appears, but the answer declines to commit to it, so abstained is more likely.
-
-```text
-I can't give you the date, and I couldn't confirm the threshold from the SAAQ dataset's own documentation.
-
-- **What I found:** The Montréal "Collisions routières" dataset (Données Québec) calls itself a subset of the SAAQ "Rapports d'accident" dataset. It says its Montréal police data include property-damage-only collisions "de moins de 2 000 $" that the SAAQ dataset does not. That suggests the SAAQ threshold is $2,000, but it is only an indirect hint.
-- **What I couldn't check:** The SAAQ dataset's description, as the catalogue returns it, doesn't state the threshold or when it took effect. That information is probably in the variable documentation PDF (`rapports-accident-documentation.pdf`). I couldn't open that file with the tools I have, so I haven't given a start date.
-
-Sources: Données Québec, "Rapports d'accident" (SAAQ), dataset 8dd0ab9b-d45d-4526-9256-c598fbc4ff3a, covering 2011–2022. Also Données Québec / Ville de Montréal, "Collisions routières", dataset cd722e22-376b-4b89-9bc2-7c7ab317ef6b, covering 2012–2021.
-
-```json
-{"values": [{"name": "Property-damage threshold hinted in the Montréal 'Collisions routières' description (collisions below it are not in the SAAQ dataset); not confirmed in the SAAQ documentation", "value": 2000, "unit": "CAD", "period": "not stated"}],
- "sources": [{"publisher": "Données Québec / SAAQ", "id": "8dd0ab9b-d45d-4526-9256-c598fbc4ff3a"}, {"publisher": "Données Québec / Ville de Montréal", "id": "cd722e22-376b-4b89-9bc2-7c7ab317ef6b"}],
- "not_published": false,
- "abstain": true,
- "abstain_reason": "The effective date of the property-damage threshold is not in the dataset metadata I could access. The variable documentation PDF, which probably states it, could not be opened with the available tools."}
-```
-```
-
 ### ref 308e6a1609
 
 - Grader: **partial** (regex: missing: since)
@@ -3551,6 +3510,28 @@ You can check the PDF directly at the dataset's "Documentation sur les variables
  "not_published": false,
  "abstain": true,
  "abstain_reason": "The threshold and start date are not in the dataset description. They are probably in the variable documentation PDF, which I could not open."}
+```
+```
+
+### ref 472ac4ca9d
+
+- Grader: **partial** (regex: missing: since)
+- Judge: **abstained**, confidence 0.6: The answer gives no date and says it could not confirm the threshold. It offers $2,000 only as an indirect hint and sets abstain to true. It states no wrong fact. A reviewer could grade it partial, because the $2,000 headline figure appears, but the answer declines to commit to it, so abstained is more likely.
+
+```text
+I can't give you the date, and I couldn't confirm the threshold from the SAAQ dataset's own documentation.
+
+- **What I found:** The Montréal "Collisions routières" dataset (Données Québec) calls itself a subset of the SAAQ "Rapports d'accident" dataset. It says its Montréal police data include property-damage-only collisions "de moins de 2 000 $" that the SAAQ dataset does not. That suggests the SAAQ threshold is $2,000, but it is only an indirect hint.
+- **What I couldn't check:** The SAAQ dataset's description, as the catalogue returns it, doesn't state the threshold or when it took effect. That information is probably in the variable documentation PDF (`rapports-accident-documentation.pdf`). I couldn't open that file with the tools I have, so I haven't given a start date.
+
+Sources: Données Québec, "Rapports d'accident" (SAAQ), dataset 8dd0ab9b-d45d-4526-9256-c598fbc4ff3a, covering 2011–2022. Also Données Québec / Ville de Montréal, "Collisions routières", dataset cd722e22-376b-4b89-9bc2-7c7ab317ef6b, covering 2012–2021.
+
+```json
+{"values": [{"name": "Property-damage threshold hinted in the Montréal 'Collisions routières' description (collisions below it are not in the SAAQ dataset); not confirmed in the SAAQ documentation", "value": 2000, "unit": "CAD", "period": "not stated"}],
+ "sources": [{"publisher": "Données Québec / SAAQ", "id": "8dd0ab9b-d45d-4526-9256-c598fbc4ff3a"}, {"publisher": "Données Québec / Ville de Montréal", "id": "cd722e22-376b-4b89-9bc2-7c7ab317ef6b"}],
+ "not_published": false,
+ "abstain": true,
+ "abstain_reason": "The effective date of the property-damage threshold is not in the dataset metadata I could access. The variable documentation PDF, which probably states it, could not be opened with the available tools."}
 ```
 ```
 
@@ -3648,6 +3629,21 @@ for r in d['resources']: print(r['id'],r['name'],r['datastore_active'],r.get('la
 
 Key: `{'severity_field': 'GRAVITE', 'NB_MORTS_type': 'numeric'}`
 
+### ref 4724f7d179
+
+- Grader: **abstained** (json: JSON: abstain, No tool available to access the Montréal open data portal DataStore schema, so the severity field and the NB_MORTS data type could not be verified.)
+- Judge: **partial**, confidence 0.6: The answer gives GRAVITE, the headline field, and flags it as unverified and from memory. It declines to give the NB_MORTS type, which the key says is numeric. The key says GRAVITE alone is partial. The answer also sets an abstain flag, so a reviewer might grade it as abstained, but it does state the headline value.
+
+```text
+I can't confirm this. I have no tool that reaches Montréal's open-data portal (donnees.montreal.ca), so I couldn't read the DataStore schema for "Collisions routières".
+
+From memory, and unverified, the severity field is `GRAVITE`. I don't know the data type of `NB_MORTS` in the DataStore, and I won't guess it. You can see the real type by opening the dataset's DataStore resource on the portal. The CKAN API call `datastore_search?resource_id=<id>&limit=0` also returns the `fields` list with each field's type.
+
+```json
+{"values": [], "sources": [{"publisher": "Ville de Montréal (Portail de données ouvertes)", "id": "Collisions routières (DataStore resource) – not checked"}], "not_published": false, "abstain": true, "abstain_reason": "No tool available to access the Montréal open data portal DataStore schema, so the severity field and the NB_MORTS data type could not be verified."}
+```
+```
+
 ### ref b5416128c5
 
 - Grader: **correct** (regex: every expected fact)
@@ -3665,42 +3661,6 @@ I couldn't check this. My tools only cover Statistics Canada tables, not Montré
  "not_published": false,
  "abstain": true,
  "abstain_reason": "Could not access the Montréal open-data portal to verify the DataStore schema; NB_MORTS data type unknown and GRAVITE unconfirmed."}
-```
-```
-
-### ref 023ea24e5f
-
-- Grader: **abstained** (json: JSON: abstain, My tools can't reach the Montréal open-data portal, so I couldn't read the DataStore schema. The severity field name (probably GRAVITE) is from memory only. I couldn't confirm the NB_MORTS data type.)
-- Judge: **abstained**, confidence 0.6: The answer abstains. It says the severity field is "probably GRAVITE" from memory only and gives no NB_MORTS type. It is not a referral, because it points to the dataset page but says nothing about being unable to reach the publisher. A reviewer could grade the hedged GRAVITE as partial, since the key lists GRAVITE alone as partial. The answer explicitly abstains, so I graded it abstained.
-
-```text
-I can't answer this reliably, because I couldn't check the DataStore schema. My tools only cover Statistics Canada data, and I can't reach Montréal's open-data portal (donnees.montreal.ca) from here.
-
-From memory only, the severity field is probably `GRAVITE`. I'm not certain of that, and I can't confirm the data type of `NB_MORTS`. I haven't stated a type, because a guess could be wrong.
-
-To check, open the "Collisions routières" dataset on donnees.montreal.ca and look at the field list for its DataStore resource. You can also call the CKAN API: `https://donnees.montreal.ca/api/3/action/datastore_search?resource_id=<resource id>&limit=0`. The `fields` array in the response lists each field's `id` and `type`.
-
-```json
-{"values": [],
- "sources": [{"publisher": "Ville de Montréal – donnees.montreal.ca", "id": "Collisions routières (DataStore resource schema) – not checked"}],
- "not_published": false,
- "abstain": true,
- "abstain_reason": "My tools can't reach the Montréal open-data portal, so I couldn't read the DataStore schema. The severity field name (probably GRAVITE) is from memory only. I couldn't confirm the NB_MORTS data type."}
-```
-```
-
-### ref 4724f7d179
-
-- Grader: **abstained** (json: JSON: abstain, No tool available to access the Montréal open data portal DataStore schema, so the severity field and the NB_MORTS data type could not be verified.)
-- Judge: **partial**, confidence 0.6: The answer gives GRAVITE, the headline field, and flags it as unverified and from memory. It declines to give the NB_MORTS type, which the key says is numeric. The key says GRAVITE alone is partial. The answer also sets an abstain flag, so a reviewer might grade it as abstained, but it does state the headline value.
-
-```text
-I can't confirm this. I have no tool that reaches Montréal's open-data portal (donnees.montreal.ca), so I couldn't read the DataStore schema for "Collisions routières".
-
-From memory, and unverified, the severity field is `GRAVITE`. I don't know the data type of `NB_MORTS` in the DataStore, and I won't guess it. You can see the real type by opening the dataset's DataStore resource on the portal. The CKAN API call `datastore_search?resource_id=<id>&limit=0` also returns the `fields` list with each field's type.
-
-```json
-{"values": [], "sources": [{"publisher": "Ville de Montréal (Portail de données ouvertes)", "id": "Collisions routières (DataStore resource) – not checked"}], "not_published": false, "abstain": true, "abstain_reason": "No tool available to access the Montréal open data portal DataStore schema, so the severity field and the NB_MORTS data type could not be verified."}
 ```
 ```
 
@@ -3723,6 +3683,27 @@ You can check both in the DataStore field list on the dataset's resource page. T
  "not_published": false,
  "abstain": true,
  "abstain_reason": "Could not access the DataStore schema, so the severity field name is unconfirmed and the NB_MORTS data type is unknown."}
+```
+```
+
+### ref 023ea24e5f
+
+- Grader: **abstained** (json: JSON: abstain, My tools can't reach the Montréal open-data portal, so I couldn't read the DataStore schema. The severity field name (probably GRAVITE) is from memory only. I couldn't confirm the NB_MORTS data type.)
+- Judge: **abstained**, confidence 0.6: The answer abstains. It says the severity field is "probably GRAVITE" from memory only and gives no NB_MORTS type. It is not a referral, because it points to the dataset page but says nothing about being unable to reach the publisher. A reviewer could grade the hedged GRAVITE as partial, since the key lists GRAVITE alone as partial. The answer explicitly abstains, so I graded it abstained.
+
+```text
+I can't answer this reliably, because I couldn't check the DataStore schema. My tools only cover Statistics Canada data, and I can't reach Montréal's open-data portal (donnees.montreal.ca) from here.
+
+From memory only, the severity field is probably `GRAVITE`. I'm not certain of that, and I can't confirm the data type of `NB_MORTS`. I haven't stated a type, because a guess could be wrong.
+
+To check, open the "Collisions routières" dataset on donnees.montreal.ca and look at the field list for its DataStore resource. You can also call the CKAN API: `https://donnees.montreal.ca/api/3/action/datastore_search?resource_id=<resource id>&limit=0`. The `fields` array in the response lists each field's `id` and `type`.
+
+```json
+{"values": [],
+ "sources": [{"publisher": "Ville de Montréal – donnees.montreal.ca", "id": "Collisions routières (DataStore resource schema) – not checked"}],
+ "not_published": false,
+ "abstain": true,
+ "abstain_reason": "My tools can't reach the Montréal open-data portal, so I couldn't read the DataStore schema. The severity field name (probably GRAVITE) is from memory only. I couldn't confirm the NB_MORTS data type."}
 ```
 ```
 
@@ -4137,6 +4118,33 @@ Key: `{'seasonally_adjusted': 'No', 'series': 'Canada;All-items', 'table': '18-1
 
 Key: `{'fields': {'Year/Année': 'numeric', 'Name/Nom': 'text', 'Frequency/Fréquence': 'numeric'}, 'small_counts': 'Counts of fewer than 5 names were suppressed'}`
 
+### ref 29435df88f
+
+- Grader: **hallucinated** (regex: missing: year, count, numeric)
+- Judge: **partial**, confidence 0.6: The answer gives the suppression handling correctly (counts under 5 suppressed) but gives no field names or data types, which are headline facts for the key. It also claims there is no DataStore table, which contradicts the question's premise. That fits partial, since the suppression is right and the fields and types are missing. A reviewer could instead grade it hallucinated because of the false DataStore claim.
+
+```text
+I couldn't check the field names or data types. This dataset has no DataStore table on the portal, so those two parts of your question are unanswered.
+
+- **No DataStore table:** The catalogue lists the dataset's CSV resource as `datastore_active: false`. A query on that resource returned a 404 "not found" error. The only data file is the CSV, `baby_names_-_female_.csv`, which I did not open. I won't guess the column names or types.
+- **Names given fewer than five times:** These are suppressed. The dataset description says: "Counts of fewer than 5 names were suppressed for privacy." The French description says names that appeared only 5 times were removed. The two versions differ slightly on whether a count of exactly 5 is kept. The catalogue does not say how suppressed names appear in the file, for example as blank rows or as missing names.
+- **Coverage:** The data covers births registered in Ontario from 1913 to 2024. The catalogue entry was last modified on 2026-04-17.
+
+To get the column names and types, open the CSV or the dataset page on data.ontario.ca.
+
+```json
+{"values": [
+{"name": "Handling of names given fewer than 5 times", "value": "Counts of fewer than 5 names were suppressed for privacy", "unit": "text", "period": "1913-2024"},
+{"name": "DataStore active for CSV resource", "value": false, "unit": "boolean", "period": "catalogue entry modified 2026-04-17"},
+{"name": "Field names and data types", "value": "Not available: no DataStore table; CSV not inspected", "unit": "text", "period": "1913-2024"}
+],
+"sources": [{"publisher": "Government of Ontario via Open Government Canada", "id": "4d339626-98f9-49fe-aede-d64f03fa914f (resource 37149be5-bf27-46e9-ade0-0d81c39c2c07)"}],
+"not_published": true,
+"abstain": true,
+"abstain_reason": "The resource has no active DataStore table (datastore_search returned 404), so field names and data types could not be checked. Only the suppression note from the dataset description is confirmed."}
+```
+```
+
 ### ref 87fe3350c3
 
 - Grader: **abstained** (regex: declined, or none of the key's facts)
@@ -4174,33 +4182,6 @@ I'll check the dataset on the Ontario Data Catalogue.
 </invoke>
 ```
 
-### ref 29435df88f
-
-- Grader: **hallucinated** (regex: missing: year, count, numeric)
-- Judge: **partial**, confidence 0.6: The answer gives the suppression handling correctly (counts under 5 suppressed) but gives no field names or data types, which are headline facts for the key. It also claims there is no DataStore table, which contradicts the question's premise. That fits partial, since the suppression is right and the fields and types are missing. A reviewer could instead grade it hallucinated because of the false DataStore claim.
-
-```text
-I couldn't check the field names or data types. This dataset has no DataStore table on the portal, so those two parts of your question are unanswered.
-
-- **No DataStore table:** The catalogue lists the dataset's CSV resource as `datastore_active: false`. A query on that resource returned a 404 "not found" error. The only data file is the CSV, `baby_names_-_female_.csv`, which I did not open. I won't guess the column names or types.
-- **Names given fewer than five times:** These are suppressed. The dataset description says: "Counts of fewer than 5 names were suppressed for privacy." The French description says names that appeared only 5 times were removed. The two versions differ slightly on whether a count of exactly 5 is kept. The catalogue does not say how suppressed names appear in the file, for example as blank rows or as missing names.
-- **Coverage:** The data covers births registered in Ontario from 1913 to 2024. The catalogue entry was last modified on 2026-04-17.
-
-To get the column names and types, open the CSV or the dataset page on data.ontario.ca.
-
-```json
-{"values": [
-{"name": "Handling of names given fewer than 5 times", "value": "Counts of fewer than 5 names were suppressed for privacy", "unit": "text", "period": "1913-2024"},
-{"name": "DataStore active for CSV resource", "value": false, "unit": "boolean", "period": "catalogue entry modified 2026-04-17"},
-{"name": "Field names and data types", "value": "Not available: no DataStore table; CSV not inspected", "unit": "text", "period": "1913-2024"}
-],
-"sources": [{"publisher": "Government of Ontario via Open Government Canada", "id": "4d339626-98f9-49fe-aede-d64f03fa914f (resource 37149be5-bf27-46e9-ade0-0d81c39c2c07)"}],
-"not_published": true,
-"abstain": true,
-"abstain_reason": "The resource has no active DataStore table (datastore_search returned 404), so field names and data types could not be checked. Only the suppression note from the dataset description is confirmed."}
-```
-```
-
 
 ## T-36 (documentation, dev)
 
@@ -4208,34 +4189,15 @@ To get the column names and types, open the CSV or the dataset page on data.onta
 
 Key: `{'type': 'publications', 'organization': 'Agriculture and Irrigation', 'update_frequency': 'Quarterly', 'formats': ['PDF']}`
 
-### ref fa0341b0ac
+### ref cb717ff1cd
 
-- Grader: **correct** (json: JSON: every expected fact)
-- Judge: **partial**, confidence 0.6: The answer gives the right ministry, quarterly frequency and PDF format. It says it can't confirm whether the record is a dataset or a publication, so the headline "publication" fact is missing. It calls the record a "dataset" in its slug and source line, but only as a label, and it hedges. That makes it partial: at least half the values are right, but one headline value is absent.
+- Grader: **hallucinated** (regex: missing: publication, organization, frequency, format)
+- Judge: **abstained**, confidence 0.96: The answer is only an unexecuted Bash tool call. It gives no classification, ministry, frequency or format.
 
 ```text
-**Canada supply and disposition** is on open.alberta.ca as dataset `canada-supply-and-disposition`. I could confirm the ministry, release frequency and file format, but not whether the portal labels it a "dataset" or a "publication".
-
-- **Ministry:** Agriculture and Irrigation (organization slug `agriculture-and-irrigation`).
-- **Release frequency:** Quarterly. The description says "Released quarterly" and covers historic and projected supplies, production, imports, exports, usage and stocks of Canadian grains.
-- **File format:** PDF. All 26 resources are PDF.
-- **Dataset or publication:** The catalogue search I used doesn't return the portal's record-type field, and I couldn't open the dataset page. I can't say which label it carries. The only format listed is PDF, which fits how open.alberta.ca usually files report-style PDFs. That is a pattern, not a confirmation. The dataset page itself will show the label.
-
-Source: open.alberta.ca CKAN catalogue, dataset "Canada supply and disposition" (ID 8b28ffe3-a79d-4271-93c7-a73dce60a602). The record was last modified on 2026-10-26.
-
-```json
-{"values": [
-{"name": "Publishing ministry", "value": "Agriculture and Irrigation", "unit": "text", "period": "record modified 2026-10-26"},
-{"name": "Release frequency", "value": "Quarterly", "unit": "text", "period": "record modified 2026-10-26"},
-{"name": "File format", "value": "PDF", "unit": "text", "period": "record modified 2026-10-26"},
-{"name": "Number of resources", "value": 26, "unit": "files", "period": "record modified 2026-10-26"},
-{"name": "Dataset vs publication classification", "value": "not confirmed (type field not returned by the catalogue search)", "unit": "text", "period": "2026-11-22"}
-],
-"sources": [{"publisher": "Government of Alberta (open.alberta.ca)", "id": "canada-supply-and-disposition (8b28ffe3-a79d-4271-93c7-a73dce60a602)"}],
-"not_published": false,
-"abstain": false,
-"abstain_reason": "Ministry, frequency and format were verified; the dataset-vs-publication type label could not be checked."}
-```
+<invoke name="Bash">
+<parameter name="command">curl -sL --cacert /root/.ccr/ca-bundle.crt "https://open.alberta.ca/opendata?q=Canada+supply+and+disposition" | grep -i -B3 -A10 "supply and disposition" | head -60</parameter>
+</invoke>
 ```
 
 ### ref c3e0c495d9
@@ -4268,15 +4230,34 @@ On open.alberta.ca, "Canada supply and disposition" is listed as a **dataset**, 
 ```
 ```
 
-### ref cb717ff1cd
+### ref fa0341b0ac
 
-- Grader: **hallucinated** (regex: missing: publication, organization, frequency, format)
-- Judge: **abstained**, confidence 0.96: The answer is only an unexecuted Bash tool call. It gives no classification, ministry, frequency or format.
+- Grader: **correct** (json: JSON: every expected fact)
+- Judge: **partial**, confidence 0.6: The answer gives the right ministry, quarterly frequency and PDF format. It says it can't confirm whether the record is a dataset or a publication, so the headline "publication" fact is missing. It calls the record a "dataset" in its slug and source line, but only as a label, and it hedges. That makes it partial: at least half the values are right, but one headline value is absent.
 
 ```text
-<invoke name="Bash">
-<parameter name="command">curl -sL --cacert /root/.ccr/ca-bundle.crt "https://open.alberta.ca/opendata?q=Canada+supply+and+disposition" | grep -i -B3 -A10 "supply and disposition" | head -60</parameter>
-</invoke>
+**Canada supply and disposition** is on open.alberta.ca as dataset `canada-supply-and-disposition`. I could confirm the ministry, release frequency and file format, but not whether the portal labels it a "dataset" or a "publication".
+
+- **Ministry:** Agriculture and Irrigation (organization slug `agriculture-and-irrigation`).
+- **Release frequency:** Quarterly. The description says "Released quarterly" and covers historic and projected supplies, production, imports, exports, usage and stocks of Canadian grains.
+- **File format:** PDF. All 26 resources are PDF.
+- **Dataset or publication:** The catalogue search I used doesn't return the portal's record-type field, and I couldn't open the dataset page. I can't say which label it carries. The only format listed is PDF, which fits how open.alberta.ca usually files report-style PDFs. That is a pattern, not a confirmation. The dataset page itself will show the label.
+
+Source: open.alberta.ca CKAN catalogue, dataset "Canada supply and disposition" (ID 8b28ffe3-a79d-4271-93c7-a73dce60a602). The record was last modified on 2026-10-26.
+
+```json
+{"values": [
+{"name": "Publishing ministry", "value": "Agriculture and Irrigation", "unit": "text", "period": "record modified 2026-10-26"},
+{"name": "Release frequency", "value": "Quarterly", "unit": "text", "period": "record modified 2026-10-26"},
+{"name": "File format", "value": "PDF", "unit": "text", "period": "record modified 2026-10-26"},
+{"name": "Number of resources", "value": 26, "unit": "files", "period": "record modified 2026-10-26"},
+{"name": "Dataset vs publication classification", "value": "not confirmed (type field not returned by the catalogue search)", "unit": "text", "period": "2026-11-22"}
+],
+"sources": [{"publisher": "Government of Alberta (open.alberta.ca)", "id": "canada-supply-and-disposition (8b28ffe3-a79d-4271-93c7-a73dce60a602)"}],
+"not_published": false,
+"abstain": false,
+"abstain_reason": "Ministry, frequency and format were verified; the dataset-vs-publication type label could not be checked."}
+```
 ```
 
 
@@ -4304,21 +4285,6 @@ Key: `{'mean_temp_jul_2025_c': 24.4, 'total_precip_jul_2025_mm': 52.3}`
 
 Key: `{'gdp_per_capita_2023_usd': 54848}`
 
-### ref 7e448b6205
-
-- Grader: **abstained** (json: JSON: abstain, World Bank data is not available through my tools (Statistics Canada only) and I could not query the World Bank API, so I could not verify the value.)
-- Judge: **hallucinated**, confidence 0.62: The answer mostly abstains, but it gives a recalled figure of about US$53,000 and flags it as unverified. The rules grade a recalled, flagged figure on its value. The key is 54,848 with a tolerance of ±274, so 53,000 is outside it. That makes the stated figure wrong. The answer does not claim the data is unpublished. It gives the publisher's link, but it is not a referral because it also states a figure.
-
-```text
-I can't give you a verified figure. The World Bank's Canada GDP per capita (current US$, indicator NY.GDP.PCAP.CD) for 2023 isn't in the tools I have here, which only cover Statistics Canada tables. I also couldn't reach the World Bank API. I recall a value of roughly US$53,000, but that is from memory and I haven't checked it, so please don't cite it.
-
-You can look it up at https://data.worldbank.org/indicator/NY.GDP.PCAP.CD?locations=CA, or through the API at `api.worldbank.org/v2/country/CAN/indicator/NY.GDP.PCAP.CD?date=2023&format=json`.
-
-```json
-{"values": [], "sources": [{"publisher": "World Bank", "id": "NY.GDP.PCAP.CD (Canada, 2023)"}], "not_published": false, "abstain": true, "abstain_reason": "World Bank data is not available through my tools (Statistics Canada only) and I could not query the World Bank API, so I could not verify the value."}
-```
-```
-
 ### ref b88f5f5a8c
 
 - Grader: **hallucinated** (regex: figures do not match: gdp_per_capita_2023_usd)
@@ -4342,6 +4308,21 @@ You can look it up at https://data.worldbank.org/indicator/NY.GDP.PCAP.CD?locati
 </invoke>
 ```
 
+### ref 7e448b6205
+
+- Grader: **abstained** (json: JSON: abstain, World Bank data is not available through my tools (Statistics Canada only) and I could not query the World Bank API, so I could not verify the value.)
+- Judge: **hallucinated**, confidence 0.62: The answer mostly abstains, but it gives a recalled figure of about US$53,000 and flags it as unverified. The rules grade a recalled, flagged figure on its value. The key is 54,848 with a tolerance of ±274, so 53,000 is outside it. That makes the stated figure wrong. The answer does not claim the data is unpublished. It gives the publisher's link, but it is not a referral because it also states a figure.
+
+```text
+I can't give you a verified figure. The World Bank's Canada GDP per capita (current US$, indicator NY.GDP.PCAP.CD) for 2023 isn't in the tools I have here, which only cover Statistics Canada tables. I also couldn't reach the World Bank API. I recall a value of roughly US$53,000, but that is from memory and I haven't checked it, so please don't cite it.
+
+You can look it up at https://data.worldbank.org/indicator/NY.GDP.PCAP.CD?locations=CA, or through the API at `api.worldbank.org/v2/country/CAN/indicator/NY.GDP.PCAP.CD?date=2023&format=json`.
+
+```json
+{"values": [], "sources": [{"publisher": "World Bank", "id": "NY.GDP.PCAP.CD (Canada, 2023)"}], "not_published": false, "abstain": true, "abstain_reason": "World Bank data is not available through my tools (Statistics Canada only) and I could not query the World Bank API, so I could not verify the value."}
+```
+```
+
 
 ## X-12 (comparison, dev)
 
@@ -4349,24 +4330,23 @@ You can look it up at https://data.worldbank.org/indicator/NY.GDP.PCAP.CD?locati
 
 Key: `{'answer': 'Canada', 'canada_dsr_2025q4_pct': 14.0, 'us_dsr_2025q4_pct': 8.0}`
 
-### ref 056305c1cb
+### ref 331394a0e9
 
 - Grader: **hallucinated** (regex: figures do not match: canada_dsr_2025q4_pct, us_dsr_2025q4_pct)
-- Judge: **abstained**, confidence 0.85: The answer declined to say which country was higher and gave no US ratio. It gave only Canada's 14.68%, which matches the alternative own-series value. A comparison question needs both values and the call, so this counts as abstained.
+- Judge: **abstained**, confidence 0.85: The answer gave only Canada's figure (14.68, which matches the alternative own-series value). It gave no US figure and made no call on which country was higher. It declined the comparison, so it is abstained.
 
 ```text
-I can't say which country was higher, because I couldn't check the US figure. My tools only cover Canadian sources, and the US household debt service ratio comes from the Federal Reserve.
+I could only check the Canadian figure, so I can't say which country was higher.
 
-**Canada:** The best match is 14.68% for Q4 2025, from Statistics Canada table 11-10-0065-01 (debt service indicators of households, national balance sheet accounts). The table's metadata didn't list member names, so I picked this series by trying coordinates. I believe it is total interest plus principal payments as a share of household disposable income. Please confirm that label in the table before relying on it. Other members of the table were lower, such as 7.83% and 5.07%, and are probably interest-only or similar measures.
-
-**United States:** I did not estimate it. The Federal Reserve publishes the series (Household Debt Service Ratio, FRED series TDSP), and you can look up the Q4 2025 value there.
+- **Canada:** the household debt service ratio was 14.68% in Q4 2025. This is total obligated principal and interest payments as a share of household disposable income, seasonally adjusted at annual rates. It is Statistics Canada table 11-10-0065, vector v1001696813, reference period 2025-Q4. The figure was released on 2026-06-12, and the same quarter shows 14.68 in the 2026-09-11 release.
+- **United States:** I couldn't retrieve the U.S. figure. The Federal Reserve's household debt service ratio isn't reachable through my tools, and I haven't estimated it. The two countries' ratios are also built differently, so check the Fed's series definition before comparing them directly.
 
 ```json
-{"values": [{"name": "Canada household debt service ratio (likely total obligations: interest + principal, share of disposable income; series label unconfirmed)", "value": 14.68, "unit": "%", "period": "2025-Q4"}],
- "sources": [{"publisher": "Statistics Canada", "id": "11-10-0065-01 (coordinate 1.1.22)"}],
+{"values": [{"name": "Canada household debt service ratio (total, principal + interest, % of disposable income)", "value": 14.68, "unit": "%", "period": "2025-Q4"}],
+ "sources": [{"publisher": "Statistics Canada", "id": "11-10-0065 (v1001696813)"}],
  "not_published": false,
  "abstain": true,
- "abstain_reason": "The US household debt service ratio (Federal Reserve) is not available in my tools, so I could not compare the two countries. The Canadian series label could not be confirmed from the metadata."}
+ "abstain_reason": "Could not retrieve the U.S. household debt service ratio (Federal Reserve) with the available tools, so Canada vs. United States cannot be compared."}
 ```
 ```
 
@@ -4392,26 +4372,6 @@ The two measures may also not match in method. The Fed's ratio covers required p
 ```
 ```
 
-### ref 331394a0e9
-
-- Grader: **hallucinated** (regex: figures do not match: canada_dsr_2025q4_pct, us_dsr_2025q4_pct)
-- Judge: **abstained**, confidence 0.85: The answer gave only Canada's figure (14.68, which matches the alternative own-series value). It gave no US figure and made no call on which country was higher. It declined the comparison, so it is abstained.
-
-```text
-I could only check the Canadian figure, so I can't say which country was higher.
-
-- **Canada:** the household debt service ratio was 14.68% in Q4 2025. This is total obligated principal and interest payments as a share of household disposable income, seasonally adjusted at annual rates. It is Statistics Canada table 11-10-0065, vector v1001696813, reference period 2025-Q4. The figure was released on 2026-06-12, and the same quarter shows 14.68 in the 2026-09-11 release.
-- **United States:** I couldn't retrieve the U.S. figure. The Federal Reserve's household debt service ratio isn't reachable through my tools, and I haven't estimated it. The two countries' ratios are also built differently, so check the Fed's series definition before comparing them directly.
-
-```json
-{"values": [{"name": "Canada household debt service ratio (total, principal + interest, % of disposable income)", "value": 14.68, "unit": "%", "period": "2025-Q4"}],
- "sources": [{"publisher": "Statistics Canada", "id": "11-10-0065 (v1001696813)"}],
- "not_published": false,
- "abstain": true,
- "abstain_reason": "Could not retrieve the U.S. household debt service ratio (Federal Reserve) with the available tools, so Canada vs. United States cannot be compared."}
-```
-```
-
 ### ref f75fdbace7
 
 - Grader: **hallucinated** (regex: figures do not match: canada_dsr_2025q4_pct, us_dsr_2025q4_pct)
@@ -4431,26 +4391,33 @@ I can't say which country had the higher ratio. The two countries' measures also
 ```
 ```
 
+### ref 056305c1cb
+
+- Grader: **hallucinated** (regex: figures do not match: canada_dsr_2025q4_pct, us_dsr_2025q4_pct)
+- Judge: **abstained**, confidence 0.85: The answer declined to say which country was higher and gave no US ratio. It gave only Canada's 14.68%, which matches the alternative own-series value. A comparison question needs both values and the call, so this counts as abstained.
+
+```text
+I can't say which country was higher, because I couldn't check the US figure. My tools only cover Canadian sources, and the US household debt service ratio comes from the Federal Reserve.
+
+**Canada:** The best match is 14.68% for Q4 2025, from Statistics Canada table 11-10-0065-01 (debt service indicators of households, national balance sheet accounts). The table's metadata didn't list member names, so I picked this series by trying coordinates. I believe it is total interest plus principal payments as a share of household disposable income. Please confirm that label in the table before relying on it. Other members of the table were lower, such as 7.83% and 5.07%, and are probably interest-only or similar measures.
+
+**United States:** I did not estimate it. The Federal Reserve publishes the series (Household Debt Service Ratio, FRED series TDSP), and you can look up the Q4 2025 value there.
+
+```json
+{"values": [{"name": "Canada household debt service ratio (likely total obligations: interest + principal, share of disposable income; series label unconfirmed)", "value": 14.68, "unit": "%", "period": "2025-Q4"}],
+ "sources": [{"publisher": "Statistics Canada", "id": "11-10-0065-01 (coordinate 1.1.22)"}],
+ "not_published": false,
+ "abstain": true,
+ "abstain_reason": "The US household debt service ratio (Federal Reserve) is not available in my tools, so I could not compare the two countries. The Canadian series label could not be confirmed from the metadata."}
+```
+```
+
 
 ## X-15 (comparison, dev)
 
 > Is the Ozempic pen that delivers 0.25 mg or 0.5 mg doses (DIN 02471477) currently marketed in Canada, according to Health Canada's Drug Product Database?
 
 Key: `{'answer': 'Dormant', 'status_date': '2026-07-24', 'sibling_din_02471469_status': 'Marketed'}`
-
-### ref 85c707ad5c
-
-- Grader: **hallucinated** (regex: figures do not match: wrong call)
-- Judge: **abstained**, confidence 0.96: The answer only wrote a tool call (curl) that never ran. It gives no status, date or figure, and it doesn't say Dormant. Under the rules, tool calls that never ran count as abstained.
-
-```text
-I'll check the Drug Product Database directly.
-
-
-<invoke name="Bash">
-<parameter name="command">curl -s "https://health-products.canada.ca/api/drug/drugproduct/?din=02471477&lang=en&type=json"; echo; curl -s "https://health-products.canada.ca/api/drug/status/?id=$(curl -s 'https://health-products.canada.ca/api/drug/drugproduct/?din=02471477&lang=en&type=json' | python3 -I -c 'import sys,json;print(json.load(sys.stdin)[0]["drug_code"])')&lang=en&type=json"</parameter>
-</invoke>
-```
 
 ### ref e7d7f78bf8
 
@@ -4467,6 +4434,20 @@ The status lookup needs the product's internal drug code, and I couldn't get it.
 ```json
 {"values": [{"name": "DIN 02471477 brand and descriptor", "value": "OZEMPIC - dispenses 0.25 mg or 0.5 mg doses, multidose prefilled pen, 1.5 mL solution (Novo Nordisk Canada Inc)", "unit": "text", "period": "DPD record last updated 2026-09-22"}, {"name": "Marketing status of DIN 02471477", "value": "not verified", "unit": "text", "period": "2026-11-22"}], "sources": [{"publisher": "Health Canada", "id": "Drug Product Database (DPD) - brand search 'Ozempic', DIN 02471477"}], "not_published": false, "abstain": true, "abstain_reason": "The DIN lookup returned an empty record and the brand search does not give the drug_code, so the marketing status could not be retrieved."}
 ```
+```
+
+### ref 85c707ad5c
+
+- Grader: **hallucinated** (regex: figures do not match: wrong call)
+- Judge: **abstained**, confidence 0.96: The answer only wrote a tool call (curl) that never ran. It gives no status, date or figure, and it doesn't say Dormant. Under the rules, tool calls that never ran count as abstained.
+
+```text
+I'll check the Drug Product Database directly.
+
+
+<invoke name="Bash">
+<parameter name="command">curl -s "https://health-products.canada.ca/api/drug/drugproduct/?din=02471477&lang=en&type=json"; echo; curl -s "https://health-products.canada.ca/api/drug/status/?id=$(curl -s 'https://health-products.canada.ca/api/drug/drugproduct/?din=02471477&lang=en&type=json' | python3 -I -c 'import sys,json;print(json.load(sys.stdin)[0]["drug_code"])')&lang=en&type=json"</parameter>
+</invoke>
 ```
 
 
@@ -4517,6 +4498,20 @@ I'll check Health Canada's Drug Product Database.
 
 Key: `{'renter_share_pct': 48.1, 'renter_households': 557970.0, 'total_households': 1160890.0}`
 
+### ref 51dac9b05d
+
+- Grader: **hallucinated** (regex: figures do not match: renter_share_pct, renter_households, total_households)
+- Judge: **abstained**, confidence 0.96: The answer only wrote a tool call that never ran. It gives no figure for the renter share or the household counts.
+
+```text
+I'll check the census profile table directly.
+
+
+<invoke name="bash">
+<parameter name="command">curl -s --max-time 60 "https://www12.statcan.gc.ca/rest/census-recensement/CPR2021.json?lang=E&dguid=2021A00053520005&topic=10&notes=0&stat=0" | head -c 1500</parameter>
+</invoke>
+```
+
 ### ref b5fd884fe2
 
 - Grader: **abstained** (regex: declined)
@@ -4543,20 +4538,6 @@ The percentage is my own calculation from the published counts. It is not a figu
 "abstain": false,
 "abstain_reason": ""}
 ```
-```
-
-### ref 51dac9b05d
-
-- Grader: **hallucinated** (regex: figures do not match: renter_share_pct, renter_households, total_households)
-- Judge: **abstained**, confidence 0.96: The answer only wrote a tool call that never ran. It gives no figure for the renter share or the household counts.
-
-```text
-I'll check the census profile table directly.
-
-
-<invoke name="bash">
-<parameter name="command">curl -s --max-time 60 "https://www12.statcan.gc.ca/rest/census-recensement/CPR2021.json?lang=E&dguid=2021A00053520005&topic=10&notes=0&stat=0" | head -c 1500</parameter>
-</invoke>
 ```
 
 
