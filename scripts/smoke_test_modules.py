@@ -95,10 +95,12 @@ DOWN_MODULES: dict[str, str] = {}
 DOWN_TOOLS: dict[str, str] = {}
 
 
-# A call opens a session (initialize, its notice, the call: three requests), so one
-# call every 2 s is about 90 requests a minute, under the hosted limit of 120
-# (MAPLE_RATE_LIMIT_REQUESTS). Faster runs were refused on Azure (2026-11-19).
-_HOSTED_CALL_SPACING_SECONDS = 2.0
+# A call opens a session (initialize, its notice, the call: three requests; 727
+# requests for about 245 calls on Azure, 2026-11-22). The Azure server allows 60
+# requests a minute per caller, not the default 120: measured 2026-11-22, the 61st
+# request in a minute got a 429. One call every 2 s peaked at 60 to 66 a minute and
+# met 23 refusals per run; one every 3.2 s keeps a caller at 56 at most.
+_HOSTED_CALL_SPACING_SECONDS = 3.2
 
 
 # After a refused call: a 429 waits the Retry-After the server sends (its window is 60 s),
