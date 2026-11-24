@@ -138,6 +138,18 @@ async def test_first_election_and_blank_fields(dataset):
     assert result.candidates[0].incumbent is None and result.candidates[0].gender is None
 
 
+async def test_province_codes_and_french_names(dataset):
+    # "AB" is a substring of "Labrador": it must mean Alberta, not Newfoundland.
+    assert (
+        await candidates.get_candidates(province="AB", election_type="all")
+    ).total_candidates == 0
+    nl = await candidates.get_candidates(province="nl", year=2000)
+    assert nl.candidates and {c.province for c in nl.candidates} == {"Newfoundland and Labrador"}
+    for given in ("NS", "12", "Nouvelle-Écosse"):
+        result = await candidates.get_candidates(election=1, province=given)
+        assert result.candidates[0].riding == "HALIFAX", given
+
+
 async def test_by_elections_are_separate_and_accent_insensitive(dataset):
     general = await candidates.get_candidates(year=2002)
     assert general.total_candidates == 0

@@ -140,6 +140,13 @@ async def test_first_election_and_unknown_party_names(workbook):
     assert riding.results[2].party_name is None
 
 
+async def test_province_codes_do_not_match_inside_other_names(workbook):
+    # "ab" is inside "Labrador"; as a code it means Alberta, absent from the fixture.
+    assert (await historical.get_historical(province="AB")).total_ridings == 0
+    assert (await historical.get_historical(province="NL")).total_ridings == 1
+    assert (await historical.get_historical(election=1, province="35")).total_ridings == 1
+
+
 async def test_acclamation_has_no_leading_party(workbook):
     result = await historical.get_historical(constituency="old example")
     assert result.ridings[0].acclamation and result.ridings[0].leading_party is None

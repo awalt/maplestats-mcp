@@ -146,7 +146,8 @@ async def elections_results_get_historical_candidates(
     36 = 1997, 37 = 2000, 44 = 2021) and `year` the election year; leave both
     out to search every election; giving both with a year in which that
     election was not held is an input error. `province`, `riding`, `candidate`
-    (name) and `party` are accent-insensitive substring filters. The data
+    (name) and `party` are accent-insensitive substring filters; `province`
+    also takes a code ("AB", "48"). The data
     set is in English only: `lang="fr"` gives errors, notes and provenance
     in French and leaves the rows as published. `election_type` is
     general (default), by-election or all. Source: Sevi's "Who Runs?" data set

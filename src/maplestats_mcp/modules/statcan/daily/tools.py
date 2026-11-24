@@ -92,7 +92,8 @@ async def statcan_daily_get_article(
     the headings, the Note to readers (concepts, revisions, next release
     date) -- beyond the one-paragraph summary statcan_daily_get_releases
     gives. `article` is the id ("dq261104a") or the URL that
-    statcan_daily_get_releases or statcan_daily_search_archive returned;
+    statcan_daily_get_releases or statcan_daily_search_archive returned,
+    or a release date ("2026-11-04") or title (the newest match is read);
     `lang` picks the English or French page. Returns the text by
     section, chart titles, the StatCan tables the text links to (with
     8-digit product ids for the wds_ tools), the article's own PDF, its

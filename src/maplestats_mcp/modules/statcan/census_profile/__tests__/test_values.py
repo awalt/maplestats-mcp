@@ -744,3 +744,22 @@ async def test_the_warm_up_reads_the_values_file(census_dir):
     assert len(value_store.get_store()) == 0
     await client.open_values()
     assert len(value_store.get_store()) == 1
+
+
+@pytest.mark.parametrize(
+    ("code", "level", "expected"),
+    [
+        ("48", None, "2021A000248"),
+        ("ab", None, "2021A000248"),
+        ("10", "canada_provinces_territories", "2021A000210"),
+        ("01", None, "2021A000011124"),
+        ("CA", None, "2021A000011124"),
+        ("48", "census_divisions", "48"),
+        ("4806", None, "4806"),
+        ("2021A000248", None, "2021A000248"),
+    ],
+)
+def test_canada_and_province_codes_become_dguids(code, level, expected):
+    assert client._province_dguid(code, level) == expected
+    if expected.startswith("2021A"):
+        assert client.level_of(expected) == "canada_provinces_territories"

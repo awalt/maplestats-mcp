@@ -18,7 +18,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from maplestats_mcp.modules.elections_results.historical import _fold
+from maplestats_mcp.modules.elections_results.historical import _fold, province_needle
 from maplestats_mcp.shared import file_download
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance
@@ -219,7 +219,7 @@ async def get_candidates(
         ("party_raw", party),
     ):
         if text:
-            needle = _fold(text)
+            needle = province_needle(text) if column == "province" else _fold(text)
             rows = [r for r in rows if needle in _fold(r[column])]
     if winners_only:
         rows = [r for r in rows if r["elected"] == "Elected"]

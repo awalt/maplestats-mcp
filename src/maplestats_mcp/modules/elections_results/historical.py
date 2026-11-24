@@ -89,6 +89,34 @@ def _fold(text: str) -> str:
     return "".join(c for c in stripped if not unicodedata.combining(c)).casefold().strip()
 
 
+# Postal codes, SGC codes and French names, each to a folded part of the province
+# name both data sets use. A bare substring match took province="AB" as
+# "Newfoundland and Labrador" (found live on the hosted server 2026-11-23).
+# "newfoundland" also matches the pre-2001 name "Newfoundland".
+_PROVINCE_NEEDLES = {
+    ("nl", "10", "terre-neuve-et-labrador", "terre-neuve"): "newfoundland",
+    ("pe", "pei", "11", "ile-du-prince-edouard"): "prince edward island",
+    ("ns", "12", "nouvelle-ecosse"): "nova scotia",
+    ("nb", "13", "nouveau-brunswick"): "new brunswick",
+    ("qc", "24"): "quebec",
+    ("on", "35"): "ontario",
+    ("mb", "46"): "manitoba",
+    ("sk", "47"): "saskatchewan",
+    ("ab", "48"): "alberta",
+    ("bc", "59", "colombie-britannique"): "british columbia",
+    ("yt", "yk", "60"): "yukon",
+    ("nt", "nwt", "61", "territoires du nord-ouest"): "northwest territories",
+    ("nu", "62"): "nunavut",
+}
+_PROVINCE_ALIASES = {alias: needle for keys, needle in _PROVINCE_NEEDLES.items() for alias in keys}
+
+
+def province_needle(province: str) -> str:
+    """The folded text a province filter looks for in a province name."""
+    folded = _fold(province)
+    return _PROVINCE_ALIASES.get(folded, folded)
+
+
 def _int(value: object) -> int | None:
     return None if value is None or value == "" else int(float(str(value)))
 
@@ -206,7 +234,7 @@ async def get_historical(
     if election is not None:
         rows = [r for r in rows if _int(r.get("parliament_number")) == election]
     if province:
-        wanted = _fold(province)
+        wanted = province_needle(province)
         rows = [r for r in rows if wanted in _fold(str(r.get("province_name") or ""))]
     if constituency:
         wanted = _fold(constituency)

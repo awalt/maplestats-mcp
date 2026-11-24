@@ -191,6 +191,8 @@ jobs:
       # Microsoft's ingress overview, read 2026-11-20), so the app trusts that one entry
       # (MAPLE_TRUST_PROXY_HEADERS, one hop). Until then every caller shared one bucket,
       # and the live check below met refusals at 90 requests a minute of its own.
+      # MAPLE_RATE_LIMIT_REQUESTS is stated here because the app had 60 set by hand
+      # (found 2026-11-23), and --set-env-vars keeps any value it does not name.
       - name: Deploy the image
         run: |
           az containerapp update --resource-group "$RESOURCE_GROUP" --name "$APP" \
@@ -201,6 +203,7 @@ jobs:
               MAPLE_DUCKDB_MEMORY_LIMIT=384MB MAPLE_TOOL_TIMEOUT_SECONDS=230 \
               MAPLE_CENSUS_CACHE_DIR=/data/census \
               MAPLE_TRUST_PROXY_HEADERS=1 MAPLE_TRUSTED_PROXY_HOPS=1 \
+              MAPLE_RATE_LIMIT_REQUESTS=120 \
             --only-show-errors --output none
       # The app keeps serving the previous revision until the new one passes
       # its probes, so a bad image fails this step without taking the server down.
