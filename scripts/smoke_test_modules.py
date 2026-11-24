@@ -950,7 +950,9 @@ STEPS: list[Step] = [
         {"lang": "fr"},
         lambda data: (
             "Ã" not in json.dumps(data, ensure_ascii=False)
-            and "é" in json.dumps(data["round"], ensure_ascii=False)
+            # Any accent: a Provincial Nominee round has no "é" (2026-11-23), but its
+            # eligibility cutoff reads "31 juillet 2026 à 3:50:44 UTC".
+            and any(ch in json.dumps(data["round"], ensure_ascii=False) for ch in "éèàçÉ")
         ),
     ),
     Step(
@@ -2069,15 +2071,19 @@ async def main(modules: set[str], url: str | None = None) -> int:
                 elif (
                     os.environ.get("GITHUB_ACTIONS") == "true"
                     and result.is_error
-                    and "could not be reached" in text
+                    and ("could not be reached" in text or "[upstream_unavailable]" in text)
                 ):
                     # The refusal is decided from the feed itself, so a feed the runner
-                    # cannot reach (STM's zip, 2026-10-05; it downloads fine elsewhere)
-                    # leaves nothing to check. Never skipped off CI.
+                    # cannot reach (STM's zip, 2026-10-05 and 2026-11-23; it downloads
+                    # fine elsewhere) leaves nothing to check. Never skipped off CI.
                     print(f"SKIP {label}: upstream not reachable from this GitHub runner")
                 else:
                     failures.append(label)
-                    print(f"FAIL {label} {args}: expected an error with {step.expect_error!r}")
+                    # What came back instead, so the run log says why.
+                    print(
+                        f"FAIL {label} {args}: expected an error with {step.expect_error!r}; "
+                        f"got {'an error' if result.is_error else 'a success'}: {text[:300]!r}"
+                    )
                 continue
             if result.is_error:
                 # A Cloudflare challenge on a GitHub runner is that runner's block, not

@@ -290,7 +290,7 @@ def test_separate_numbers_are_not_joined():
         # Values the question did not ask for are reference only.
         ("C-03", "Canada lost about 68,300 jobs in September 2026.", "correct"),
         ("C-11", "Real GDP grew at an annualized rate of about 3.3% in Q2 2026.", "correct"),
-        ("C-12", "Retail sales rose 1.2% in August 2026 from July.", "correct"),
+        ("C-12", "Retail sales rose 1.4% in August 2026 from July.", "correct"),
         ("X-24", "No 2026 Census counts yet. The 2021 Census counted 1,418,118.", "correct"),
     ],
 )

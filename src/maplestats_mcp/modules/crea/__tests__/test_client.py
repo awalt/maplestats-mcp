@@ -15,6 +15,9 @@ _SEPT = "https://www.crea.ca/files/mls-hpi-data/MLS_HPI_Sept_2026.zip"
 _SEPTEMBER = "https://www.crea.ca/files/mls-hpi-data/MLS_HPI_September_2026.zip"
 _APR = "https://www.crea.ca/files/mls-hpi-data/MLS_HPI_Apr_2026.zip"
 _APRIL = "https://www.crea.ca/files/mls-hpi-data/MLS_HPI_April_2026.zip"
+_SEPT_HYPHENS = "https://www.crea.ca/files/mls-hpi-data/MLS_HPI-Sept-2026.zip"
+_SEPTEMBER_HYPHENS = "https://www.crea.ca/files/mls-hpi-data/MLS_HPI-September-2026.zip"
+_NOV_HYPHENS = "https://www.crea.ca/files/mls-hpi-data/MLS_HPI-Nov-2026.zip"
 
 
 def test_release_month_waits_for_the_mid_month_release():
@@ -25,10 +28,16 @@ def test_release_month_waits_for_the_mid_month_release():
 
 
 def test_candidate_urls_try_short_then_full_spelling():
-    assert client.candidate_urls(2026, 9) == [_SEPT, _SEPTEMBER]
-    # May has one spelling, so one HEAD.
+    assert client.candidate_urls(2026, 9) == [
+        _SEPT,
+        _SEPTEMBER,
+        _SEPT_HYPHENS,
+        _SEPTEMBER_HYPHENS,
+    ]
+    # May has one spelling, so one HEAD per separator.
     assert client.candidate_urls(2026, 5) == [
-        "https://www.crea.ca/files/mls-hpi-data/MLS_HPI_May_2026.zip"
+        "https://www.crea.ca/files/mls-hpi-data/MLS_HPI_May_2026.zip",
+        "https://www.crea.ca/files/mls-hpi-data/MLS_HPI-May-2026.zip",
     ]
 
 
@@ -70,6 +79,8 @@ async def test_full_month_spelling_is_tried_after_a_404(httpx_mock):
 async def test_missing_zip_falls_back_to_the_hpi_tool_page(httpx_mock):
     httpx_mock.add_response(method="HEAD", url=_SEPT, status_code=404)
     httpx_mock.add_response(method="HEAD", url=_SEPTEMBER, status_code=404)
+    httpx_mock.add_response(method="HEAD", url=_SEPT_HYPHENS, status_code=404)
+    httpx_mock.add_response(method="HEAD", url=_SEPTEMBER_HYPHENS, status_code=404)
     result = await client.get_hpi_links(today=date(2026, 10, 3), lang="fr")
     assert result.zip_url is None
     assert result.zip_confirmed is False and result.zip_check == "not_found"
@@ -109,3 +120,14 @@ async def test_result_is_cached_for_the_release_month(httpx_mock):
     assert first.provenance.cached is False
     assert second.provenance.cached is True
     assert len(httpx_mock.get_requests()) == 1
+
+
+async def test_hyphenated_name_from_november_2026(httpx_mock):
+    for url in (
+        "https://www.crea.ca/files/mls-hpi-data/MLS_HPI_Nov_2026.zip",
+        "https://www.crea.ca/files/mls-hpi-data/MLS_HPI_November_2026.zip",
+    ):
+        httpx_mock.add_response(method="HEAD", url=url, status_code=404)
+    httpx_mock.add_response(method="HEAD", url=_NOV_HYPHENS, headers={"Content-Length": "10"})
+    result = await client.get_hpi_links(today=date(2026, 11, 24))
+    assert result.zip_url == _NOV_HYPHENS and result.zip_confirmed

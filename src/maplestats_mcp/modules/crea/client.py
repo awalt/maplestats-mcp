@@ -189,9 +189,18 @@ def release_month(today: date) -> tuple[int, int]:
 
 
 def candidate_urls(year: int, month: int) -> list[str]:
-    """The zip URL under each spelling seen live, short first; no duplicates."""
+    """The zip URL under each spelling seen live, short first; no duplicates.
+
+    The November 2026 file is MLS_HPI-Nov-2026.zip, with hyphens (the HPI tool
+    page's link, checked 2026-11-24); every earlier month used underscores. Both
+    separators are tried, underscores first.
+    """
     spellings = [constants.SHORT_MONTHS[month], constants.FULL_MONTHS[month]]
-    urls = [constants.ZIP_URL.format(month=name, year=year) for name in spellings]
+    urls = [
+        template.format(month=name, year=year)
+        for template in (constants.ZIP_URL, constants.ZIP_URL_HYPHENS)
+        for name in spellings
+    ]
     return list(dict.fromkeys(urls))
 
 

@@ -3,6 +3,8 @@ TIMEZONE = "America/Toronto"
 
 # Confirmed live 2026-10-03 (see the module docstring for the spelling drift).
 ZIP_URL = "https://www.crea.ca/files/mls-hpi-data/MLS_HPI_{month}_{year}.zip"
+# From November 2026 (MLS_HPI-Nov-2026.zip, linked on the HPI tool page 2026-11-24).
+ZIP_URL_HYPHENS = "https://www.crea.ca/files/mls-hpi-data/MLS_HPI-{month}-{year}.zip"
 SHORT_MONTHS = {
     1: "Jan",
     2: "Feb",

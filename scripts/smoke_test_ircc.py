@@ -37,8 +37,14 @@ async def main() -> int:
         print("FAIL: EN and FR feeds report different latest draw numbers")
         return 1
     # Mojibake also has characters above 127 ("MÃ©tiers"), so check for real
-    # accents and for the tell-tale "Ã" of UTF-8 bytes read as cp1252.
-    french_text = f"{latest_fr.round.draw_name} {latest_fr.round.program}"
+    # accents and for the tell-tale "Ã" of UTF-8 bytes read as cp1252. Over the
+    # last 20 rounds, not the latest alone: a Provincial Nominee draw's French
+    # name has no accent ("Programme des candidats des provinces", the latest
+    # round on 2026-11-23, which failed this check).
+    recent_fr = await _check(
+        "list_express_entry_rounds(fr)", client.list_express_entry_rounds(limit=20, lang="fr")
+    )
+    french_text = " ".join(f"{r.draw_name} {r.program}" for r in recent_fr.rounds)
     if "Ã" in french_text or "â€" in french_text:
         print(f"FAIL: French feed text is mis-decoded: {french_text!r}")
         return 1
