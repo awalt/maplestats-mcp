@@ -354,6 +354,28 @@ def _level_error(codes: list[str], lang: str) -> InvalidInput:
     )
 
 
+# Canada and province codes callers pass instead of a DGUID ("48", "AB"): /stats on
+# 2026-11-23 had 30 of 116 get_data calls failing, and "48" with no level was refused
+# as an unknown level. The DGUIDs were checked on the hosted server that day
+# (2021A000248 is Alberta, 2021A000011124 is Canada).
+_CANADA_DGUID = "2021A000011124"
+_PROVINCE_SGC = {
+    "NL": "10", "PE": "11", "NS": "12", "NB": "13", "QC": "24", "ON": "35",
+    "MB": "46", "SK": "47", "AB": "48", "BC": "59", "YT": "60", "NT": "61", "NU": "62",
+}  # fmt: skip
+
+
+def _province_dguid(code: str, level: str | None) -> str:
+    """A Canada or province code as its 2021 DGUID; any other code unchanged."""
+    if level not in (None, "canada_provinces_territories"):
+        return code
+    upper = code.strip().upper()
+    if upper in ("01", "1", "CA", "CAN"):
+        return _CANADA_DGUID
+    sgc = _PROVINCE_SGC.get(upper, upper)
+    return f"2021A0002{sgc}" if sgc in _PROVINCE_SGC.values() else code
+
+
 def level_of(code: str) -> str | None:
     """The geography level a DGUID names, from its first nine characters; None if unknown."""
     return constants.DGUID_PREFIX_TO_LEVEL.get(code[:9])
@@ -668,6 +690,7 @@ async def get_data(
         )
     _check_codes("geography_codes", geography_codes, lang)
     _check_codes("characteristic_codes", characteristic_codes, lang)
+    geography_codes = [_province_dguid(code, level) for code in geography_codes]
     gender_code = constants.GENDER_TO_CODE.get(gender)
     if gender_code is None:
         raise InvalidInput(

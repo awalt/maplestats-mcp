@@ -173,3 +173,52 @@ async def test_get_article_is_cached(httpx_mock):
     )
     assert not first.provenance.cached
     assert second.provenance.cached
+
+
+_ARCHIVE_URL = client.constants.FULL_ARCHIVE_URL.format(suffix="eng")
+_ARCHIVE = [
+    {
+        "date": "2026-11-04 00:00:01",
+        "title": "Canadian international merchandise trade",
+        "description": "September 2026",
+        "url": "/daily-quotidien/261104/dq261104a-eng.htm",
+    },
+    {
+        "date": "2026-10-06 00:00:01",
+        "title": "Canadian international merchandise trade",
+        "description": "August 2026",
+        "url": "/daily-quotidien/261006/dq261006a-eng.htm",
+    },
+    {
+        "date": "2026-10-06 00:00:01",
+        "title": "Building permits",
+        "description": "August 2026",
+        "url": "/daily-quotidien/261006/dq261006b-eng.htm",
+    },
+]
+
+
+async def test_get_article_by_release_date(httpx_mock):
+    httpx_mock.add_response(url=_ARCHIVE_URL, json=_ARCHIVE)
+    httpx_mock.add_response(url=_URL, text=_PAGE)
+    article = await client.get_article("2026-11-04")
+    assert article.article_id == "dq261104a"
+
+
+async def test_get_article_by_title_reads_the_newest_match(httpx_mock):
+    httpx_mock.add_response(url=_ARCHIVE_URL, json=_ARCHIVE)
+    httpx_mock.add_response(url=_URL, text=_PAGE)
+    article = await client.get_article("Canadian international merchandise trade")
+    assert article.article_id == "dq261104a"
+
+
+async def test_get_article_date_with_several_articles_lists_them(httpx_mock):
+    httpx_mock.add_response(url=_ARCHIVE_URL, json=_ARCHIVE)
+    with pytest.raises(InvalidInput, match="dq261006a.*dq261006b"):
+        await client.get_article("2026-10-06")
+
+
+async def test_get_article_unmatched_title_is_invalid_input(httpx_mock):
+    httpx_mock.add_response(url=_ARCHIVE_URL, json=_ARCHIVE)
+    with pytest.raises(InvalidInput, match="no published article matched"):
+        await client.get_article("labour force survey")

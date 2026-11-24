@@ -1197,10 +1197,65 @@ async def _article_html(article_id: str, url: str, tool: str) -> tuple[str, bool
     )
 
 
+async def _find_article(article: str, lang: str) -> str:
+    """The article URL for an id or URL, or for a release date or title found in the archive.
+
+    /stats (2026-11-23) counted 27 of 69 calls rejected as invalid input; callers
+    passed a release date ("2025-11-21") or a title ("Labour Force Survey, October
+    2026") they had from elsewhere, so both are looked up in the archive.
+    """
+    text = article.strip()
+    if _ARTICLE_ID.search(text) is not None or not text:
+        return text
+    try:
+        day: date | None = date.fromisoformat(text)
+    except ValueError:
+        day = None
+    if day is not None:
+        found = await search_archive(
+            "",
+            lang=lang,
+            start_date=day.isoformat(),
+            end_date=day.isoformat(),
+            limit=constants.ARCHIVE_SEARCH_LIMIT_MAX,
+        )
+    else:
+        found = await search_archive(text, lang=lang, limit=5)
+    published = [
+        (match.group(1).lower(), entry.title)
+        for entry in found.entries
+        if not entry.scheduled and (match := _ARTICLE_ID.search(entry.url or ""))
+    ]
+    if day is not None and len(published) > 1:
+        listed = "; ".join(f"{article_id} {title}" for article_id, title in published)
+        raise InvalidInput(
+            say(
+                f"statcan_daily:get_article: The Daily of {day} has {len(published)} articles; "
+                f"pass one id: {listed}.",
+                f"statcan_daily:get_article : Le Quotidien du {day} compte {len(published)} "
+                f"articles ; donnez un identifiant : {listed}.",
+            )
+        )
+    if found.note is None and published:
+        # Newest first: a title shared by every month's release reads the latest one.
+        return published[0][0]
+    raise InvalidInput(
+        say(
+            "statcan_daily:get_article: give a Daily article URL or id such as "
+            f"'dq261104a' (from statcan_daily_get_releases), a release date (YYYY-MM-DD) or "
+            f"a release title; no published article matched {article!r}.",
+            "statcan_daily:get_article : donnez l'adresse ou l'identifiant d'un article du "
+            "Quotidien, par exemple 'dq261104a' (voir statcan_daily_get_releases), une date "
+            f"de diffusion (AAAA-MM-JJ) ou un titre ; aucun article publié ne correspond à "
+            f"{article!r}.",
+        )
+    )
+
+
 async def get_article(article: str, *, lang: str = "en") -> DailyArticle:
     """Read one Daily article in full: its sections, tables, charts and PDF link."""
     use_lang(lang)
-    article_id, url = _article_url(article, lang)
+    article_id, url = _article_url(await _find_article(article, lang), lang)
     html, was_cached = await _article_html(article_id, url, "get_article")
     parsed = _parse_article(html, url)
     return DailyArticle(
