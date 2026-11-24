@@ -32,6 +32,8 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from statistics import mean
@@ -735,9 +737,36 @@ def summarise(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "tokens_out": round(mean(tokens_out)) if tokens_out else None,
                 "errors": sum(i["run"]["is_error"] for i in items),
                 "groups": groups,
+                **first_calls(i["run"] for i in items),
             }
         )
     return out
+
+
+def first_calls(runs: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """How often a model's first call to a tool, through call_tool, was refused as invalid.
+
+    Per answer, only the first call to each tool counts: a retry after reading the
+    error is the recovery, not the guess (issue #273). Shares are None for an arm whose
+    runs recorded no `routed_calls` (runs before 2026-11-24, arms without call_tool).
+    """
+    first = rejected = 0
+    tools: Counter[str] = Counter()
+    for run in runs:
+        seen: set[str] = set()
+        for call in run.get("routed_calls") or []:
+            if call["tool"] in seen:
+                continue
+            seen.add(call["tool"])
+            first += 1
+            if call["error"] == "invalid_input":
+                rejected += 1
+                tools[call["tool"]] += 1
+    return {
+        "first_calls": first,
+        "first_call_rejected": _share(rejected, first),
+        "first_call_rejected_tools": dict(tools.most_common(5)),
+    }
 
 
 def tokens_read(run: dict[str, Any]) -> int | None:
@@ -912,6 +941,27 @@ def render(report: dict[str, Any], version: str = "v1") -> str:
             f"| {_pct(s['release_mentions'])} | {s['tool_calls']} | {s['seconds']} | {cost} "
             f"| {_thousands(s.get('tokens_in'))} | {_thousands(s.get('tokens_out'))} |"
         )
+    recorded = [s for s in summary if s.get("first_calls")]
+    if recorded:
+        lines += [
+            "",
+            "## First calls refused",
+            "",
+            (
+                "Of each answer's first call to a tool through `call_tool`, the share the tool "
+                "refused as `invalid_input` (arguments it did not accept; issue #273). Retries "
+                "are left out. Only runs that recorded their calls count."
+            ),
+            "",
+            "| Arm | First calls | Refused | Most refused |",
+            "| :-- | --: | --: | :-- |",
+        ]
+        for s in recorded:
+            worst = ", ".join(f"`{tool}` {n}" for tool, n in s["first_call_rejected_tools"].items())
+            lines.append(
+                f"| {s['arm']} | {s['first_calls']} | {_pct(s['first_call_rejected'])} "
+                f"| {worst or '–'} |"
+            )
     arms = [s["arm"] for s in summary]
     outcomes: dict[tuple[str, str], list[str]] = {}
     for r in report["answers"]:

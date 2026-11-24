@@ -47,7 +47,7 @@ import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -344,6 +344,47 @@ class Answer:
     # the cache (14 on a typical answer), so the input a model read is all three summed.
     cache_read_tokens: int | None = None
     cache_creation_tokens: int | None = None
+    # Each call_tool call in order: the tool it ran and the error code its result
+    # started with ("invalid_input", ...), or None when it succeeded. Issue #273: a
+    # model's first call to a tool failed argument validation 5 times in 30; this lets
+    # grade.py report that share per arm, so a regression shows. Runs before
+    # 2026-11-24 have no such list.
+    routed_calls: list[dict[str, Any]] = field(default_factory=list)
+
+
+# The code ErrorHintMiddleware puts first on every MapleStats tool error.
+_ERROR_CODE = re.compile(r"\[([a-z_]+)\]")
+
+
+def routed_calls(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The call_tool calls in a stream-json transcript, each with its result's error code.
+
+    A call_tool call is any tool_use named `mcp__<server>__call_tool`; the tool it ran is
+    its input's `name`. The code is read from the start of an error result's text, so a
+    server that does not put one first (another arm) gives "error".
+    """
+    pending: dict[str, dict[str, Any]] = {}
+    calls: list[dict[str, Any]] = []
+    for event in events:
+        content = (event.get("message") or {}).get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if block.get("type") == "tool_use" and str(block.get("name", "")).endswith(
+                "__call_tool"
+            ):
+                call = {"tool": str((block.get("input") or {}).get("name", "")), "error": None}
+                pending[block.get("id", "")] = call
+                calls.append(call)
+            elif block.get("type") == "tool_result" and block.get("tool_use_id") in pending:
+                if not block.get("is_error"):
+                    continue
+                text = block.get("content")
+                if isinstance(text, list):
+                    text = " ".join(str(b.get("text", "")) for b in text if isinstance(b, dict))
+                match = _ERROR_CODE.match(str(text or "").strip())
+                pending[block["tool_use_id"]]["error"] = match.group(1) if match else "error"
+    return calls
 
 
 def ask(
@@ -402,11 +443,15 @@ def ask(
     calls: list[str] = []
     models: set[str] = set()
     result: dict[str, Any] = {}
+    events: list[dict[str, Any]] = []
     for line in proc.stdout.splitlines():
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if not isinstance(event, dict):
+            continue
+        events.append(event)
         if event.get("type") == "system" and event.get("subtype") == "init":
             tools = sorted(event.get("tools", []))
         elif event.get("type") == "assistant":
@@ -438,6 +483,7 @@ def ask(
         output_tokens=(result.get("usage") or {}).get("output_tokens"),
         cache_read_tokens=(result.get("usage") or {}).get("cache_read_input_tokens"),
         cache_creation_tokens=(result.get("usage") or {}).get("cache_creation_input_tokens"),
+        routed_calls=routed_calls(events),
     )
 
 

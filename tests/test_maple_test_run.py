@@ -106,3 +106,76 @@ def test_without_resume_an_existing_run_file_is_never_overwritten(harness: list[
     run.run("no_tools", "m", run.REPO, None, "", version="v1")
     with pytest.raises(SystemExit, match="--resume"):
         run.run("no_tools", "m", run.REPO, None, "", version="v1")
+
+
+# Issue #273: the first call to a tool through call_tool, and whether its arguments were refused.
+def _use(call_id: str, tool: str, server: str = "maplestats") -> dict[str, Any]:
+    return {
+        "type": "assistant",
+        "message": {
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": call_id,
+                    "name": f"mcp__{server}__call_tool",
+                    "input": {"name": tool, "arguments": {}},
+                }
+            ]
+        },
+    }
+
+
+def _result(call_id: str, text: str | None) -> dict[str, Any]:
+    block: dict[str, Any] = {"type": "tool_result", "tool_use_id": call_id}
+    if text is not None:
+        block |= {"is_error": True, "content": [{"type": "text", "text": text}]}
+    else:
+        block["content"] = "ok"
+    return {"type": "user", "message": {"content": [block]}}
+
+
+def test_routed_calls_reads_the_tool_and_the_error_code_of_each_call_tool_call():
+    events = [
+        {"type": "system", "subtype": "init"},
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "id": "s", "name": "mcp__maplestats__search_tools"}
+                ]
+            },
+        },
+        _use("a", "jobbank_get_wages"),
+        _result("a", "[invalid_input] noc is required. Next: ..."),
+        _use("b", "jobbank_get_wages"),
+        _result("b", None),
+        _use("c", "boc_get_observations", server="maplestats-local"),
+        _result("c", "something went wrong"),
+    ]
+    assert run.routed_calls(events) == [
+        {"tool": "jobbank_get_wages", "error": "invalid_input"},
+        {"tool": "jobbank_get_wages", "error": None},
+        {"tool": "boc_get_observations", "error": "error"},
+    ]
+
+
+def test_first_calls_counts_only_each_answers_first_call_to_a_tool():
+    from tests.maple_test.grade import first_calls
+
+    runs = [
+        {
+            "routed_calls": [
+                {"tool": "jobbank_get_wages", "error": "invalid_input"},
+                {"tool": "jobbank_get_wages", "error": None},  # the retry: not counted
+                {"tool": "wds_get_series", "error": None},
+            ]
+        },
+        {"routed_calls": [{"tool": "jobbank_get_wages", "error": "not_found"}]},
+        {"tool_calls": []},  # a run from before 2026-11-24: nothing recorded
+    ]
+    assert first_calls(runs) == {
+        "first_calls": 3,
+        "first_call_rejected": 0.33,
+        "first_call_rejected_tools": {"jobbank_get_wages": 1},
+    }
+    assert first_calls([{"tool_calls": []}])["first_call_rejected"] is None

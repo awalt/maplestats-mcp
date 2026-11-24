@@ -76,6 +76,55 @@ async def test_search_parses_socrata_catalog_fields(httpx_mock):
     assert result.datasets[0].landing_page_url.endswith("Crown-Land/3nka-59nz")
 
 
+def _with_data_date(day: str) -> dict:
+    resource = {**_SEARCH_RESULT["resource"], "data_updated_at": f"{day}T10:00:00.000Z"}
+    return {**_SEARCH_RESULT, "resource": resource}
+
+
+def _search_url(query: str) -> str:
+    return (
+        f"{_CATALOG_URL}?domains={DOMAIN}&search_context={DOMAIN}"
+        f"&only=datasets&limit=10&offset=0&q={query}"
+    )
+
+
+async def test_search_says_when_every_match_holds_old_data(httpx_mock):
+    # Issue #265: Edmonton's "rent" search found only 2009-2016 tables; the metadata
+    # date was one migration date for all of them, the rows' date was not.
+    httpx_mock.add_response(
+        url=_search_url("rent"),
+        json={
+            "results": [_with_data_date("2016-09-02"), _with_data_date("2011-09-08")],
+            "resultSetSize": 2,
+        },
+    )
+    result = await client.search_datasets(PORTAL, "rent")
+    assert result.datasets[0].data_updated_at is not None
+    assert result.datasets[0].data_updated_at.year == 2016
+    assert any("last updated in 2016" in c for c in result.provenance.caveats)
+
+
+async def test_search_adds_no_age_note_when_one_match_is_recent(httpx_mock):
+    httpx_mock.add_response(
+        url=_search_url("housing"),
+        json={
+            "results": [_with_data_date("2011-09-08"), _with_data_date("2026-11-23")],
+            "resultSetSize": 2,
+        },
+    )
+    result = await client.search_datasets(PORTAL, "housing")
+    assert not any("last updated in" in c for c in result.provenance.caveats)
+
+
+async def test_search_adds_no_age_note_when_a_match_has_no_data_date(httpx_mock):
+    httpx_mock.add_response(
+        url=_search_url("crown"),
+        json={"results": [_with_data_date("2011-09-08"), _SEARCH_RESULT], "resultSetSize": 2},
+    )
+    result = await client.search_datasets(PORTAL, "crown")
+    assert not any("last updated in" in c for c in result.provenance.caveats)
+
+
 async def test_get_dataset_maps_view_metadata(httpx_mock):
     httpx_mock.add_response(
         url=f"https://{DOMAIN}/api/views/3nka-59nz.json",
