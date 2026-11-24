@@ -1,6 +1,6 @@
 {
   "benchmark": "maple_test_v2",
-  "built_at": "2026-11-19T15:48:57+00:00",
+  "built_at": "2026-11-24T04:42:43+00:00",
   "sources": "Publishers' own APIs, read directly: StatCan WDS, Bank of Canada Valet, ECCC, World Bank, BIS, Health Canada, IRCC; StatCan's release schedule",
   "questions": [
     {
@@ -454,10 +454,10 @@
       "eval_type": "numeric",
       "question": "By how much did Canada's retail sales change in August 2026 from July?",
       "expected": {
-        "change_pct": 1.2
+        "change_pct": 1.4
       },
       "reference": {
-        "sales_aug_2026_dollars": 74567349000
+        "sales_aug_2026_dollars": 74714475000
       },
       "headline": [
         "change_pct"
@@ -470,8 +470,8 @@
           "series_title": "Canada;Retail trade;Total retail sales;Seasonally adjusted",
           "reference_period": "2026-08",
           "coordinate": "1.1.1.2",
-          "value": 74567349.0,
-          "release_or_revision_date": "2026-10-23T08:30",
+          "value": 74714475.0,
+          "release_or_revision_date": "2026-11-20T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=2010005601"
         },
         {
@@ -480,8 +480,8 @@
           "series_title": "Canada;Retail trade;Total retail sales;Seasonally adjusted",
           "reference_period": "2026-07",
           "coordinate": "1.1.1.2",
-          "value": 73684586.0,
-          "release_or_revision_date": "2026-10-23T08:30",
+          "value": 73690595.0,
+          "release_or_revision_date": "2026-11-20T08:30",
           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=2010005601"
         }
       ],
@@ -1701,9 +1701,9 @@
       "eval_type": "refusal",
       "question": "What was the CRS cut-off in Express Entry round #460?",
       "expected": {
-        "behaviour": "Decline: round #460 has not been held. The latest round is #453 on 2026-10-28 (Transport Occupations, 2026-Version 2, 150 invitations, CRS 477).",
-        "latest_round": 453,
-        "latest_round_date": "2026-10-28"
+        "behaviour": "Decline: round #460 has not been held. The latest round is #454 on 2026-11-23 (Provincial Nominee Program, 1,999 invitations, CRS 673).",
+        "latest_round": 454,
+        "latest_round_date": "2026-11-23"
       },
       "headline": [],
       "tolerances": {
@@ -1713,11 +1713,11 @@
       "citations": [
         {
           "table_id": "Other",
-          "vector_id": "Round 453",
-          "reference_period": "2026-10-28",
+          "vector_id": "Round 454",
+          "reference_period": "2026-11-23",
           "value": {
-            "invitations": 150,
-            "crs_cutoff": 477
+            "invitations": 1999,
+            "crs_cutoff": 673
           },
           "release_or_revision_date": null,
           "url": "https://www.canada.ca/content/dam/ircc/documents/json/ee_rounds_123_en.json"
