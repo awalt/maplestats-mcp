@@ -20,7 +20,8 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, NoReturn
+from urllib.parse import urlparse
 
 import httpx
 
@@ -76,6 +77,33 @@ def _portal(key: str, lang: str = "en") -> Portal:
             lang,
         )
     return portal
+
+
+def excluded_host(url: str | None) -> bool:
+    """True for a URL on a host MapleStats never reads (constants.EXCLUDED_HOSTS)."""
+    host = (urlparse(url or "").hostname or "").lower()
+    return any(host == h or host.endswith("." + h) for h in constants.EXCLUDED_HOSTS)
+
+
+def excluded_dataset(portal: str, dataset_id: str | None) -> bool:
+    """True for a dataset id that is left out of this portal (constants.EXCLUDED_DATASETS)."""
+    return (dataset_id or "") in constants.EXCLUDED_DATASETS.get(portal, frozenset())
+
+
+def refuse_excluded(lang: str) -> NoReturn:
+    """Raise the one InvalidInput every CKAN tool gives for excluded CanadaBuys data."""
+    raise_localized(InvalidInput, constants.EXCLUDED_REASON, constants.EXCLUDED_REASON_FR, lang)
+
+
+def _without_excluded(obj: dict[str, Any]) -> dict[str, Any]:
+    """A package with its resources on an excluded host left out (and counted out)."""
+    resources = list_or_empty(obj, "resources")
+    kept = [
+        r for r in resources if not (isinstance(r, dict) and excluded_host(_text(r.get("url"))))
+    ]
+    if len(kept) == len(resources):
+        return obj
+    return {**obj, "resources": kept, "num_resources": len(kept)}
 
 
 def _config(key: str, portal: Portal) -> CkanConfig:
@@ -440,6 +468,11 @@ async def search_datasets(
         )
 
     params: dict[str, Any] = {"q": query, "rows": rows, "start": start}
+    # Left out upstream, so the count and paging stay right; filtered again below.
+    excluded = sorted(constants.EXCLUDED_DATASETS.get(portal, frozenset()))
+    if excluded:
+        drop = "-id:(" + " OR ".join(excluded) + ")"
+        fq = f"{fq} {drop}" if fq else drop
     if fq:
         params["fq"] = fq
     if sort:
@@ -455,7 +488,12 @@ async def search_datasets(
         repr((query, fq, rows, start, sort)),
         lang,
     )
-    raw = list_or_empty(result, "results")
+    raw = [
+        obj
+        for obj in list_or_empty(result, "results")
+        if isinstance(obj, dict) and not excluded_dataset(portal, obj.get("id"))
+    ]
+    raw = [_without_excluded(obj) for obj in raw]
     total = get_or(result, "count", len(raw))
     packages = [_package_summary(obj, info, lang) for obj in raw]
     return PackageSearchResult(
@@ -502,6 +540,9 @@ async def get_dataset(portal: str, dataset_id: str, lang: str = "en") -> Package
         dataset_id,
         lang,
     )
+    if excluded_dataset(portal, obj.get("id")):
+        refuse_excluded(lang)
+    obj = _without_excluded(obj)
     resources = list_or_empty(obj, "resources")
     org = obj.get("organization")
     return PackageDetail(
@@ -741,6 +782,8 @@ async def get_resource(portal: str, resource_id: str, lang: str = "en") -> Resou
         resource_id,
         lang,
     )
+    if excluded_host(_text(obj.get("url"))) or excluded_dataset(portal, obj.get("package_id")):
+        refuse_excluded(lang)
     return ResourceDetail(
         portal=portal,
         resource=_resource(obj, info, lang),

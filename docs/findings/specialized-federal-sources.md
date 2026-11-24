@@ -1326,6 +1326,24 @@ history, one notice by reference number, and the bulk-file links) was built
 removed 2026-10-03: the source is not available for automated access under
 its terms. See git history if this is revisited.
 
+**Excluded from the CKAN tools too (2026-11-24).** The federal portal's
+`*.canada.ca` file rule still let `ckan_read_resource` download the CanadaBuys
+files listed on open.canada.ca, and canadabuys.canada.ca's robots.txt reads
+`User-agent: *` / `Disallow: /` (only Googlebot and bingbot have rules of their
+own). On the owner's decision, `ckan_` now leaves CanadaBuys out entirely
+(`modules/ckan/constants.py`, `EXCLUDED_HOSTS` and `EXCLUDED_DATASETS`):
+
+- canadabuys.canada.ca, achatscanada.canada.ca and their subdomains are never
+  read, not even as a redirect target, and their resources are left out of every
+  dataset's resource and document lists;
+- the federal portal's six CanadaBuys datasets (contract history, award notices,
+  tender notices, the two archived files and Standing Offers and Supply
+  Arrangements) are left out of searches and refused by id, their copies on
+  donnees-data.tpsgc-pwgsc.gc.ca included. The goods and services classification
+  datasets (GSIN, UNSPSC) stay.
+
+Federal contracts over $10,000 remain in `disclosure_search_contracts`.
+
 How CanadaBuys contract history and award notices overlap with the
 proactive disclosure of contracts (`disclosure_*`), and why their totals must
 not be added, is in [Federal contracts](federal-contracts-overlap.md)

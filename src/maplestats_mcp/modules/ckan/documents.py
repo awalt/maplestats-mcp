@@ -78,7 +78,12 @@ def _documents(
     seen: set[str] = set()
 
     def add(title: str, url: Any, kind: str, fmt: str | None = None) -> None:
-        if isinstance(url, str) and url.startswith(("http://", "https://")) and url not in seen:
+        if (
+            isinstance(url, str)
+            and url.startswith(("http://", "https://"))
+            and url not in seen
+            and not client.excluded_host(url)
+        ):
             seen.add(url)
             links.append(DocumentLink(title=title, url=url, kind=kind, format=fmt))
 
@@ -154,6 +159,9 @@ async def get_dataset_documents(
         dataset_id,
         lang,
     )
+    if client.excluded_dataset(portal, obj.get("id")):
+        client.refuse_excluded(lang)
+    obj = client._without_excluded(obj)
     description = client._translated(obj, "notes", lang) or ""
     about = {
         k: v
