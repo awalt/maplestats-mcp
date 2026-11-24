@@ -87,6 +87,39 @@ class Portal:
     file_reader_off_reason_fr: str | None = None
 
 
+# CanadaBuys (PSPC procurement) is not part of MapleStats. Its module was removed on
+# 2026-10-03 (its terms rule out automated access), and canadabuys.canada.ca's robots.txt
+# reads `User-agent: *` / `Disallow: /` (checked 2026-11-24). The generic CKAN reader still
+# reached its files through the federal portal's "*.canada.ca" rule, so on 2026-11-24 the
+# owner had it shut out entirely: these hosts (and their subdomains, such as
+# sosa.canadabuys.canada.ca) are never read, and the federal portal's CanadaBuys datasets
+# are left out of searches and refused by id, including their copies on PSPC's
+# donnees-data.tpsgc-pwgsc.gc.ca. Ids confirmed with package_search q=canadabuys that day.
+EXCLUDED_HOSTS: tuple[str, ...] = ("canadabuys.canada.ca", "achatscanada.canada.ca")
+EXCLUDED_DATASETS: dict[str, frozenset[str]] = {
+    "federal": frozenset(
+        {
+            "4fe645a1-ffcd-40c1-9385-2c771be956a4",  # CanadaBuys contract history
+            "a1acb126-9ce8-40a9-b889-5da2b1dd20cb",  # CanadaBuys award notices
+            "6abd20d4-7a1c-4b38-baa2-9525d0bb2fd2",  # CanadaBuys tender notices
+            "53753f06-8b28-42d7-89f7-04cd014323b0",  # Archived, contract history
+            "ffd38960-1853-4c19-ba26-e50bea2cb2d5",  # Archived, tender notices
+            "f5c8a5a0-354d-455a-99ab-8276aa38032e",  # Standing Offers and Supply Arrangements
+        }
+    ),
+}
+EXCLUDED_REASON = (
+    "CanadaBuys procurement data are not available through MapleStats: the publisher's "
+    "terms and robots.txt rule out automated access. Federal contracts over $10,000 are in "
+    "disclosure_search_contracts."
+)
+EXCLUDED_REASON_FR = (
+    "Les données d'approvisionnement d'AchatsCanada ne sont pas offertes par MapleStats : "
+    "les conditions et le robots.txt de l'éditeur excluent l'accès automatisé. Les contrats "
+    "fédéraux de plus de 10 000 $ se trouvent dans disclosure_search_contracts."
+)
+
+
 PORTALS: dict[str, Portal] = {
     "federal": Portal(
         base_url="https://open.canada.ca/data/api/3/action/",

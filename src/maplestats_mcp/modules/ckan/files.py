@@ -63,6 +63,10 @@ def host_matcher(portal: Portal) -> Callable[[str], bool]:
 
     def allowed(host: str) -> bool:
         lowered = host.lower()
+        # Never an excluded host (CanadaBuys), even under a "*.canada.ca" rule or as a
+        # redirect target: constants.EXCLUDED_HOSTS.
+        if client.excluded_host(f"https://{lowered}/"):
+            return False
         return lowered in exact or lowered.endswith(suffixes)
 
     return allowed
@@ -300,6 +304,10 @@ async def _resolve(portal_key: str, resource_id: str, lang: str) -> tuple[_Resol
             show_package,
         )
         package = loaded if isinstance(loaded, dict) else {}
+    if client.excluded_dataset(portal_key, package_id) or client.excluded_host(
+        _text(resource.get("url"))
+    ):
+        client.refuse_excluded(lang)
     return _Resolved(portal_key, portal, resource, package, lang), (
         cached_resource and cached_package
     )
