@@ -1326,6 +1326,11 @@ history, one notice by reference number, and the bulk-file links) was built
 removed 2026-10-03: the source is not available for automated access under
 its terms. See git history if this is revisited.
 
+How CanadaBuys contract history and award notices overlap with the
+proactive disclosure of contracts (`disclosure_*`), and why their totals must
+not be added, is in [Federal contracts](federal-contracts-overlap.md)
+(2026-11-24, issue #253).
+
 ## House of Commons (OpenParliament.ca)
 
 **Status:** Removed.
