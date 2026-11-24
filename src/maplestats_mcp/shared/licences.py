@@ -304,6 +304,15 @@ SOURCE_LICENCES: dict[str, str] = {
         "changes are made to the original content; commercial reproduction requires a licence "
         "from the King's Printer. Source: Ontario Ministry of Finance."
     ),
+    # Saskatchewan
+    "sk-bureau-of-statistics": (
+        "Crown copyright, Government of Saskatchewan (https://www.saskatchewan.ca/copyright): "
+        "the materials may be reproduced for non-commercial purposes, accurately and not as an "
+        "official version; commercial reproduction requires the Government of Saskatchewan's "
+        "advance written permission. Source: Saskatchewan Bureau of Statistics. Labour force "
+        "and CPI tables repackage Statistics Canada data, which is under the Statistics Canada "
+        "Open Licence."
+    ),
     # Manitoba
     "manitoba-bureau-of-statistics": (
         "OpenMB Information and Data Use Licence "
@@ -842,6 +851,15 @@ _PROVINCIAL_FR: dict[str, str] = {
         "contenu original ; la reproduction commerciale exige une licence de l'Imprimeur du "
         "Roi. Source : ministère des Finances de l'Ontario."
     ),
+    "sk-bureau-of-statistics": (
+        "Droit d'auteur de la Couronne, gouvernement de la Saskatchewan "
+        "(https://www.saskatchewan.ca/copyright) : le contenu peut être reproduit à des fins "
+        "non commerciales, fidèlement et non comme une version officielle ; la reproduction "
+        "commerciale exige l'autorisation écrite préalable du gouvernement de la Saskatchewan. "
+        "Source : Bureau de la statistique de la Saskatchewan. Les tableaux de la population "
+        "active et de l'IPC reprennent des données de Statistique Canada, qui relèvent de la "
+        "Licence ouverte de Statistique Canada."
+    ),
     "manitoba-bureau-of-statistics": (
         "Licence d'utilisation de l'information et des données OpenMB (OpenMB Information and "
         "Data Use Licence, https://www.gov.mb.ca/asset_library/en/legal/OpenMB-Information-Data-"
@@ -964,6 +982,9 @@ _SOURCE_COMMERCIAL_USE: dict[str, CommercialUse] = {
     # Crown copyright: non-commercial reproduction, unchanged (ontario.ca/page/
     # copyright-information, read 2026-11-24).
     "on-finance-pages": "not_allowed",
+    # Crown copyright, non-commercial reproduction only (saskatchewan.ca/copyright, read
+    # 2026-11-24).
+    "sk-bureau-of-statistics": "not_allowed",
     # OpenMB licence: "for both commercial and non-commercial purposes" (copyright page,
     # read 2026-11-24).
     "manitoba-bureau-of-statistics": "allowed",

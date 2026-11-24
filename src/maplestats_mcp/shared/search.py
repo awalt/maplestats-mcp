@@ -459,6 +459,7 @@ PROVINCE_TOOLS: tuple[tuple[str, str], ...] = (
     ("on_finance_", "Ontario"),
     ("oeb_", "Ontario"),
     ("mb_", "Manitoba"),
+    ("sk_", "Saskatchewan"),
     ("bc_", "British Columbia"),
     ("bcer_", "British Columbia"),
     ("bcgw_", "British Columbia"),

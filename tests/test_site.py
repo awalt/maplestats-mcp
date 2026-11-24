@@ -930,11 +930,11 @@ def test_not_found_page_is_one_bilingual_page(built_site: Path):
 
 def test_sources_not_built_are_named_on_the_faq_and_in_the_readme(built_site: Path):
     readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
-    assert "Justice Laws" in readme and "Saskatchewan Bureau of Statistics" in readme
+    assert "Justice Laws" in readme and "Whitehorse" in readme
     en = (built_site / "faq.html").read_text(encoding="utf-8")
     fr = (built_site / "fr" / "faq.html").read_text(encoding="utf-8")
-    assert "Justice Laws" in en and "Saskatchewan Bureau of Statistics" in en
-    assert "Lois sur la justice" in fr and "Bureau de la statistique de la Saskatchewan" in fr
+    assert "Justice Laws" in en and "Whitehorse" in en
+    assert "Lois sur la justice" in fr and "Whitehorse" in fr
 
 
 def test_policy_files_exist_and_are_linked(built_site: Path):

@@ -29,3 +29,10 @@
   English or French page. Cells come as published, beside the same cells read as
   numbers. Crown copyright: reproduction for non-commercial purposes, with credit and
   unchanged; each result is marked `commercial_use: not_allowed`.
+- `sk_stats_` (Saskatchewan Bureau of Statistics, #266): `sk_stats_list_files` (the
+  Excel tables and PDF reports of the Bureau's eight products in the Publications
+  Centre: Provincial Economic Accounts, Economic Review, Monthly Statistical Review,
+  labour force, CPI, demography, census, fact sheets) and `sk_stats_read_file` (one
+  sheet of an Excel table as published, .xlsx or .xls, with a guessed header row).
+  Crown copyright: reproduction for non-commercial purposes; each result is marked
+  `commercial_use: not_allowed`.

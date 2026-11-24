@@ -793,7 +793,8 @@ Sources, by tool-name prefix:
   ab_economic_ (Alberta Economic Dashboard), ab_opendata_ (Open Alberta
   Excel and CSV files; Alberta Activity Index, population projections,
   budget fiscal plan and economic outlook tables), mb_stats_ (Manitoba
-  Bureau of Statistics indicators and tables), on_finance_ (Ontario
+  Bureau of Statistics indicators and tables), sk_stats_ (Saskatchewan
+  Bureau of Statistics Excel tables and reports), on_finance_ (Ontario
   Ministry of Finance population projections).
 - Borealis (Canadian Dataverse): borealis_ (Beyond 20/20 tables from
   university libraries; ODESI DDI metadata, public files only).

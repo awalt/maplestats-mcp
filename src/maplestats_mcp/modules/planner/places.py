@@ -108,6 +108,10 @@ PROVINCES: dict[str, tuple[str, tuple[PlanStep, ...]]] = {
         "Saskatchewan",
         (
             PlanStep(
+                "sk_stats_list_files",
+                "Saskatchewan Bureau of Statistics tables (economic accounts, population, census)",
+            ),
+            PlanStep(
                 "arcgis_hub_search_datasets",
                 "search with portal='sk' (provincial GeoHub: geospatial layers only)",
                 args=(("portal", "sk"),),

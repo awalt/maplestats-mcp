@@ -518,7 +518,7 @@ Finance is `ab_economic`).
 | Agency | What it publishes | Reachable now | Verdict |
 |---|---|---|---|
 | BC Stats | `bc-stats` on BC CKAN: 99 datasets, CSV and XLSX, about half with DataStore; OGL-BC | Yes, `ckan_*` (`portal="bc"`) | Covered. Gap: XLSX-only tables (LFS, GDP, tourism, population projections) have no DataStore. |
-| Saskatchewan Bureau of Statistics | XLSX and PDF on `publications.saskatchewan.ca` (Provincial Economic Accounts, Labour Force Statistics, Monthly Statistical Review) | No | **Not built (2026-10-01)**: Crown copyright with non-commercial reproduction only, no open licence; see the section below. |
+| Saskatchewan Bureau of Statistics | XLSX and PDF on `publications.saskatchewan.ca` (Provincial Economic Accounts, Labour Force Statistics, Monthly Statistical Review) | No | **Shipped 2026-11-24 as `sk_stats_`**; Crown copyright, non-commercial reproduction; see below. |
 | Manitoba Bureau of Statistics | Only the Economic Dashboard CSV (`gov.mb.ca/finance/economicdashboard/_asset/api/first_layer.csv`): 22 latest values, mostly StatCan | No | Small; not available for automated access. Not built. **Shipped 2026-11-24 as `mb_stats_`**: the Bureau's own CSV catalogue and 150 Excel tables were found; see below. |
 | Ontario Ministry of Finance | HTML tables on ontario.ca (quarterly demographics); datasets on data.ontario.ca | `ckan_*` (`portal="on"`) | data.ontario.ca answered HTTP 429 (Azure WAF) on four attempts from one IP: re-test the shipped `portal="on"` client. **Shipped 2026-11-24 as `on_finance_`**: population projections, the Fact Sheet and the Economic Accounts (see below). |
 | Nova Scotia Finance | Daily Stats commentary and chart images, no data files; Socrata copies archived in 2020 | Partly | Skip. |
@@ -544,40 +544,47 @@ Yukon community names carry suffixes (`Whitehorse - City`).
 
 Ontario re-test: `data.ontario.ca` answered HTTP 429 to every request from the development machine for part of 2026-09-30, including the home page and a plain `package_list`, with both a browser User-Agent and `maplestats-mcp`; the project client failed the same way (`UpstreamUnavailable`). A fetch from outside that network succeeded at the same time, so the block was on the address. It cleared later the same day: the live smoke test for `portal="on"` passed. If it returns, it is the site's WAF, not the client.
 
-### Saskatchewan Bureau of Statistics: not built (2026-10-01)
+### Saskatchewan Bureau of Statistics (sk_stats)
 
-Re-checked live. The Bureau's page
-`saskatchewan.ca/government/government-data/bureau-of-statistics/economic-reports-and-statistics`
-lists the current Provincial Economic Accounts (2024 edition, PDF, and a
-tables file) as `publications.saskatchewan.ca/api/v1/products/86383/formats/<id>/download`;
-the format ids change each issue. `publications.saskatchewan.ca` is an
-Angular app with a JSON API (`/api/v1/products/86383` answers), so a build
-would be technically possible. The terms
-are the obstacle:
+**Status:** Shipped 2026-11-24 (#266), `modules/sk_stats/` (2 tools).
 
-- `saskatchewan.ca/copyright`: "Materials on this website are owned by the
-  Government of Saskatchewan and protected by Crown copyright." Materials
-  "may be reproduced for non-commercial purposes", reproduced accurately and
-  not as an official version; "Reproduction of any materials for commercial
-  purposes requires the advance written permission of the Government of
-  Saskatchewan."
-- `saskatchewan.ca/terms-of-use` (last modified 2025-12-31): do not "access
-  them using a method other than in the manner, and with the interface, we
-  provide"; content is "subject to copyright protection".
-- No open-government licence is named on the Bureau page or the Publications
-  Centre. The Centre's own copyright page is a client-side route with no
-  text in the served bundle.
+The Bureau's pages on saskatchewan.ca (`government/government-data/bureau-of-statistics`,
+`economic-reports-and-statistics`, `population-and-census`) link eight products in the
+Publications Centre, `publications.saskatchewan.ca`, an Angular app over a JSON API:
 
-A publicly hosted server cannot restrict its users to non-commercial use,
-and the terms grant no permission for automated reuse, so nothing was built.
-Revisit only with written permission from the Bureau or a published open
-licence. Labour force and CPI tables on the same page repeat StatCan.
+- `/api/v1/products/<id>` returns the product and every file issued under it
+  (`productFormats`: productFormatId, productFormatType "PDF", "PDF " with a trailing
+  space, "Excel" or "Microsoft Excel", description, formatPublicationDate (often null),
+  activeTimestamp, inactiveTimestamp, pageCount). A file downloads from
+  `/api/v1/products/<id>/formats/<format id>/download`; the product id must match
+  (another answers HTTP 400). No endpoint lists a branch's products
+  (`/api/v1/agencies/147/products` returns only featured products, none), so the eight
+  ids are fixed: 86383 Provincial Economic Accounts, 86384 Economic Review, 86614 Monthly
+  Statistical Review, 86645 Labour Force Statistics, 86686 Consumer Price Index, 86689
+  Fact Sheets, 86690 Census, 87174 Demography. Search on the site goes through Coveo.
+- 54 active Excel files on 2026-11-24. "SPEA Tables" (format 153159, posted 2026-01-19)
+  has an index sheet and one sheet per table (1.1 to 2.x), years 1988 on across columns
+  under a title row. The 2016 census population file (100724) is a legacy .xls. The CPI
+  workbook is 28 MB.
+- The server sends its certificate without the DigiCert Global G2 TLS RSA SHA256 2020
+  CA1 intermediate (openssl s_client: "unable to verify the first certificate"); Windows
+  curl fetches it from the certificate's CA Issuers link, Python does not. The public
+  intermediate is bundled in the module, as for opic-cipo.ca in `ised/ip_horizons`.
+- No robots.txt on the Publications Centre (HTTP 404). Requests are paced at one a
+  second; file lists are cached two hours and files six.
 
-Re-checked 2026-11-24 (#266): saskatchewan.ca/copyright and /terms-of-use read as above
-(terms last modified 2025-12-31). The terms say they do not cover sub-sites such as
-publications.saskatchewan.ca, but the copyright statement covers the Bureau's materials
-wherever they sit, and neither the Bureau's page nor the Publications Centre names an open
-licence. Still not built.
+Terms:
+
+- `saskatchewan.ca/copyright`: "Materials on this website are owned by the Government
+  of Saskatchewan and protected by Crown copyright." Materials "may be reproduced for
+  non-commercial purposes", reproduced accurately and not as an official version;
+  "Reproduction of any materials for commercial purposes requires the advance written
+  permission of the Government of Saskatchewan."
+- `saskatchewan.ca/terms-of-use` (last modified 2025-12-31) say they do not cover
+  sub-sites such as publications.saskatchewan.ca.
+- No open licence is named on the Bureau's page or in the Publications Centre. Results
+  carry the copyright terms and `commercial_use: not_allowed`. Labour force and CPI
+  tables repackage Statistics Canada data.
 
 ### Manitoba Bureau of Statistics (mb_stats)
 

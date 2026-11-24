@@ -856,6 +856,15 @@ SOURCES: dict[str, Source] = {
         places=("MB",),
         row="provincial_agency",
     ),
+    "sk_stats": Source(
+        "Saskatchewan Bureau of Statistics",
+        "Bureau de la statistique de la Saskatchewan",
+        "provincial",
+        "SK Statistics",
+        "Statistique Saskatchewan",
+        places=("SK",),
+        row="provincial_agency",
+    ),
     "on_fir": Source(
         "Ontario Financial Information Return (municipal finances)",
         "Rapport d'information financière de l'Ontario (finances municipales)",
