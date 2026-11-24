@@ -8,7 +8,7 @@ import pytest
 from maplestats_mcp.modules.statcan.cimt import client, constants
 from maplestats_mcp.modules.statcan.lang import use_lang
 from maplestats_mcp.shared import cache as cache_module
-from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError
+from maplestats_mcp.shared.errors import CloudflareChallenge, InvalidInput, NotFound, UpstreamError
 
 _REST = constants.BASE_URL
 _CODES = constants.CODES_BASE_URL
@@ -764,3 +764,114 @@ async def test_large_code_list_is_parsed_off_the_event_loop(httpx_mock, monkeypa
     assert result.commodities[0].unit == "Volume in cubic metres"
     # hs10F.js reaches the threshold; uom.js is parsed inline.
     assert len(threaded) == 1
+
+
+# --- the code lists blocked (StatCan's Cloudflare check, from 2026-11-17) -----
+
+
+def _block_codes(httpx_mock) -> None:
+    """Every code list answers the challenge seen live: HTTP 403 with Cf-Mitigated."""
+    for name in _CODE_FILES:
+        httpx_mock.add_response(
+            url=f"{_CODES}/{name}.js",
+            status_code=403,
+            headers={"Cf-Mitigated": "challenge", "Server": "cloudflare"},
+            text="<html><title>Just a moment...</title></html>",
+            is_reusable=True,
+            is_optional=True,
+        )
+
+
+async def test_get_trade_answers_with_codes_when_the_lists_are_blocked(httpx_mock):
+    _block_codes(httpx_mock)
+    _mock_periods(httpx_mock)
+    httpx_mock.add_response(
+        url=f"{_REST}/getReport/(48)/9/100/270900/1/500/0/0/2025-01-01/2025-01-01",
+        json={"count": 1, "trade": [_report_row(P=48)]},
+    )
+    result = await client.get_trade(
+        "exports", "2025-01", "2025-01", hs_code="270900", partner="US", provinces=["AB"]
+    )
+    row = result.rows[0]
+    assert row.value_cad == 1.3e10
+    # The US keeps its name; the province comes from the SGC names in constants.
+    assert (row.partner, row.province, row.hs_description) == (
+        "United States of America",
+        "Alberta",
+        None,
+    )
+    limits = result.provenance.limits or ""
+    assert "commodity descriptions, unit labels and partner names could not be loaded" in limits
+
+
+async def test_partner_by_code_or_us_resolves_without_the_list(httpx_mock):
+    _block_codes(httpx_mock)
+    _mock_periods(httpx_mock)
+    httpx_mock.add_response(
+        url=f"{_REST}/getTopCommodities/2026-07-01/1/553/100/0/1/0",
+        json={"trade": [{"H": "270900", "V": 5.0}]},
+    )
+    result = await client.get_top_commodities("exports", partner="553")
+    assert result.partner == "553"
+    assert result.commodities[0].name == "270900"
+
+
+async def test_partner_name_needs_the_list_and_says_how_to_go_on(httpx_mock):
+    _block_codes(httpx_mock)
+    _mock_periods(httpx_mock)
+    with pytest.raises(CloudflareChallenge, match="numeric CIMT country code") as caught:
+        await client.get_top_commodities("exports", partner="China")
+    assert caught.value.host == "www150.statcan.gc.ca"
+
+
+async def test_get_top_partners_ranks_codes_when_the_list_is_blocked(httpx_mock):
+    _block_codes(httpx_mock)
+    _mock_periods(httpx_mock)
+    httpx_mock.add_response(
+        url=f"{_REST}/getTopPartners/2026-07-01/1/1000/100/0/0/0",
+        json={"total": 100.0, "trade": [{"C": 9, "V": 67.0}, {"C": 553, "V": 5.0}]},
+    )
+    result = await client.get_top_partners("exports")
+    assert [p.name for p in result.partners] == ["United States of America", "553"]
+    assert "partner names could not be loaded" in (result.provenance.limits or "")
+
+
+async def test_province_breakdown_names_provinces_when_the_list_is_blocked(httpx_mock):
+    _block_codes(httpx_mock)
+    _mock_periods(httpx_mock)
+    httpx_mock.add_response(
+        url=f"{_REST}/getProvinces/2026-07-01/1000/100/0/0",
+        json={"domestic": 8.0, "reexports": 2.0, "trade": [{"P": 59, "V": 6.0}]},
+    )
+    result = await client.get_province_breakdown("exports")
+    assert result.provinces[0].name == "British Columbia"
+
+
+async def test_searches_point_elsewhere_when_the_lists_are_blocked(httpx_mock):
+    _block_codes(httpx_mock)
+    with pytest.raises(CloudflareChallenge, match="cbsa_tariff_search"):
+        await client.search_commodities("crude petroleum")
+    with pytest.raises(CloudflareChallenge, match="cimt_get_top_partners"):
+        await client.search_partners("china")
+    # Provinces need no list.
+    found = await client.search_partners("BC", kind="province")
+    assert found.partners[0].name == "British Columbia"
+
+
+async def test_a_challenged_list_path_is_not_asked_again(httpx_mock):
+    _block_codes(httpx_mock)
+    _mock_periods(httpx_mock)
+    httpx_mock.add_response(
+        url=f"{_REST}/getTopPartners/2026-07-01/1/1000/100/0/0/0",
+        json={"total": 10.0, "trade": [{"C": 553, "V": 5.0}]},
+        is_reusable=True,
+    )
+    await client.get_top_partners("exports")
+    await client.get_top_partners("exports")
+    asked = [r for r in httpx_mock.get_requests() if r.url.path.endswith("countriesF.js")]
+    # The first call met the check; the second knew of it and did not ask.
+    assert len(asked) == 1
+
+
+def test_province_names_cover_every_abbreviation():
+    assert set(constants.PROVINCE_NAMES) == set(constants.PROVINCE_ABBREVIATIONS.values())

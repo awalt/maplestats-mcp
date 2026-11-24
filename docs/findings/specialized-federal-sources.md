@@ -1344,6 +1344,11 @@ own). On the owner's decision, `ckan_` now leaves CanadaBuys out entirely
 
 Federal contracts over $10,000 remain in `disclosure_search_contracts`.
 
+How CanadaBuys contract history and award notices overlap with the
+proactive disclosure of contracts (`disclosure_*`), and why their totals must
+not be added, is in [Federal contracts](federal-contracts-overlap.md)
+(2026-11-24, issue #253).
+
 ## House of Commons (OpenParliament.ca)
 
 **Status:** Removed.

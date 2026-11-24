@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import UTC, datetime
 from typing import Any, NoReturn
 
 import httpx
@@ -161,6 +162,7 @@ def _dataset_summary(obj: dict[str, Any]) -> DatasetSummary:
         tags=list_or_empty(classification, "domain_tags"),
         dataset_type=resource.get("lens_view_type") or "unknown",
         updated_at=parse_dt(resource.get("updatedAt")),
+        data_updated_at=parse_dt(resource.get("data_updated_at")),
         download_count=get_or(resource, "download_count", 0),
         permalink=obj.get("permalink") or "",
         landing_page_url=obj.get("link") or obj.get("permalink") or "",
@@ -207,6 +209,25 @@ async def search_datasets(
     raw_results = list_or_empty(result, "results")
     total_count = get_or(result, "resultSetSize", len(raw_results))
     datasets = [_dataset_summary(obj) for obj in raw_results]
+    provenance = make_provenance(
+        source=config.source,
+        url=f"{CATALOG_BASE_URL}?domains={config.domain}",
+        cached=was_cached,
+        schema_name="socrata.DatasetSearchResult",
+        coverage=pick(
+            lang,
+            f"{len(datasets)} of {total_count} total matches returned",
+            f"{len(datasets)} résultats renvoyés sur {total_count} au total",
+        ),
+        limits=pick(
+            lang,
+            f"limit capped at {constants.SEARCH_LIMIT_MAX} per request",
+            f"limit plafonné à {constants.SEARCH_LIMIT_MAX} par requête. {_SOURCE_TEXT_FR}",
+        ),
+        lang=lang,
+    )
+    if stale := _stale_note(datasets, lang):
+        provenance.caveats.append(stale)
     return DatasetSearchResult(
         portal=portal,
         datasets=datasets,
@@ -215,23 +236,33 @@ async def search_datasets(
         limit=limit,
         offset=offset,
         query=query,
-        provenance=make_provenance(
-            source=config.source,
-            url=f"{CATALOG_BASE_URL}?domains={config.domain}",
-            cached=was_cached,
-            schema_name="socrata.DatasetSearchResult",
-            coverage=pick(
-                lang,
-                f"{len(datasets)} of {total_count} total matches returned",
-                f"{len(datasets)} résultats renvoyés sur {total_count} au total",
-            ),
-            limits=pick(
-                lang,
-                f"limit capped at {constants.SEARCH_LIMIT_MAX} per request",
-                f"limit plafonné à {constants.SEARCH_LIMIT_MAX} par requête. {_SOURCE_TEXT_FR}",
-            ),
-            lang=lang,
-        ),
+        provenance=provenance,
+    )
+
+
+# Issue #265: on 2026-11-24, Edmonton's "rent" search returned library room rentals and
+# 2009-2016 municipal census tables first (173 matches). Socrata's relevance order was the
+# best of the orders tried (updatedAt, page views): the portal has no rent series, and the
+# metadata date (updatedAt) was 2019-07-17 on every match, a migration, so it cannot rank
+# by age. The rows' date (data_updated_at) can at least say that every match is old.
+_STALE_YEARS = 5
+
+
+def _stale_note(datasets: list[DatasetSummary], lang: str) -> str | None:
+    """A caveat when every match's rows are older than _STALE_YEARS, else None."""
+    dates = [d.data_updated_at for d in datasets]
+    if not dates or any(d is None for d in dates):
+        return None
+    newest = max(d if d.tzinfo else d.replace(tzinfo=UTC) for d in dates if d is not None)
+    if (datetime.now(UTC) - newest).days < _STALE_YEARS * 365:
+        return None
+    return pick(
+        lang,
+        f"The newest data among these matches was last updated in {newest.year}: the portal "
+        "may not publish this topic. Look for a provincial or national source too.",
+        f"Les données les plus récentes parmi ces résultats datent de {newest.year} : le "
+        "portail ne publie peut-être pas ce sujet. Cherchez aussi une source provinciale ou "
+        "nationale.",
     )
 
 

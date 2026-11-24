@@ -77,8 +77,19 @@ ENDPOINTS: tuple[Endpoint, ...] = (
         "Trade by HS commodity (CIMT)",
         "Commerce par marchandise du SH (CICM)",
         f"{WWW150}/t1/cimt/rest/getPeriods",
-        "cimt_",
+        "cimt_ (the trade values)",
         headers={"Referer": f"{WWW150}/n1/pub/71-607-x/2021004/exp-eng.htm"},
+    ),
+    # The names CIMT's codes stand for, in static files next to its page. Blocked for
+    # scripts from 2026-11-17 while the REST service above still answered: the cimt_
+    # tools then return codes in place of names.
+    Endpoint(
+        "cimt_codes",
+        "CIMT code lists (commodity, country and state names)",
+        "Listes de codes du CICM (noms des marchandises, pays et États)",
+        f"{WWW150}/n1/pub/71-607-x/2021004/provinces.js",
+        "cimt_search_commodities, cimt_search_partners, names in the other cimt_ tools",
+        headers={"Range": "bytes=0-1023"},
     ),
     Endpoint(
         "daily_rss",

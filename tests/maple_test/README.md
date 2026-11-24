@@ -397,6 +397,13 @@ alone counts only the uncached few dozen. `grade` reports tokens in and out per 
 cost-per-question table; `python -m tests.maple_test costs --version v2 [runs...]` prints
 that table from run files without grading.
 
+Runs from 2026-11-24 on also record `routed_calls`: each `call_tool` call's target tool
+and the error code its result starts with (`invalid_input`, `not_found`, ...), or null.
+`grade` then adds a "First calls refused" table: of each answer's first call to a tool,
+the share refused as `invalid_input`, and the tools refused most. It tracks the argument
+guesses of issue #273 (5 of about 30 first calls failed validation on 2026-11-15), so a
+change that renames an argument, or an alias that stops working, shows in the next run.
+
 - **v2 as published, all arms:** USD 100.19 for 1,923 answers (the 11 arms, three runs, plus
   `maplestats_after` and `maplestats-current`). MapleStats' arm cost the most (USD 18.49 for
   159 answers, 0.116 a question), then mcp-canada (11.93) and Pipeworx (11.71, understated:

@@ -9,6 +9,7 @@ status of each source is in [`ROADMAP.md`](../ROADMAP.md).
 - [CAPP Statistics Handbook](capp-statistics-handbook.md)
 - [Competition Bureau Canada](competition-bureau.md)
 - [Disclaimer claim check, 2026-10-27](disclaimer-audit.md)
+- [Federal contracts: proactive disclosure and CanadaBuys overlap, 2026-11-24](federal-contracts-overlap.md)
 - [Federal sources](federal-sources.md)
 - [GIS tools: one server, with a switch (decided 2026-11-17)](gis-handling.md)
 - [Municipal sources](municipal-sources.md)
