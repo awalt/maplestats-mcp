@@ -1,0 +1,25 @@
+MODULE_NAME = "sk_stats"
+MODULE_DESCRIPTION = (
+    "Saskatchewan Bureau of Statistics (publications.saskatchewan.ca), tools prefixed "
+    "sk_stats_: the files of the Bureau's eight products in the Publications Centre "
+    "(Provincial Economic Accounts, Economic Review, Monthly Statistical Review, labour "
+    "force, CPI, demography, census, fact sheets), Excel tables and PDF reports with their "
+    "links, and a reader for the Excel tables (title rows and years across columns come "
+    "back as published, with a guessed header row). Labour force and CPI tables repackage "
+    "Statistics Canada data; use wds_ for the source tables. Crown copyright: reproduction "
+    "for non-commercial purposes only. Provincial geographic layers are arcgis_hub_ with "
+    "portal=sk."
+)
+MODULE_DESCRIPTION_FR = (
+    "Bureau de la statistique de la Saskatchewan (publications.saskatchewan.ca), outils "
+    "préfixés sk_stats_ : les fichiers des huit produits du Bureau au Centre des "
+    "publications (Comptes économiques provinciaux, Revue économique, Revue statistique "
+    "mensuelle, population active, IPC, démographie, recensement, fiches d'information), "
+    "tableaux Excel et rapports PDF avec leurs liens, et un lecteur des tableaux Excel "
+    "(lignes de titre et années en colonnes rendues telles que publiées, avec une ligne "
+    "d'en-tête devinée). Les tableaux de la population active et de l'IPC reprennent des "
+    "données de Statistique Canada ; voir wds_ pour les tableaux sources. Droit d'auteur de "
+    "la Couronne : reproduction à des fins non commerciales seulement. Les couches "
+    "géographiques provinciales relèvent d'arcgis_hub_ avec portal=sk. Contenu en anglais "
+    "seulement."
+)

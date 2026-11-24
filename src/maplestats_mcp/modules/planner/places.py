@@ -37,7 +37,23 @@ def _qc_city(org: str) -> PlanStep:
 
 
 PROVINCES: dict[str, tuple[str, tuple[PlanStep, ...]]] = {
-    "ontario": ("Ontario", (_ckan("on"), _arcgis("ontario_geohub"))),
+    "ontario": (
+        "Ontario",
+        (
+            _ckan("on"),
+            PlanStep(
+                "on_finance_get_population_projection",
+                "Ontario Ministry of Finance population projections to 2051",
+                cues=cues.PROJECTIONS,
+            ),
+            PlanStep(
+                "on_finance_get_page_tables",
+                "Ontario Economic Accounts and Fact Sheet tables",
+                cues=cues.PROVINCIAL_ACCOUNTS,
+            ),
+            _arcgis("ontario_geohub"),
+        ),
+    ),
     "british columbia": (
         "British Columbia",
         (
@@ -59,6 +75,11 @@ PROVINCES: dict[str, tuple[str, tuple[PlanStep, ...]]] = {
             _ckan("ab"),
             PlanStep("ab_economic_list_indicators", "Alberta Economic Dashboard"),
             PlanStep(
+                "ab_opendata_get_budget_table",
+                "Alberta budget fiscal plan and economic outlook tables",
+                cues=cues.BUDGET,
+            ),
+            PlanStep(
                 "aer_get_well_licences_daily", "Alberta Energy Regulator reports", cues=cues.ENERGY
             ),
         ),
@@ -72,12 +93,24 @@ PROVINCES: dict[str, tuple[str, tuple[PlanStep, ...]]] = {
             ),
         ),
     ),
-    "manitoba": ("Manitoba", (_arcgis("mb"),)),
+    "manitoba": (
+        "Manitoba",
+        (
+            PlanStep(
+                "mb_stats_list_indicators", "Manitoba Bureau of Statistics indicators and tables"
+            ),
+            _arcgis("mb"),
+        ),
+    ),
     # The provincial GeoHub is geospatial only; the two largest cities publish
     # their own catalogues.
     "saskatchewan": (
         "Saskatchewan",
         (
+            PlanStep(
+                "sk_stats_list_files",
+                "Saskatchewan Bureau of Statistics tables (economic accounts, population, census)",
+            ),
             PlanStep(
                 "arcgis_hub_search_datasets",
                 "search with portal='sk' (provincial GeoHub: geospatial layers only)",

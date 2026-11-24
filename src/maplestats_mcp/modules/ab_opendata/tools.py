@@ -9,6 +9,7 @@ from fastmcp.tools import tool
 from maplestats_mcp.modules.ab_opendata import client, constants
 from maplestats_mcp.modules.ab_opendata.schemas import (
     ActivityIndex,
+    BudgetTable,
     DatasetDetail,
     DatasetList,
     OrganizationList,
@@ -298,4 +299,40 @@ async def ab_opendata_get_population_projection_summary(
     """
     return await client.get_population_projection_summary(
         start_year=start_year, end_year=end_year, edition=edition, lang=lang
+    )
+
+
+@tool
+async def ab_opendata_get_budget_table(
+    part: str | None = None,
+    table: str | None = None,
+    edition: int | None = None,
+    contains: str | None = None,
+    lang: Lang = "en",
+) -> BudgetTable:
+    """Get a table of the Alberta budget's fiscal plan: economic outlook, revenue, expense.
+
+    Use for: the Alberta government's own budget figures and forecasts, Budget 2017
+    to the latest: the Key Energy and Economic Assumptions (WTI and WCS oil prices,
+    natural gas price, exchange rate, interest rates, real and nominal GDP, employment,
+    unemployment rate, population, CPI inflation, housing starts) with actuals and
+    forecasts, the economic outlook chart data, private forecasters' benchmarks,
+    total revenue, resource royalties, tax revenue, operating expense by ministry,
+    surplus or deficit, net debt, the capital plan, tax rates and interprovincial tax
+    comparisons. Three steps, one request each: no `part` lists the workbooks
+    (economic outlook, revenue, expense, capital plan, tax plan, other); a `part`
+    lists its tables; `table` (a sheet name or words of its title, e.g.
+    'KeyAssumptions', 'Total Revenue', 'Statement of Operations') reads it as labelled
+    rows with figures by column ('2026-27 Estimate', '2025-26 Forecast').
+    `contains` keeps rows whose label or heading has that text. `edition` is the
+    budget year (2026 = fiscal plan 2026-29); default the latest. Open Government
+    Licence - Alberta. Pace: one request per 10 seconds.
+    Keywords: Alberta budget, fiscal plan, economic outlook, Treasury Board and
+    Finance, deficit, revenue, royalties, oil price forecast, WTI assumption, expense.
+    Mots-clés : budget de l'Alberta, plan financier, perspectives économiques,
+    hypothèses économiques, prévision du prix du pétrole, déficit, revenus,
+    redevances, dépenses, Conseil du Trésor et Finances.
+    """
+    return await client.get_budget_table(
+        part=part, table=table, edition=edition, contains=contains, lang=lang
     )

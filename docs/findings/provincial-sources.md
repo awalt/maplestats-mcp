@@ -283,6 +283,25 @@ three are OGLA. The budget fiscal plan tables
 OGLA) exist, but `package_show` and the file both answered HTTP 500 that evening,
 so no tool reads them yet (the Economic Outlook publication is a PDF; its tables are in that workbook).
 
+Budget fiscal plan tables, checked live on 2026-11-24 and read by
+`ab_opendata_get_budget_table`: two OGLA datasets,
+`alberta-budget-fiscal-plan-tables-economic-outlook-and-tax-plan-2026` ("[2026-2029 to
+current]", six XLSX) and the older slug without the year (Budgets 2017 to 2025, 49 XLSX).
+Resources are named "<first year>-<last year> fiscal plan : <part> tables"; the 2024
+"other tables" resource is typed OTHERS but is an .xlsx. Every workbook opens on a
+picture-only Cover sheet. Layout: a title and units line, two header rows where one fiscal
+year ("2025-26") spans the Budget and Forecast columns, section labels, indented items and
+footnotes; the historical summary puts line numbers left of the labels and a row of column
+numbers over the header; the Key Assumptions sheet has a second header block of calendar
+years; the private-forecaster benchmark sheets have rows of "n/a". The workbooks keep
+hidden material that the printed pages do not show: three hidden columns of "#REF!" on Key
+Assumptions, a hidden stale Budget column on the Statement of Financial Position ("Hide
+Column when published" sits in a hidden cell above it), hidden rows, and ten hidden sheets
+in the capital plan workbook (one named "DONOTUSE-Retained Income"). The tool opens the
+workbook in openpyxl's full mode, which reports hidden rows, columns and sheets, and
+leaves them out. Checked against Budget 2026 (WTI US$60.50 for 2026-27, total revenue
+$74,549.535 million for 2026-27), Budget 2025, 2024 and 2018.
+
 open.alberta.ca is searchable through `ckan_*` (`portal="ab"`) but nothing there could read
 the files. It has 3,018 datasets of type `opendata`; about 700 have an XLSX resource, 221 a
 CSV and 120 an XLS, and the DataStore has no active resources, so the files are the only
@@ -499,9 +518,9 @@ Finance is `ab_economic`).
 | Agency | What it publishes | Reachable now | Verdict |
 |---|---|---|---|
 | BC Stats | `bc-stats` on BC CKAN: 99 datasets, CSV and XLSX, about half with DataStore; OGL-BC | Yes, `ckan_*` (`portal="bc"`) | Covered. Gap: XLSX-only tables (LFS, GDP, tourism, population projections) have no DataStore. |
-| Saskatchewan Bureau of Statistics | XLSX and PDF on `publications.saskatchewan.ca` (Provincial Economic Accounts, Labour Force Statistics, Monthly Statistical Review) | No | **Not built (2026-10-01)**: Crown copyright with non-commercial reproduction only, no open licence; see the section below. |
-| Manitoba Bureau of Statistics | Only the Economic Dashboard CSV (`gov.mb.ca/finance/economicdashboard/_asset/api/first_layer.csv`): 22 latest values, mostly StatCan | No | Small; not available for automated access. Not built. |
-| Ontario Ministry of Finance | HTML tables on ontario.ca (quarterly demographics); datasets on data.ontario.ca | `ckan_*` (`portal="on"`) | data.ontario.ca answered HTTP 429 (Azure WAF) on four attempts from one IP: re-test the shipped `portal="on"` client. |
+| Saskatchewan Bureau of Statistics | XLSX and PDF on `publications.saskatchewan.ca` (Provincial Economic Accounts, Labour Force Statistics, Monthly Statistical Review) | No | **Shipped 2026-11-24 as `sk_stats_`**; Crown copyright, non-commercial reproduction; see below. |
+| Manitoba Bureau of Statistics | Only the Economic Dashboard CSV (`gov.mb.ca/finance/economicdashboard/_asset/api/first_layer.csv`): 22 latest values, mostly StatCan | No | Small; not available for automated access. Not built. **Shipped 2026-11-24 as `mb_stats_`**: the Bureau's own CSV catalogue and 150 Excel tables were found; see below. |
+| Ontario Ministry of Finance | HTML tables on ontario.ca (quarterly demographics); datasets on data.ontario.ca | `ckan_*` (`portal="on"`) | data.ontario.ca answered HTTP 429 (Azure WAF) on four attempts from one IP: re-test the shipped `portal="on"` client. **Shipped 2026-11-24 as `on_finance_`**: population projections, the Fact Sheet and the Economic Accounts (see below). |
 | Nova Scotia Finance | Daily Stats commentary and chart images, no data files; Socrata copies archived in 2020 | Partly | Skip. |
 | New Brunswick Finance | gnb.ca | Socrata (`portal="nb"`) | Blocked by a Cloudflare challenge. |
 | PEI Statistics Bureau | princeedwardisland.ca | Almost nothing in the Hub | Blocked by a Radware bot challenge. |
@@ -525,34 +544,131 @@ Yukon community names carry suffixes (`Whitehorse - City`).
 
 Ontario re-test: `data.ontario.ca` answered HTTP 429 to every request from the development machine for part of 2026-09-30, including the home page and a plain `package_list`, with both a browser User-Agent and `maplestats-mcp`; the project client failed the same way (`UpstreamUnavailable`). A fetch from outside that network succeeded at the same time, so the block was on the address. It cleared later the same day: the live smoke test for `portal="on"` passed. If it returns, it is the site's WAF, not the client.
 
-### Saskatchewan Bureau of Statistics: not built (2026-10-01)
+### Saskatchewan Bureau of Statistics (sk_stats)
 
-Re-checked live. The Bureau's page
-`saskatchewan.ca/government/government-data/bureau-of-statistics/economic-reports-and-statistics`
-lists the current Provincial Economic Accounts (2024 edition, PDF, and a
-tables file) as `publications.saskatchewan.ca/api/v1/products/86383/formats/<id>/download`;
-the format ids change each issue. `publications.saskatchewan.ca` is an
-Angular app with a JSON API (`/api/v1/products/86383` answers), so a build
-would be technically possible. The terms
-are the obstacle:
+**Status:** Shipped 2026-11-24 (#266), `modules/sk_stats/` (2 tools).
 
-- `saskatchewan.ca/copyright`: "Materials on this website are owned by the
-  Government of Saskatchewan and protected by Crown copyright." Materials
-  "may be reproduced for non-commercial purposes", reproduced accurately and
-  not as an official version; "Reproduction of any materials for commercial
-  purposes requires the advance written permission of the Government of
-  Saskatchewan."
-- `saskatchewan.ca/terms-of-use` (last modified 2025-12-31): do not "access
-  them using a method other than in the manner, and with the interface, we
-  provide"; content is "subject to copyright protection".
-- No open-government licence is named on the Bureau page or the Publications
-  Centre. The Centre's own copyright page is a client-side route with no
-  text in the served bundle.
+The Bureau's pages on saskatchewan.ca (`government/government-data/bureau-of-statistics`,
+`economic-reports-and-statistics`, `population-and-census`) link eight products in the
+Publications Centre, `publications.saskatchewan.ca`, an Angular app over a JSON API:
 
-A publicly hosted server cannot restrict its users to non-commercial use,
-and the terms grant no permission for automated reuse, so nothing was built.
-Revisit only with written permission from the Bureau or a published open
-licence. Labour force and CPI tables on the same page repeat StatCan.
+- `/api/v1/products/<id>` returns the product and every file issued under it
+  (`productFormats`: productFormatId, productFormatType "PDF", "PDF " with a trailing
+  space, "Excel" or "Microsoft Excel", description, formatPublicationDate (often null),
+  activeTimestamp, inactiveTimestamp, pageCount). A file downloads from
+  `/api/v1/products/<id>/formats/<format id>/download`; the product id must match
+  (another answers HTTP 400). No endpoint lists a branch's products
+  (`/api/v1/agencies/147/products` returns only featured products, none), so the eight
+  ids are fixed: 86383 Provincial Economic Accounts, 86384 Economic Review, 86614 Monthly
+  Statistical Review, 86645 Labour Force Statistics, 86686 Consumer Price Index, 86689
+  Fact Sheets, 86690 Census, 87174 Demography. Search on the site goes through Coveo.
+- 54 active Excel files on 2026-11-24. "SPEA Tables" (format 153159, posted 2026-01-19)
+  has an index sheet and one sheet per table (1.1 to 2.x), years 1988 on across columns
+  under a title row. The 2016 census population file (100724) is a legacy .xls. The CPI
+  workbook is 28 MB.
+- The server sends its certificate without the DigiCert Global G2 TLS RSA SHA256 2020
+  CA1 intermediate (openssl s_client: "unable to verify the first certificate"); Windows
+  curl fetches it from the certificate's CA Issuers link, Python does not. The public
+  intermediate is bundled in the module, as for opic-cipo.ca in `ised/ip_horizons`.
+- No robots.txt on the Publications Centre (HTTP 404). Requests are paced at one a
+  second; file lists are cached two hours and files six.
+
+Terms:
+
+- `saskatchewan.ca/copyright`: "Materials on this website are owned by the Government
+  of Saskatchewan and protected by Crown copyright." Materials "may be reproduced for
+  non-commercial purposes", reproduced accurately and not as an official version;
+  "Reproduction of any materials for commercial purposes requires the advance written
+  permission of the Government of Saskatchewan."
+- `saskatchewan.ca/terms-of-use` (last modified 2025-12-31) say they do not cover
+  sub-sites such as publications.saskatchewan.ca.
+- No open licence is named on the Bureau's page or in the Publications Centre. Results
+  carry the copyright terms and `commercial_use: not_allowed`. Labour force and CPI
+  tables repackage Statistics Canada data.
+
+### Manitoba Bureau of Statistics (mb_stats)
+
+**Status:** Shipped 2026-11-24 (#266), `modules/mb_stats/` (3 tools).
+
+The Bureau's pages (gov.mb.ca/mbs) are built in the browser from two CSV files its scripts
+read with PapaParse, found in `_asset/js/script.js` and `_asset/js/3rdlayer.js`:
+
+- `_asset/api/manitoba_quick_facts.csv`: 62 indicator tiles (Id, Title, Category, Reference
+  Period, Value with units, Data Type, Change, direction, change context, Power BI link,
+  SummaryText, SubCategory, orders, IsKeyIndicator). SummaryText carries unquoted commas,
+  so rows split into 16 to 19 fields, and two notes on Labour Force Survey revisions break
+  across lines. The first ten and last five fields are reliable; the module mends broken
+  rows by appending a line that does not start with a numeric id to the record before it.
+  "NO" stands for an empty value. The "Archives" category lists discontinued series
+  with no value.
+- `_asset/api/mbs_report.csv`: 1,146 rows (FileName, Date Released, displayName,
+  Related_indicatorId, ReportType): 503 bulletins, 213 data-table rows (150 distinct .xlsx
+  files, one file listed under up to six indicators), 129 reports, 86 infographics, 144
+  related links (full URLs, mostly StatCan tables), 59 provincial electoral division
+  profiles, maps. Files sit at /mbs/publications/<FileName>.
+
+The Excel tables are laid out for print (retail_mb.xlsx: a title row, then Sep / 2025 /
+"millions of dollars" over three rows), so they are read like `nl_stats_read_file`:
+published text, a guessed header row and a `header_rows` join. Most series repackage
+Statistics Canada releases (LFS, CPI, retail, trade); the Bureau's own content is the
+quarterly demographic tables, trade by country and commodity, and the Manitoba Finance
+survey of forecasts.
+
+Licence: gov.mb.ca/legal/copyright.html names the OpenMB Information and Data Use Licence
+(https://www.gov.mb.ca/asset_library/en/legal/OpenMB-Information-Data-Use-Licence.pdf):
+"for both commercial and non-commercial purposes", with the attribution "Contains
+information from the Manitoba government, licensed under the OpenMB Information and Data
+Use Licence (Manitoba.ca/OpenMB)". Third-party information is excluded from the licence;
+StatCan's figures fall under the Statistics Canada Open Licence anyway. The licence PDF
+itself was not opened; its terms are quoted from the copyright page.
+
+Automated access: www.gov.mb.ca/robots.txt gives `Disallow: /` to a list of named AI
+crawlers and agents (GPTBot, ChatGPT-User, Google-Extended, CCBot, anthropic-ai, ClaudeBot,
+PerplexityBot, cohere-ai, Amazonbot, Claude-Web, FacebookBot, Meta-ExternalAgent, Scrapy,
+Diffbot, BytesSpider, others) and, for every other user agent, disallows only old expense
+files and internal paths, none under /mbs/. The module sends the project's own
+User-Agent (`maplestats-mcp/<version>`), which falls under `User-agent: *`, the same
+reading as the Toronto decision above. Requests are paced at
+one a second and the CSV files are cached two hours.
+
+### Ontario Ministry of Finance (on_finance)
+
+**Status:** Shipped 2026-11-24 (#266), `modules/on_finance/` (3 tools): population
+projections, components of change, and the Fact Sheet and Economic Accounts tables.
+
+- Population projections: data.ontario.ca dataset `population-projections` (organization
+  `finance`, OGL-ON-1.0, yearly): 16 XLSX, each table in English and French under one
+  resource name (English files `..._mof_population_projections_...`, French
+  `..._projections_demographiques_du_mdf_...`; the resource `language` field is the string
+  "english" or "french", which the CKAN client does not keep, so files are told apart by
+  name). The summer release (base year 2025) has Ontario, 6 regions, 49 census divisions,
+  34 public health units, 9 MCCSS service delivery regions and the components; the Fall
+  2026 interim update (base year 2026) has Ontario and its components only. One sheet per
+  file: title, "Sources: ... (<release>)", blank, age-band row (BROAD AGE GROUPS, 5-YEAR
+  AGE GROUPS, SINGLE-YEAR OF AGE), header, blank, data. Genders MEN+, WOMEN+, TOTAL ALL
+  GENDERS (TOTAL BOTH GENDERS in the census division file); scenarios REFERENCE,
+  LOW-GROWTH, HIGH-GROWTH; census division names carry trailing spaces; the public health
+  unit file adds Mean Age and Median Age; the components end each scenario with a 2051
+  start-population row. The French catalogue translates the resource names, so the module
+  always lists them in English. Smoke test: the 49 census divisions add up to Ontario's
+  2025 total (16,258,260).
+- Ontario Fact Sheet (ontario.ca/page/ontarios-population-labour-market-economy-and-trade-
+  fact-sheet, April 2026 edition) and Ontario Economic Accounts (ontario.ca/page/ontario-
+  economic-accounts, second quarter 2026, updated October 09, 2026): HTML only, no data
+  files; `on_finance_get_page_tables` reads their tables. The Fact Sheet has 11 tables; the
+  first has no caption, and its rows are a `<th scope="row">` label beside a `<td>` value.
+  The Economic Accounts have tables 1.1 to 1.6 with a `<thead>` header row (2024, 2025,
+  then the last four quarters; table 1.6 the last six) and negatives in parentheses,
+  "(0.3)", and an Appendix A table of release dates. The French pages
+  (/fr/page/profil-population-marche-travail-economie-echanges-commerciaux-ontario and
+  /fr/page/comptes-economiques-de-lontario) carry the same tables with French numbers
+  ("39,0", "1 246 721") and "Mis à jour" / "Mise à jour" dates. Terms:
+  ontario.ca/page/copyright-information: materials "may be reproduced for non-commercial
+  purposes if no changes are made to the original content", with credit and Crown
+  copyright acknowledged; commercial reproduction needs a licence from the King's
+  Printer. Cells are returned as published, beside the same cells read as numbers, and
+  results carry `commercial_use: not_allowed`. robots.txt asks for one second between
+  requests (Crawl-delay: 1).
 
 ## Provincial general election results
 

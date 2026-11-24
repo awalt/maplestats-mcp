@@ -291,6 +291,37 @@ SOURCE_LICENCES: dict[str, str] = {
         "(https://www.ontario.ca/page/open-government-licence-ontario). Attribution: 'Contains "
         "information licensed under the Open Government Licence - Ontario.'"
     ),
+    "on-finance": (
+        "Source: Ontario Ministry of Finance, population projections "
+        "(https://data.ontario.ca/dataset/population-projections). Open Government Licence - "
+        "Ontario (https://www.ontario.ca/page/open-government-licence-ontario). Attribution: "
+        "'Contains information licensed under the Open Government Licence - Ontario.'"
+    ),
+    "on-finance-pages": (
+        "Crown copyright, King's Printer for Ontario "
+        "(https://www.ontario.ca/page/copyright-information): the materials may be reproduced "
+        "for non-commercial purposes if credit is given, Crown copyright is acknowledged and no "
+        "changes are made to the original content; commercial reproduction requires a licence "
+        "from the King's Printer. Source: Ontario Ministry of Finance."
+    ),
+    # Saskatchewan
+    "sk-bureau-of-statistics": (
+        "Crown copyright, Government of Saskatchewan (https://www.saskatchewan.ca/copyright): "
+        "the materials may be reproduced for non-commercial purposes, accurately and not as an "
+        "official version; commercial reproduction requires the Government of Saskatchewan's "
+        "advance written permission. Source: Saskatchewan Bureau of Statistics. Labour force "
+        "and CPI tables repackage Statistics Canada data, which is under the Statistics Canada "
+        "Open Licence."
+    ),
+    # Manitoba
+    "manitoba-bureau-of-statistics": (
+        "OpenMB Information and Data Use Licence "
+        "(https://www.gov.mb.ca/asset_library/en/legal/OpenMB-Information-Data-Use-Licence.pdf): "
+        "commercial and non-commercial use with attribution. Attribution: 'Contains information "
+        "from the Manitoba government, licensed under the OpenMB Information and Data Use "
+        "Licence (Manitoba.ca/OpenMB).' Manitoba Bureau of Statistics tables often repackage "
+        "Statistics Canada data, which is also under the Statistics Canada Open Licence."
+    ),
     "crea": (
         "Source: The Canadian Real Estate Association (CREA), MLS Home Price Index. CREA's "
         "terms (https://www.crea.ca/legal/) apply; this is not an open licence."
@@ -806,6 +837,38 @@ _PROVINCIAL_FR: dict[str, str] = {
         "Mention : « Contient des renseignements utilisés en vertu de la Licence du gouvernement "
         "ouvert – Ontario. »"
     ),
+    "on-finance": (
+        "Source : ministère des Finances de l'Ontario, projections démographiques "
+        "(https://data.ontario.ca/dataset/population-projections). Licence du gouvernement "
+        "ouvert – Ontario (https://www.ontario.ca/fr/page/licence-du-gouvernement-ouvert-ontario). "
+        "Mention : « Contient des renseignements utilisés en vertu de la Licence du gouvernement "
+        "ouvert – Ontario. »"
+    ),
+    "on-finance-pages": (
+        "Droit d'auteur de la Couronne, Imprimeur du Roi pour l'Ontario "
+        "(https://www.ontario.ca/fr/page/droits-dauteur) : le contenu peut être reproduit à des fins non commerciales en "
+        "mentionnant la source et le droit d'auteur de la Couronne, sans modification du "
+        "contenu original ; la reproduction commerciale exige une licence de l'Imprimeur du "
+        "Roi. Source : ministère des Finances de l'Ontario."
+    ),
+    "sk-bureau-of-statistics": (
+        "Droit d'auteur de la Couronne, gouvernement de la Saskatchewan "
+        "(https://www.saskatchewan.ca/copyright) : le contenu peut être reproduit à des fins "
+        "non commerciales, fidèlement et non comme une version officielle ; la reproduction "
+        "commerciale exige l'autorisation écrite préalable du gouvernement de la Saskatchewan. "
+        "Source : Bureau de la statistique de la Saskatchewan. Les tableaux de la population "
+        "active et de l'IPC reprennent des données de Statistique Canada, qui relèvent de la "
+        "Licence ouverte de Statistique Canada."
+    ),
+    "manitoba-bureau-of-statistics": (
+        "Licence d'utilisation de l'information et des données OpenMB (OpenMB Information and "
+        "Data Use Licence, https://www.gov.mb.ca/asset_library/en/legal/OpenMB-Information-Data-"
+        "Use-Licence.pdf) : usage commercial et non commercial permis avec mention. Mention "
+        "demandée, en anglais : « Contains information from the Manitoba government, licensed "
+        "under the OpenMB Information and Data Use Licence (Manitoba.ca/OpenMB). » Les tableaux "
+        "du Bureau des statistiques du Manitoba reprennent souvent des données de Statistique "
+        "Canada, qui relèvent aussi de la Licence ouverte de Statistique Canada."
+    ),
     "isq": (
         "Droits d'auteur du gouvernement du Québec (https://www.quebec.ca/en/copyright) : la "
         "reproduction, l'adaptation ou la publication exige l'autorisation préalable du "
@@ -915,6 +978,16 @@ _SOURCE_COMMERCIAL_USE: dict[str, CommercialUse] = {
     "nwt-bureau-of-statistics": "unknown",
     "oeb": "allowed",
     "on-fir": "allowed",
+    "on-finance": "allowed",
+    # Crown copyright: non-commercial reproduction, unchanged (ontario.ca/page/
+    # copyright-information, read 2026-11-24).
+    "on-finance-pages": "not_allowed",
+    # Crown copyright, non-commercial reproduction only (saskatchewan.ca/copyright, read
+    # 2026-11-24).
+    "sk-bureau-of-statistics": "not_allowed",
+    # OpenMB licence: "for both commercial and non-commercial purposes" (copyright page,
+    # read 2026-11-24).
+    "manitoba-bureau-of-statistics": "allowed",
     "crea": "not_allowed",
     # Commercial use is allowed if the BIS figures are not charged for separately.
     "bis": "allowed",

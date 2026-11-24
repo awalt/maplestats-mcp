@@ -247,6 +247,60 @@ class ProjectionSummaryRow(BaseModel):
     total_net_migration: int | None = None
 
 
+class BudgetPart(BaseModel):
+    part: str = Field(description="Pass as `part`, e.g. 'economic outlook', 'revenue'.")
+    fiscal_plan: str = Field(description="The plan's years as the resource names them.")
+    resource_name: str
+    url: str = Field(description="The workbook; ab_opendata_read_resource reads it as published.")
+
+
+class BudgetSheet(BaseModel):
+    table: str = Field(description="Sheet name; pass as `table`.")
+    title: str | None = Field(default=None, description="The sheet's first title line.")
+
+
+class BudgetRow(BaseModel):
+    label: str | None = Field(description="Line item as published (footnote letters kept).")
+    section: str | None = Field(
+        default=None, description="The heading the line sits under, e.g. 'Expense'."
+    )
+    values: dict[str, float | int | str] = Field(
+        description="Figures by column name (header rows joined, e.g. '2026-27 Estimate'); "
+        "blank cells are left out, text such as 'n/a' is kept."
+    )
+
+
+class BudgetTable(BaseModel):
+    edition: int = Field(description="Budget year: the fiscal plan's first year (2026 = 2026-27).")
+    editions: list[int] = Field(description="Budget years found in the dataset read.")
+    fiscal_plan: str | None = None
+    part: str | None = Field(description="The workbook read; null when only parts are listed.")
+    parts: list[BudgetPart] = Field(description="Every workbook of this budget.")
+    table: str | None = Field(description="The sheet read; null when only tables are listed.")
+    tables: list[BudgetSheet] = Field(
+        description="Visible sheets of the part's workbook (empty when no part was given)."
+    )
+    title: str | None = None
+    title_lines: list[str] = Field(
+        default_factory=list, description="Title and units lines above the table."
+    )
+    label_header: str | None = Field(
+        default=None, description="Header of the label column, e.g. 'Year', when there is one."
+    )
+    columns: list[str] = Field(default_factory=list)
+    rows: list[BudgetRow] = Field(default_factory=list)
+    total_rows: int = Field(default=0, description="Rows matching `contains`, before the cap.")
+    notes: list[str] = Field(default_factory=list, description="Footnotes under the table.")
+    dataset: str
+    dataset_title: str
+    dataset_url: str
+    url: str | None = Field(default=None, description="The workbook read.")
+    licence: str | None = None
+    ogl_alberta: bool
+    attribution: str | None = None
+    provenance: Provenance
+
+
 class ProjectionSummary(BaseModel):
     edition: int
     scenario: Literal["medium"] = "medium"
