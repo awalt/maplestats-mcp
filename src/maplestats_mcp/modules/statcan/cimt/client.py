@@ -36,10 +36,17 @@ from maplestats_mcp.modules.statcan.cimt.schemas import (
     TradeRow,
 )
 from maplestats_mcp.modules.statcan.lang import current_lang, say, use_lang
+from maplestats_mcp.shared import path_health
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.concurrency import gather_or_cancel
 from maplestats_mcp.shared.envelope import make_provenance
-from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
+from maplestats_mcp.shared.errors import (
+    CloudflareChallenge,
+    InvalidInput,
+    NotFound,
+    UpstreamError,
+    UpstreamUnavailable,
+)
 from maplestats_mcp.shared.executor import run_parse
 from maplestats_mcp.shared.http import api_get, get_raw
 from maplestats_mcp.shared.json_utils import list_or_empty
@@ -94,6 +101,7 @@ _WORLD_NAME = {"en": "All countries", "fr": "Tous les pays"}
 _CANADA_NAME = {"en": "Canada", "fr": "Canada"}
 _ALL_STATES_NAME = {"en": "All states", "fr": "Tous les États"}
 _US_ALIASES = {"united states", "usa", "us", "etats unis", "etats unis d amerique"}
+_US_NAME = {"en": "United States of America", "fr": "États-Unis d'Amérique"}
 
 
 # ---------------------------------------------------------------------------
@@ -415,6 +423,22 @@ async def _fetch_list(name: str) -> list[dict[str, str | int]]:
 
 async def _code_list(name: str) -> list[dict[str, str | int]]:
     async def fetch() -> Any:
+        # While StatCan's check is challenging /n1/pub/ (seen within path_health's
+        # 15 minutes), a list not already cached is not asked for again: every trade call
+        # would otherwise send up to five requests the check is known to refuse, and on
+        # 2026-11-24 repeated challenged requests from one address were followed by a
+        # challenge on all of www150, the Web Data Service included.
+        if "pub" in path_health.challenged_now():
+            error = CloudflareChallenge(
+                say(
+                    f"statcan_cimt: code list {name}.js not requested: StatCan's Cloudflare "
+                    "check challenged /n1/pub/ within the last 15 minutes.",
+                    f"statcan_cimt : liste de codes {name}.js non demandée : la vérification "
+                    "Cloudflare de StatCan a bloqué /n1/pub/ dans les 15 dernières minutes.",
+                )
+            )
+            error.host = path_health.WWW150
+            raise error
         return await _fetch_list(name)
 
     body, _ = await cached_fetch(
@@ -485,27 +509,70 @@ async def _unit_labels(lang: str) -> tuple[dict[str, str], bool]:
     return {str(e["id"]): str(e.get(key, "")) for e in entries if "id" in e}, False
 
 
-def _names_note(*, descriptions: bool = False, units: bool = False) -> str | None:
-    """The sentence for a reply whose commodity descriptions or unit labels did not load."""
-    if descriptions and units:
-        en, fr = "commodity descriptions and unit labels", "descriptions et unités"
-    elif descriptions:
-        en, fr = "commodity descriptions", "descriptions des marchandises"
-    elif units:
-        en, fr = "unit labels", "libellés d'unité"
-    else:
+def _join_words(words: list[str], conjunction: str) -> str:
+    if len(words) == 1:
+        return words[0]
+    return f"{', '.join(words[:-1])} {conjunction} {words[-1]}"
+
+
+def _names_note(
+    *, descriptions: bool = False, units: bool = False, partners: bool = False
+) -> str | None:
+    """The sentence for a reply whose commodity descriptions, unit labels or partner names
+    did not load (each then shows its code, or is left out)."""
+    parts = [
+        names
+        for missing, names in (
+            (descriptions, ("commodity descriptions", "descriptions des marchandises")),
+            (units, ("unit labels", "libellés d'unité")),
+            (partners, ("partner names", "noms des partenaires")),
+        )
+        if missing
+    ]
+    if not parts:
         return None
+    en = _join_words([e for e, _ in parts], "and")
+    fr = _join_words([f for _, f in parts], "et")
     return say(
-        f"The {en} could not be loaded from StatCan's code lists (the request failed), so "
-        "they are missing from this reply; the trade values are unaffected. Try again shortly.",
+        f"The {en} could not be loaded from StatCan's code lists (the request failed, or "
+        "StatCan's Cloudflare check blocked it), so they are missing from this reply and "
+        "codes stand in where there are any; the trade values are unaffected.",
         f"Les {fr} n'ont pas pu être chargés depuis les listes de codes de StatCan (la requête "
-        "a échoué) : ils manquent dans cette réponse ; les valeurs commerciales ne sont pas "
-        "touchées. Réessayez sous peu.",
+        "a échoué, ou la vérification Cloudflare de StatCan l'a bloquée) : ils manquent dans "
+        "cette réponse et les codes les remplacent s'il y en a ; les valeurs commerciales ne "
+        "sont pas touchées.",
     )
 
 
-async def _countries() -> list[dict[str, str | int]]:
-    return await _code_list("countriesF")
+type ListError = UpstreamError | UpstreamUnavailable
+
+
+async def _optional_list(name: str) -> tuple[list[dict[str, str | int]], ListError | None]:
+    """A code list, or no entries and the error when it did not load.
+
+    The lists only name what the trade service returns as codes, so a list that fails
+    must not lose the data: since 2026-11-17 StatCan's Cloudflare check blocks scripts
+    from /n1/pub/71-607-x, where the lists are, while the REST service still answers.
+    """
+    try:
+        return await _code_list(name), None
+    except (UpstreamError, UpstreamUnavailable) as exc:
+        return [], exc
+
+
+def _list_down(exc: ListError, list_en: str, list_fr: str, hint_en: str, hint_fr: str) -> ListError:
+    """The error for a name that needs a code list that did not load; same class as exc."""
+    error = type(exc)(
+        say(
+            f"statcan_cimt: the {list_en} list could not be loaded, so names cannot be "
+            f"matched. {hint_en} Cause: {exc}",
+            f"statcan_cimt : la liste des {list_fr} n'a pas pu être chargée, donc les noms ne "
+            f"peuvent pas être reconnus. {hint_fr} Cause : {exc}",
+        )
+    )
+    if isinstance(exc, CloudflareChallenge) and isinstance(error, CloudflareChallenge):
+        error.host = exc.host
+    return error
 
 
 def _unique_by_id(entries: list[dict[str, str | int]]) -> list[dict[str, str | int]]:
@@ -513,12 +580,15 @@ def _unique_by_id(entries: list[dict[str, str | int]]) -> list[dict[str, str | i
     return list({int(e["id"]): e for e in entries}.values())
 
 
-async def _states() -> list[dict[str, str | int]]:
-    return await _code_list("states_codr")
-
-
 async def _provinces() -> list[dict[str, str | int]]:
-    return await _code_list("provinces")
+    """CIMT's province list, or the same ids and names from constants when it did not load.
+
+    The ids are the SGC province codes, so the fallback names the same provinces.
+    """
+    entries, failed = await _optional_list("provinces")
+    if failed is None:
+        return entries
+    return [{"id": pid, "en": en, "fr": fr} for pid, (en, fr) in constants.PROVINCE_NAMES.items()]
 
 
 def _country_name(entry: dict[str, str | int], lang: str) -> str:
@@ -583,7 +653,22 @@ def _pick(
 async def _resolve_country(partner: str, lang: str) -> tuple[int, str]:
     if not partner.strip() or _fold(partner) in {"world", "all", "all countries", "monde"}:
         return constants.WORLD_ID, _WORLD_NAME[lang]
-    entries = await _countries()
+    entries, failed = await _optional_list("countriesF")
+    if failed is not None:
+        # A code or the United States still resolves; any other name needs the list.
+        if _fold(partner) in _US_ALIASES:
+            return constants.US_ID, _US_NAME[lang]
+        if partner.strip().isdigit():
+            return int(partner), partner.strip()
+        raise _list_down(
+            failed,
+            "trading-partner country",
+            "pays partenaires",
+            "Pass the numeric CIMT country code (9 is the United States), 'US', or leave "
+            "partner blank for all countries.",
+            "Passez le code numérique de pays du CICM (9 pour les États-Unis), « US », ou "
+            "laissez partner vide pour tous les pays.",
+        ) from failed
     names = {int(e["id"]): _country_name(e, lang) for e in entries}
     candidates = [
         (int(e["id"]), [str(e.get("c_code", "")), str(e.get("en", "")), str(e.get("fr", ""))])
@@ -596,7 +681,17 @@ async def _resolve_country(partner: str, lang: str) -> tuple[int, str]:
 async def _resolve_state(us_state: str, lang: str) -> tuple[int, str]:
     if not us_state.strip():
         return _NO_STATE, _ALL_STATES_NAME[lang]
-    entries = await _states()
+    entries, failed = await _optional_list("states_codr")
+    if failed is not None:
+        if us_state.strip().isdigit():
+            return int(us_state), us_state.strip()
+        raise _list_down(
+            failed,
+            "US state",
+            "États américains",
+            "Pass the numeric CIMT state code, or leave us_state blank.",
+            "Passez le code numérique d'État du CICM, ou laissez us_state vide.",
+        ) from failed
     names = {int(e["id"]): _state_name(e, lang) for e in entries}
     candidates = [
         (int(e["id"]), [str(e.get("label_en", "")), str(e.get("label_fr", ""))]) for e in entries
@@ -679,7 +774,18 @@ async def search_commodities(
             )
         )
 
-    entries = await _commodities(level, direction)
+    try:
+        entries = await _commodities(level, direction)
+    except (UpstreamError, UpstreamUnavailable) as exc:
+        raise _list_down(
+            exc,
+            "HS commodity",
+            "marchandises SH",
+            "cbsa_tariff_search finds HS codes and their descriptions; the other cimt_ tools "
+            "still take a code (hs_code).",
+            "cbsa_tariff_search trouve les codes SH et leurs descriptions ; les autres outils "
+            "cimt_ acceptent toujours un code (hs_code).",
+        ) from exc
     units, units_failed = await _unit_labels(lang)
     text_index = 2 if lang == "en" else 3
     needle = query.strip().replace(".", "")
@@ -748,7 +854,20 @@ async def search_partners(
     rows: list[PartnerMatch] = []
     if kind == "country":
         rows.append(PartnerMatch(kind=kind, code=constants.WORLD_ID, name=_WORLD_NAME[lang]))
-        for e in _unique_by_id(await _countries()):
+        countries, failed = await _optional_list("countriesF")
+        if failed is not None:
+            raise _list_down(
+                failed,
+                "trading-partner country",
+                "pays partenaires",
+                "The other cimt_ tools still take 'US' or a numeric CIMT country code (9 is "
+                "the United States), and cimt_get_top_partners lists the largest partners by "
+                "code.",
+                "Les autres outils cimt_ acceptent toujours « US » ou un code numérique de "
+                "pays du CICM (9 pour les États-Unis), et cimt_get_top_partners donne les "
+                "principaux partenaires par code.",
+            ) from failed
+        for e in _unique_by_id(countries):
             rows.append(
                 PartnerMatch(
                     kind=kind,
@@ -760,7 +879,16 @@ async def search_partners(
                 )
             )
     elif kind == "us_state":
-        for e in await _states():
+        states, failed = await _optional_list("states_codr")
+        if failed is not None:
+            raise _list_down(
+                failed,
+                "US state",
+                "États américains",
+                "cimt_get_top_partners with view='us_state' lists the largest states by code.",
+                "cimt_get_top_partners avec view='us_state' donne les principaux États par code.",
+            ) from failed
+        for e in states:
             rows.append(PartnerMatch(kind=kind, code=int(e["id"]), name=_state_name(e, lang)))
     else:
         rows.append(PartnerMatch(kind=kind, code=constants.CANADA_ID, name=_CANADA_NAME[lang]))
@@ -900,15 +1028,15 @@ async def get_trade(
     (
         (body, was_cached, url),
         (descriptions, descriptions_failed),
-        country_list,
-        state_list,
+        (country_list, countries_failed),
+        (state_list, states_failed),
         province_list,
         (units, units_failed),
     ) = await gather_or_cancel(
         report(),
         _description_lookup("hs6" if hs_level == "hs6" else "national", direction, lang),
-        _countries(),
-        _states(),
+        _optional_list("countriesF"),
+        _optional_list("states_codr"),
         _provinces(),
         _unit_labels(lang),
     )
@@ -920,6 +1048,8 @@ async def get_trade(
     province_names = {int(e["id"]): _province_name(e, lang) for e in province_list}
     province_names[constants.CANADA_ID] = _CANADA_NAME[lang]
     countries[constants.WORLD_ID] = _WORLD_NAME[lang]
+    # Named even when the country list did not load: most rows are the United States.
+    countries.setdefault(constants.US_ID, _US_NAME[lang])
 
     rows: list[TradeRow] = []
     for r in raw_rows:
@@ -974,7 +1104,12 @@ async def get_trade(
                     f"Row limit {limit}; not reached.",
                     f"Limite de {limit} lignes ; non atteinte.",
                 ),
-                _names_note(descriptions=descriptions_failed, units=units_failed),
+                _names_note(
+                    descriptions=descriptions_failed,
+                    units=units_failed,
+                    partners=countries_failed is not None
+                    or (states_failed is not None and any(r.us_state_code for r in rows)),
+                ),
             ),
         ),
     )
@@ -1043,11 +1178,16 @@ async def get_top_partners(
         return refper, province_name, await _call(path, direction, constants.CACHE_TTL_DATA_SECONDS)
 
     # Only the list that names this view's partners, loaded alongside the data.
-    (refper, province_name, (body, was_cached, url)), names = await gather_or_cancel(
-        top(), _countries() if view == "country" else _states()
+    (
+        (refper, province_name, (body, was_cached, url)),
+        (names, names_failed),
+    ) = await gather_or_cancel(
+        top(), _optional_list("countriesF" if view == "country" else "states_codr")
     )
     name_of = _country_name if view == "country" else _state_name
     lookup = {str(e["id"]): name_of(e, lang) for e in names}
+    if view == "country":
+        lookup.setdefault(str(constants.US_ID), _US_NAME[lang])
     total = float(body.get("total") or 0)
     items = _ranked(list_or_empty(body, "trade"), "C", lambda c: lookup.get(c, c), total)
     return TopPartnersResult(
@@ -1064,9 +1204,12 @@ async def get_top_partners(
             url,
             cached=was_cached,
             latest=refper,
-            limits=say(
-                "The service returns its 15 largest partners only.",
-                "Le service ne renvoie que ses 15 plus grands partenaires.",
+            limits=join_limits(
+                say(
+                    "The service returns its 15 largest partners only.",
+                    "Le service ne renvoie que ses 15 plus grands partenaires.",
+                ),
+                _names_note(partners=names_failed is not None),
             ),
         ),
     )

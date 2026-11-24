@@ -108,6 +108,24 @@ PROVINCE_ABBREVIATIONS = {
     "NU": 62,
 }
 
+# English and French names by CIMT province id (the SGC province codes), for when
+# provinces.js does not load: the REST service still answers then.
+PROVINCE_NAMES = {
+    10: ("Newfoundland and Labrador", "Terre-Neuve-et-Labrador"),
+    11: ("Prince Edward Island", "Île-du-Prince-Édouard"),
+    12: ("Nova Scotia", "Nouvelle-Écosse"),
+    13: ("New Brunswick", "Nouveau-Brunswick"),
+    24: ("Quebec", "Québec"),
+    35: ("Ontario", "Ontario"),
+    46: ("Manitoba", "Manitoba"),
+    47: ("Saskatchewan", "Saskatchewan"),
+    48: ("Alberta", "Alberta"),
+    59: ("British Columbia", "Colombie-Britannique"),
+    60: ("Yukon", "Yukon"),
+    61: ("Northwest Territories", "Territoires du Nord-Ouest"),
+    62: ("Nunavut", "Nunavut"),
+}
+
 # What each estimate flag of the chart endpoints means, by direction.
 ESTIMATE_MEASURES = {
     "exports": {

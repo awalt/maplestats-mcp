@@ -35,13 +35,13 @@ async def test_each_service_is_reported_as_it_answered(answers):
     assert status["full_table_csv"] == "answers"
     assert status["sdmx"] == status["cimt"] == status["census_www12"] == "blocked"
     assert status["indicators"] == "error" and status["rdaas"] == "no_answer"
-    assert report.summary.startswith("6 of 13 StatCan services answer scripts")
+    assert report.summary.startswith("7 of 14 StatCan services answer scripts")
     assert "SDMX REST service" in report.summary
 
 
 async def test_the_report_is_in_french_on_request(answers):
     report = await client.check_access("fr")
-    assert report.summary.startswith("6 services de StatCan sur 13 répondent")
+    assert report.summary.startswith("7 services de StatCan sur 14 répondent")
     assert any(e.service == "Service REST SDMX" for e in report.endpoints)
 
 
