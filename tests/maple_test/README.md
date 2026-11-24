@@ -1047,6 +1047,154 @@ has 21 questions and no municipal question, and `REPLACEMENT_DUE` lets the build
 stratum check pass for those strata only. The scores of 2026-11-10 above stand as they
 were measured, before any of these changes.
 
+### Results, 2026-11-22: every server
+
+Nine more arms ran on 2026-11-22, with the same model (`claude-sonnet-5-5`), the v4 prompt
+and one pass, plus two extra passes on the 6 volatile dev questions. That is 84 answers an
+arm. The nine arms are the hosted mcp-statcan, Pipeworx and statcan2; arose26 (`npx`) and
+mcp-canada (`uvx`); CanData-MCP, canada-data-agent and OpenCanadaPublicDataMCP from local
+clones; and the model alone. They are graded with the two arms of 2026-11-10 and a run of
+MapleStats from a local checkout on 2026-11-21, against one key build. As before, the JSON
+block and the regex grader grade first and the judge checks every answer. The flags of the
+2026-11-10 runs were settled then. Of this round's flags, the only grades changed so far
+are the 14 answers hit by key drift (below). The rest are open, so every share here can
+still move within the range shown.
+
+**Headline: the 25 fresh questions (N-01 to N-25), out-of-sample for every arm as it ran.**
+The test set has 21 questions now, but the four moved to dev were chosen *because*
+MapleStats missed them on 2026-11-10. Scoring the other servers on the remaining 21 would
+leave out exactly the questions MapleStats got wrong, so the comparison uses all 25. For
+MapleStats, only the 2026-11-10 hosted run is out-of-sample on all 25: it ran before any
+change made with those questions in view. No other server was ever changed on them.
+
+| Arm | Run | Correct (25) | Range while flags are open | StatCan and BoC (14) | Other sources (11) | Hallucinated |
+| :-- | :-- | --: | --: | --: | --: | --: |
+| MapleStats (hosted) | Nov. 10 | **84.0% (21)** | 84.0% (no open flags) | 13 | 8 | 0 |
+| CanData-MCP | Nov. 22 | 64.0% (16) | 60.0–64.0% | 11 | 5 | 2 |
+| Pipeworx | Nov. 22 | 64.0% (16) | 52.0–64.0% | 11 | 5 | 0 |
+| mcp-canada | Nov. 22 | 60.0% (15) | 60.0% | 11 | 4 | 5 |
+| OpenCanadaPublicDataMCP | Nov. 22 | 60.0% (15) | 56.0–60.0% | 11 | 4 | 1 |
+| arose26 | Nov. 22 | 56.0% (14) | 52.0–56.0% | 11 | 3 | 0 |
+| mcp-statcan | Nov. 22 | 56.0% (14) | 56.0% | 11 | 3 | 1 |
+| OpenMCP | Nov. 10 | 52.0% (13) | 52.0% (no open flags) | 9 | 4 | 2 |
+| canada-data-agent | Nov. 22 | 48.0% (12) | 44.0–52.0% | 8 | 4 | 2 |
+| statcan2 | Nov. 22 | 36.0% (9) | 32.0–36.0% | 5 | 4 | 2 |
+| No data tool | Nov. 22 | 16.0% (4) | 12.0–20.0% | 2 | 2 | 10 |
+
+The range assumes every open flag is settled the judge's way, or the grader's. The low end
+counts every flagged "correct" as not correct where the judge disagreed. The high end
+counts every flagged non-correct answer as correct where the judge said so.
+
+What it shows:
+
+- **MapleStats answered 84.0% of the fresh questions correctly. No other server answered
+  more than 64.0%, however the open flags are settled.** The model alone answered 16.0%.
+- **Most of the gap is breadth.** On the 14 StatCan and Bank of Canada questions, which
+  every server covers, MapleStats answered 13 and six other servers 11 each. On the 11
+  questions about other publishers (CMHC, provincial and municipal portals, ECCC,
+  open.canada.ca, BIS, the World Bank), MapleStats answered 8 and the others 3 to 5. Most
+  of the other servers do not claim those publishers, so that half measures coverage as
+  much as accuracy.
+- **MapleStats gave no hallucinated answer on the fresh questions.** The other servers gave
+  0 to 5, and the model alone 10.
+- **The samples are small.** One question is 4 points of the score. Two servers one
+  question apart are not meaningfully different.
+
+**MapleStats from a local checkout, 2026-11-21 (not in the headline).** This run, at `main`
+71e2cea, came after the fixes the four moved questions prompted, so it is in-sample on
+those four. On the 21 questions still held out it answered 18 (85.7%), or 14 to 18 while
+its 4 flagged answers are open. Five of its answers met StatCan WDS errors (HTTP 500) in
+this run's container: N-03, N-04 and N-05 declined, and N-06 and N-16 were answered from
+other sources and are among the flagged. The run asked one question at a time with
+`--pause 20`, so that StatCan saw one agent's traffic from this machine at a time.
+
+**All 72 questions.** Dev is in-sample for MapleStats (`in_sample_for: ["maplestats"]`), so
+its dev and overall shares are not comparable with the other servers'. For every other arm,
+all 72 questions are out-of-sample.
+
+| Arm | Correct (72) | Dev (51) | Test (21) |
+| :-- | --: | --: | --: |
+| MapleStats (local, Nov. 21), in-sample on dev | 90.7% | 92.8% | 85.7% |
+| MapleStats (hosted, Nov. 10), in-sample on dev | 86.6% | 81.0% | 100.0% |
+| Pipeworx | 63.9% | 60.8% | 71.4% |
+| OpenMCP | 58.3% | 56.9% | 61.9% |
+| mcp-canada | 54.6% | 47.7% | 71.4% |
+| CanData-MCP | 54.2% | 47.1% | 71.4% |
+| arose26 | 51.9% | 47.7% | 61.9% |
+| OpenCanadaPublicDataMCP | 49.5% | 44.4% | 61.9% |
+| mcp-statcan | 47.2% | 41.2% | 61.9% |
+| canada-data-agent | 35.2% | 28.1% | 52.4% |
+| statcan2 | 30.1% | 26.8% | 38.1% |
+| No data tool | 11.1% | 9.8% | 14.3% |
+
+The hosted run's 100.0% on the 21 is the selection described above, not a result.
+
+**Cost.** Each arm's total over its 84 answers, as the CLI reports it (`total_cost_usd`,
+API prices), sorted by USD per answer. USD per correct question is the cost per question
+(the total over 72) divided by the share correct.
+
+| Arm | USD per answer | Total USD | Correct (72) | USD per correct question | Tokens in / out per answer |
+| :-- | --: | --: | --: | --: | --: |
+| canada-data-agent | 0.018 | 1.49 | 35.2% | 0.059 | 10.4k / 698 |
+| arose26 | 0.022 | 1.85 | 51.9% | 0.050 | 16.8k / 858 |
+| mcp-statcan | 0.025 | 2.06 | 47.2% | 0.061 | 17.6k / 863 |
+| OpenCanadaPublicDataMCP | 0.037 | 3.11 | 49.5% | 0.087 | 93.5k / 1,287 |
+| CanData-MCP | 0.039 | 3.24 | 54.2% | 0.083 | 35.0k / 1,065 |
+| statcan2 | 0.045 | 3.77 | 30.1% | 0.174 | 45.6k / 837 |
+| MapleStats (hosted) | 0.048 | 3.99 | 86.6% | 0.064 | 40.4k / 1,085 |
+| MapleStats (local) | 0.048 | 4.05 | 90.7% | 0.062 | 48.2k / 1,158 |
+| OpenMCP | 0.063 | 5.26 | 58.3% | 0.125 | 60.2k / 1,232 |
+| mcp-canada | 0.070 | 5.88 | 54.6% | 0.150 | 72.2k / 1,517 |
+| Pipeworx¹ | 0.077 | 6.46 | 63.9% | 0.140 | 345.8k / 1,091 |
+| No data tool | 0.093 | 7.77 | 11.1% | 0.972 | 7.5k / 6,905 |
+
+¹ Pipeworx's own model calls run on its side and are not in `total_cost_usd`, so its cost is
+understated. The model alone cost the most because two answers ran to the 128k-token output
+limit (USD 1.53 each). The judge cost USD 10.42 for the 843 verdicts this round added.
+
+**Key drift.** StatCan revised two figures between the key build (2026-11-09) and the
+2026-11-22 runs. The September 2026 IPPI went from 150.7 to 149.9, so its 12-month change
+went from 14.5% to 13.9% (N-01). August 2026 regular EI beneficiaries went from 541,320 to
+540,630 (N-03). Both new values were read from WDS on 2026-11-22. Seven arms gave the
+revised figures and were graded hallucinated. `overrides_v4.json` grades those 14 answers
+correct, each with its reason, because they match the figure published on their run day.
+No other question shows the pattern (the old arms right, the new arms wrong). Two gaps in
+the tooling let this through:
+
+- `maple-test.yml` and `smoke.yml` check the v1 to v3 keys but not `build_key_v4_test`.
+  This is still open: adding it would fail every week until the key is rebuilt, and the
+  2026-11-10 answers would then need the opposite overrides.
+- `build_key_v4_test --check` failed (`KeyError: '2025-09'`), because IPPI's October release
+  moved the latest-13-periods window it reads. Each read is now pinned to the periods the key
+  was built on (`series(..., end=...)`). On 2026-11-22 the check reported N-01 and N-03 and
+  nothing else in the StatCan part.
+
+**Setup.** Arms that start a server on this machine (arose26, mcp-canada, CanData-MCP,
+canada-data-agent, OpenCanadaPublicDataMCP) ran one after another, one question at a time,
+with `--pause 20`, so StatCan saw one agent's traffic at a time. The hosted arms ran side
+by side. Versions: CanData-MCP at 6985e60, canada-data-agent at d7cc29e (with a local
+PostgreSQL database holding its `http_cache` table), OpenCanadaPublicDataMCP at c0a9b49
+(with `mcp[cli]<2`), and arose26 and mcp-canada at their latest releases on 2026-11-22.
+
+The CLI's 5-hour usage limit was reached at 02:33 UTC. After that, every answer came back
+as the limit message in about 3 seconds, and a session restart stopped the runs. Those
+answers are set aside, not graded: 13 no-tools answers in `runs_v4/errors/`, and mcp-canada's
+53-answer start in `runs_v4/paused/`. They were asked again, with the harness's own
+`run.ask`, through a wrapper that skipped recorded answers and waited out the limit. `run`
+now does both itself: it never records the limit reply, it waits for the reset the reply
+names, and `--resume` carries on in an existing run file. The
+model alone had three run errors (two answers that hit the output limit, one 10-minute
+timeout). One mcp-canada answer (A-02, second pass) ran out of turns after 50 tool calls.
+Those stand, graded abstained.
+
+```bash
+uv run python -m tests.maple_test grade --version v4 --judge \
+    tests/maple_test/runs_v4/2026-11-10_maplestats_hosted_claude-sonnet-5-5.jsonl \
+    tests/maple_test/runs_v4/2026-11-10_openmcp_claude-sonnet-5-5.jsonl \
+    tests/maple_test/runs_v4/2026-11-21_maplestats-local_claude-sonnet-5-5.jsonl \
+    tests/maple_test/runs_v4/2026-11-22_*_claude-sonnet-5-5.jsonl
+```
+
 ## Shelf life
 
 Two questions depend on today's calendar: M-13 holds until StatCan publishes Q4 2026 GDP

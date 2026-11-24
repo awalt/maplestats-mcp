@@ -72,12 +72,15 @@ chiffre revient avec sa citation, ses indicateurs de qualité et sa licence.*
   the survey directory and IMDB metadata (`statcan_surveys_*`), PUMF codebooks
   and user guides (`statcan_pumf_*`), The Daily's articles and release tables
   (`statcan_daily_*`) and classifications (`rdaas_*`).
-- **Measured.** On the 53 questions of the
-  [Maple Test](https://maplestats.danielstats.io/benchmarks.html), MapleStats
-  answered 91.8% correctly over three runs (November 3, 2026), with no false
-  claims and no invented StatCan table or vector ids. Fifty-three questions are
-  few, part of them were chosen from what MapleStats covers, and later
-  MapleStats runs are in-sample ([details](https://github.com/dsanchezp18/maplestats-mcp/blob/main/tests/maple_test/README.md)).
+- **Measured.** On the 25 fresh questions of the
+  [Maple Test](https://maplestats.danielstats.io/benchmarks.html), version 4,
+  written and keyed before any server saw them, MapleStats answered 84.0%
+  correctly (November 10, 2026), with no hallucinated answer; nine other
+  Canadian data servers answered 36.0% to 64.0% (November 10 and 22). Most of
+  the gap is coverage: on the 14 Statistics Canada and Bank of Canada questions,
+  MapleStats answered 13 and six other servers 11. Twenty-five questions are
+  few, and the maintainer wrote and graded them
+  ([details](https://github.com/dsanchezp18/maplestats-mcp/blob/main/tests/maple_test/README.md)).
 
 ## Why MapleStats
 

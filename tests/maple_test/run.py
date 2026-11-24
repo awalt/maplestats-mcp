@@ -40,13 +40,15 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +87,30 @@ NOT_CONNECTED = "MCP tools were not available."
 # more: three at once got "Rate limit exceeded" on 16 of 64 answers (2026-11-09).
 MAX_WORKERS = {"maplestats_hosted": 1, "maplestats_full": 1}
 CONNECT_RETRIES = 2
+# The CLI's reply once the account's usage limit is reached ("You've hit your 5-hour limit ·
+# resets 6:30am (UTC)") is not an answer: on 2026-11-22 every question after the limit got it
+# in about 3 seconds, and 55 of them had to be set aside by hand. `run` waits for the reset
+# and asks again instead of recording it.
+USAGE_LIMIT = re.compile(r"hit your .{0,40}limit", re.IGNORECASE)
+LIMIT_RESET = re.compile(r"resets\s+(\d{1,2})(?::(\d{2}))?\s*([ap]m)\s*\(UTC\)", re.IGNORECASE)
+
+
+def limit_wait(message: str, now: datetime | None = None) -> float:
+    """Seconds to wait after a usage-limit reply: until the reset it names, plus 3 minutes.
+
+    A reply that names no UTC reset time gets 30 minutes, after which the question is asked
+    again (and waits again if the limit still holds).
+    """
+    now = now or datetime.now(UTC)
+    m = LIMIT_RESET.search(message)
+    if m is None:
+        return 1800.0
+    hour = int(m.group(1)) % 12 + (12 if m.group(3).lower() == "pm" else 0)
+    until = now.replace(hour=hour, minute=int(m.group(2) or 0), second=0, microsecond=0)
+    if until <= now:
+        until += timedelta(days=1)
+    return (until - now).total_seconds() + 180
+
 
 OPENCANADA_SERVERS = (
     "statcan",
@@ -446,6 +472,8 @@ def run(
     split: str = "all",
     workers: int = 1,
     frozen: Path | None = None,
+    pause: float = 0.0,
+    resume: bool = False,
 ) -> Path:
     questions = [
         q
@@ -456,9 +484,23 @@ def run(
     runs.mkdir(exist_ok=True)
     name = label or arm
     out = runs / f"{datetime.now(UTC).date().isoformat()}_{name}_{model}.jsonl"
+    recorded: set[tuple[str, int]] = set()
+    if resume:
+        # --resume: carry on in the newest run file of this name and model, whatever day it
+        # was started (a session restart stopped the 2026-11-22 runs), asking only what it
+        # does not hold yet. The date prefix has no underscore, so the rest must match exactly.
+        earlier = sorted(
+            f for f in runs.glob("*.jsonl") if f.name.partition("_")[2] == f"{name}_{model}.jsonl"
+        )
+        if earlier:
+            out = earlier[-1]
+            for line in out.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    row = json.loads(line)
+                    recorded.add((row["question_id"], row.get("repeat", 0)))
     # A run is evidence: never overwrite one (a retry gets its own --label).
-    if out.exists():
-        raise SystemExit(f"{out.name} exists; pass --label to keep both runs")
+    elif out.exists():
+        raise SystemExit(f"{out.name} exists; pass --label to keep both runs, or --resume")
     if alts is None and os.environ.get("MAPLE_TEST_ALTS"):
         alts = Path(os.environ["MAPLE_TEST_ALTS"])
     config_servers = servers(arm, server_dir, alts, frozen)
@@ -478,7 +520,7 @@ def run(
             config = Path(tmp) / "mcp.json"
             config.write_text(json.dumps({"mcpServers": config_servers}))
         lock = threading.Lock()
-        with out.open("w", encoding="utf-8") as fh:
+        with out.open("a" if resume else "w", encoding="utf-8") as fh:
 
             def one(job: tuple[dict[str, Any], int]) -> None:
                 q, r = job
@@ -490,17 +532,35 @@ def run(
                     if not answer.response.startswith(NOT_CONNECTED):
                         break
                     answer = ask(arm, model, q, config, version)
+                while USAGE_LIMIT.search(answer.response) and answer.duration_s < 60:
+                    wait = limit_wait(answer.response)
+                    print(
+                        f"{q['id']}#{r} {name}: usage limit, asking again in {wait / 60:.0f} min",
+                        file=sys.stderr,
+                    )
+                    time.sleep(wait)
+                    answer = ask(arm, model, q, config, version)
                 answer.arm, answer.repeat = name, r
                 with lock:
                     fh.write(json.dumps(asdict(answer), ensure_ascii=False) + "\n")
                     fh.flush()
                 state = "ERROR" if answer.is_error else f"{len(answer.tool_calls)} calls"
                 print(f"{q['id']}#{r} {name}: {state}, {answer.duration_s}s", file=sys.stderr)
+                # --pause: seconds of quiet after each answer, so a long local run does not
+                # trip a publisher's abuse protection (StatCan's www150 blocks a machine after
+                # heavy use: README, "How the key was read"). Use it with --workers 1.
+                if pause > 0:
+                    time.sleep(pause)
 
             # Whole passes, not each question three times in a row: a source that is down
             # for a minute then costs one answer per pass, not three of one question.
+            todo = [
+                j
+                for j in jobs(questions, repeat, extra_passes)
+                if (j[0]["id"], j[1]) not in recorded
+            ]
             with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-                list(pool.map(one, jobs(questions, repeat, extra_passes)))
+                list(pool.map(one, todo))
     return out
 
 

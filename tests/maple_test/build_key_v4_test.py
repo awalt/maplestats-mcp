@@ -953,15 +953,32 @@ def coordinate(meta: dict[str, Any], picks: dict[str, str]) -> str:
     return ".".join(ids + ["0"] * (10 - len(ids)))
 
 
-def series(pid: int, coord: str, latest: int) -> tuple[dict[str, float], dict[str, Any]]:
+def series(
+    pid: int, coord: str, latest: int, end: str | None = None
+) -> tuple[dict[str, float], dict[str, Any]]:
+    """The `latest` periods of one series, ending at `end` (YYYY-MM) when given.
+
+    `end` pins the window to the periods the key was built on (the latest on 2026-11-09):
+    without it, a later release pushes them out of a latest-N window. IPPI's October 2026
+    release did, and `--check` failed with KeyError '2025-09' (2026-11-22). Revisions to the
+    pinned periods still show up as drift.
+    """
     (resp,) = post(
         f"{WDS}getDataFromCubePidCoordAndLatestNPeriods",
-        [{"productId": pid, "coordinate": coord, "latestN": latest}],
+        [
+            {
+                "productId": pid,
+                "coordinate": coord,
+                "latestN": latest if end is None else latest + 36,
+            }
+        ],
     )
     if resp.get("status") != "SUCCESS":
         fail(f"{pid} {coord}: {resp}")
     obj = resp["object"]
     points = {p["refPer"][:7]: p for p in obj["vectorDataPoint"]}
+    if end is not None:
+        points = {k: points[k] for k in sorted(k for k in points if k <= end)[-latest:]}
     return {k: float(p["value"]) for k, p in points.items() if p["value"] is not None}, {
         "vector": f"v{obj['vectorId']}",
         "released": max(p["releaseTime"] for p in points.values())[:16],
@@ -994,7 +1011,10 @@ def statcan_data() -> list[dict[str, Any]]:
         if m["memberNameEn"].startswith("Total")
     )
     data, info = series(
-        pid, coordinate(meta, {"Geography": "Canada", "North American Product": total}), 13
+        pid,
+        coordinate(meta, {"Geography": "Canada", "North American Product": total}),
+        13,
+        end="2026-09",
     )
     ippi = pct(data["2026-09"], data["2025-09"])
     out.append(
@@ -1036,7 +1056,7 @@ def statcan_data() -> list[dict[str, Any]]:
             "Sector": "Business sector",
         },
     )
-    data, info = series(pid, coord, 3)
+    data, info = series(pid, coord, 3, end="2026-04")
     lp = pct(data["2026-04"], data["2026-01"])
     out.append(
         _q(
@@ -1083,7 +1103,7 @@ def statcan_data() -> list[dict[str, Any]]:
             picks[d["dimensionNameEn"][:20]] = "Regular benefits"
         else:
             picks[d["dimensionNameEn"][:20]] = names[0]
-    data, info = series(pid, coordinate(meta, picks), 2)
+    data, info = series(pid, coordinate(meta, picks), 2, end="2026-08")
     ei = data["2026-08"]
     out.append(
         _q(
@@ -1116,7 +1136,7 @@ def statcan_data() -> list[dict[str, Any]]:
     trav = "Canadian residents returning from the United States of America, land, automobile"
     mode = "Travellers"
     picks = {"Geography": "Canada", "Traveller characteristics": trav, "Traveller type": mode}
-    data, info = series(pid, coordinate(meta, picks), 13)
+    data, info = series(pid, coordinate(meta, picks), 13, end="2026-08")
     now, before = data["2026-08"], data["2025-08"]
     out.append(
         _q(
@@ -1157,6 +1177,7 @@ def statcan_data() -> list[dict[str, Any]]:
                 meta, {"Geography": city, "New housing price indexes": "Total (house and land)"}
             ),
             13,
+            end="2026-09",
         )
         rates[city] = pct(data["2026-09"], data["2025-09"])
         infos[city] = (info, data)
@@ -1224,10 +1245,11 @@ def statcan_data() -> list[dict[str, Any]]:
             },
         ),
         1,
+        end="2026-04",
     )
     pop_pid = 17100009
     pop_meta = cube(pop_pid)
-    pop, info_pop = series(pop_pid, coordinate(pop_meta, {"Geography": "Canada"}), 2)
+    pop, info_pop = series(pop_pid, coordinate(pop_meta, {"Geography": "Canada"}), 2, end="2026-07")
     if "2026-04" not in gdp or "2026-04" not in pop:
         fail(f"N-06: Q2 2026 GDP or the April 1, 2026 population is missing: {gdp} {pop}")
     # GDP is in millions of dollars.
@@ -1338,7 +1360,7 @@ def statcan_data() -> list[dict[str, Any]]:
             if d["dimensionNameEn"].startswith("Geography")
             else next((n for n in names if n.startswith(("Total", "Apartment"))), names[0])
         )
-    data, info = series(pid, coordinate(meta, picks), 2)
+    data, info = series(pid, coordinate(meta, picks), 2, end="2025-12")
     year = max(data)
     if not year.startswith("2025"):
         fail(f"34-10-0127: latest Vancouver value is {year}")

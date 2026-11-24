@@ -116,5 +116,61 @@
   "ref:7ff93dde70": {
     "outcome": "abstained",
     "reason": "Review: Its queries came back empty; no status given: abstained."
+  },
+  "ref:bb0e6e811f": {
+    "outcome": "correct",
+    "reason": "Review (key drift, checked against StatCan WDS on 2026-11-22): StatCan revised the September 2026 IPPI (18-10-0266-01, Canada, total) from 150.7 to 149.9 after the key was built (2026-11-09); against September 2025 (131.6) that is a 13.9% rise, not 14.5%. The answer gives 13.9% from 149.9 and 131.6, the figure published on its run day (2026-11-22): correct."
+  },
+  "ref:af3aa8db57": {
+    "outcome": "correct",
+    "reason": "Review (key drift, checked against StatCan WDS on 2026-11-22): StatCan revised the September 2026 IPPI (18-10-0266-01, Canada, total) from 150.7 to 149.9 after the key was built (2026-11-09); against September 2025 (131.6) that is a 13.9% rise, not 14.5%. The answer gives 13.9% from 149.9 and 131.6, the figure published on its run day (2026-11-22): correct."
+  },
+  "ref:798a394d04": {
+    "outcome": "correct",
+    "reason": "Review (key drift, checked against StatCan WDS on 2026-11-22): StatCan revised the September 2026 IPPI (18-10-0266-01, Canada, total) from 150.7 to 149.9 after the key was built (2026-11-09); against September 2025 (131.6) that is a 13.9% rise, not 14.5%. The answer gives 13.9% from 149.9 and 131.6, the figure published on its run day (2026-11-22): correct."
+  },
+  "ref:73f39b7834": {
+    "outcome": "correct",
+    "reason": "Review (key drift, checked against StatCan WDS on 2026-11-22): StatCan revised the September 2026 IPPI (18-10-0266-01, Canada, total) from 150.7 to 149.9 after the key was built (2026-11-09); against September 2025 (131.6) that is a 13.9% rise, not 14.5%. The answer gives 13.9% from 149.9 and 131.6, the figure published on its run day (2026-11-22): correct."
+  },
+  "ref:f35e60f4bf": {
+    "outcome": "correct",
+    "reason": "Review (key drift, checked against StatCan WDS on 2026-11-22): StatCan revised the September 2026 IPPI (18-10-0266-01, Canada, total) from 150.7 to 149.9 after the key was built (2026-11-09); against September 2025 (131.6) that is a 13.9% rise, not 14.5%. The answer gives 13.9% from 149.9 and 131.6, the figure published on its run day (2026-11-22): correct."
+  },
+  "ref:0238098ee0": {
+    "outcome": "correct",
+    "reason": "Review (key drift, checked against StatCan WDS on 2026-11-22): StatCan revised the September 2026 IPPI (18-10-0266-01, Canada, total) from 150.7 to 149.9 after the key was built (2026-11-09); against September 2025 (131.6) that is a 13.9% rise, not 14.5%. The answer gives 13.9% from 149.9 and 131.6, the figure published on its run day (2026-11-22): correct."
+  },
+  "ref:bae2c28087": {
+    "outcome": "correct",
+    "reason": "Review (key drift, checked against StatCan WDS on 2026-11-22): StatCan revised the September 2026 IPPI (18-10-0266-01, Canada, total) from 150.7 to 149.9 after the key was built (2026-11-09); against September 2025 (131.6) that is a 13.9% rise, not 14.5%. The answer gives 13.9% from 149.9 and 131.6, the figure published on its run day (2026-11-22): correct."
+  },
+  "ref:aaa54dd018": {
+    "outcome": "correct",
+    "reason": "Review (key drift, checked against StatCan WDS on 2026-11-22): StatCan revised August 2026 regular EI beneficiaries (14-10-0011-01, Canada, seasonally adjusted) from 541,320 to 540,630 after the key was built (2026-11-09). The answer gives 540,630, the figure published on its run day (2026-11-22): correct."
+  },
+  "ref:674bca2cc1": {
+    "outcome": "correct",
+    "reason": "Review (key drift, checked against StatCan WDS on 2026-11-22): StatCan revised August 2026 regular EI beneficiaries (14-10-0011-01, Canada, seasonally adjusted) from 541,320 to 540,630 after the key was built (2026-11-09). The answer gives 540,630, the figure published on its run day (2026-11-22): correct."
+  },
+  "ref:4cbfbda188": {
+    "outcome": "correct",
+    "reason": "Review (key drift, checked against StatCan WDS on 2026-11-22): StatCan revised August 2026 regular EI beneficiaries (14-10-0011-01, Canada, seasonally adjusted) from 541,320 to 540,630 after the key was built (2026-11-09). The answer gives 540,630, the figure published on its run day (2026-11-22): correct."
+  },
+  "ref:d9abcd9b8a": {
+    "outcome": "correct",
+    "reason": "Review (key drift, checked against StatCan WDS on 2026-11-22): StatCan revised August 2026 regular EI beneficiaries (14-10-0011-01, Canada, seasonally adjusted) from 541,320 to 540,630 after the key was built (2026-11-09). The answer gives 540,630, the figure published on its run day (2026-11-22): correct."
+  },
+  "ref:0f9454a3b7": {
+    "outcome": "correct",
+    "reason": "Review (key drift, checked against StatCan WDS on 2026-11-22): StatCan revised August 2026 regular EI beneficiaries (14-10-0011-01, Canada, seasonally adjusted) from 541,320 to 540,630 after the key was built (2026-11-09). The answer gives 540,630, the figure published on its run day (2026-11-22): correct."
+  },
+  "ref:c61653c96e": {
+    "outcome": "correct",
+    "reason": "Review (key drift, checked against StatCan WDS on 2026-11-22): StatCan revised August 2026 regular EI beneficiaries (14-10-0011-01, Canada, seasonally adjusted) from 541,320 to 540,630 after the key was built (2026-11-09). The answer gives 540,630, the figure published on its run day (2026-11-22): correct."
+  },
+  "ref:3f38e898c1": {
+    "outcome": "correct",
+    "reason": "Review (key drift, checked against StatCan WDS on 2026-11-22): StatCan revised August 2026 regular EI beneficiaries (14-10-0011-01, Canada, seasonally adjusted) from 541,320 to 540,630 after the key was built (2026-11-09). The answer gives 540,630, the figure published on its run day (2026-11-22): correct."
   }
 }
