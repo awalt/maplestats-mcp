@@ -39,7 +39,14 @@ class DatasetSummary(BaseModel):
     category: str | None = None
     tags: list[str] = Field(default_factory=list)
     dataset_type: str
-    updated_at: datetime | None = None
+    updated_at: datetime | None = Field(
+        default=None,
+        description="When the dataset's metadata last changed (a portal migration can set "
+        "it for every dataset at once).",
+    )
+    data_updated_at: datetime | None = Field(
+        default=None, description="When the dataset's rows last changed: how current it is."
+    )
     download_count: int = 0
     permalink: str
     landing_page_url: str
