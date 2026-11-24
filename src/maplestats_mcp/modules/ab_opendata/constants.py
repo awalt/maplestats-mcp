@@ -98,3 +98,21 @@ PROJECTION_GEOGRAPHIES = {
 }
 PROJECTION_SUMMARY = "summary"
 PROJECTION_SCENARIO_SHEETS = {"low": "low", "medium": "med", "high": "high"}
+
+# Alberta budget fiscal plan tables (Treasury Board and Finance), checked live on
+# 2026-11-24. Two datasets, both OGLA: Budget 2026 onward sits in
+# "...-and-tax-plan-2026" ("[2026-2029 to current]", six XLSX: capital plan,
+# economic outlook, expense, revenue, tax plan, other tables), and Budgets 2017 to
+# 2025 in the older slug without the year (49 XLSX). Resources are named
+# "<first year>-<last year> fiscal plan : <part> tables" ("2026-2029 fiscal plan :
+# economic outlook tables", "2025-28 fiscal plan : expense tables"); the 2024
+# "other tables" resource is typed OTHERS but is an .xlsx. Each workbook opens on a
+# picture-only "Cover" sheet; the Economic Outlook workbook holds the Key Energy and
+# Economic Assumptions, the chart data (charts 1 to 16), the scenario table and ten
+# private-forecaster benchmark sheets (the outlook publication itself is a PDF).
+BUDGET_DATASET_CURRENT = "alberta-budget-fiscal-plan-tables-economic-outlook-and-tax-plan-2026"
+BUDGET_DATASET_HISTORY = "alberta-budget-fiscal-plan-tables-economic-outlook-and-tax-plan"
+BUDGET_FIRST_CURRENT_EDITION = 2026
+BUDGET_FIRST_EDITION = 2017
+BUDGET_DEFAULT_PART = "economic outlook"
+BUDGET_ROWS_MAX = 600

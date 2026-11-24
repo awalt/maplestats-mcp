@@ -15,10 +15,14 @@ from datetime import UTC, datetime
 from typing import Any, Literal, NoReturn
 from urllib.parse import unquote, urlparse
 
-from maplestats_mcp.modules.ab_opendata import constants
+from maplestats_mcp.modules.ab_opendata import budget_sheets, constants
 from maplestats_mcp.modules.ab_opendata.schemas import (
     ActivityIndex,
     ActivityIndexPoint,
+    BudgetPart,
+    BudgetRow,
+    BudgetSheet,
+    BudgetTable,
     DatasetDetail,
     DatasetEntry,
     DatasetList,
@@ -1346,5 +1350,307 @@ async def get_population_projection_summary(
             if missing
             else None,
             lang,
+        ),
+    )
+
+
+# "2026-2029 fiscal plan : economic outlook tables", "2025-28 fiscal plan :  expense
+# tables", "2017-20 Fiscal Plan: Other Tables" (live 2026-11-24).
+_FISCAL_PLAN = re.compile(
+    r"^\s*(?P<first>\d{4})\s*-\s*(?P<last>\d{2,4})\s+fiscal\s+plan\s*:\s*(?P<part>.+?)\s*$",
+    re.IGNORECASE,
+)
+
+
+def budget_parts(entry: DatasetEntry) -> dict[int, list[BudgetPart]]:
+    """The dataset's workbooks by budget year (the fiscal plan's first year)."""
+    editions: dict[int, list[BudgetPart]] = {}
+    for resource in entry.resources:
+        match = _FISCAL_PLAN.match(resource.name)
+        # The 2024 "other tables" resource is typed OTHERS; the file is .xlsx.
+        parsed = urlparse(resource.url)
+        hosted = parsed.hostname == constants.DOMAIN and parsed.path.lower().endswith(".xlsx")
+        if match is None or not hosted:
+            continue
+        part = " ".join(match["part"].lower().split())
+        part = re.sub(r"\s+tables?$", "", part)
+        editions.setdefault(int(match["first"]), []).append(
+            BudgetPart(
+                part=part,
+                fiscal_plan=f"{match['first']}-{match['last']}",
+                resource_name=resource.name,
+                url=resource.url,
+            )
+        )
+    return editions
+
+
+async def _budget_dataset(
+    edition: int | None, lang: Lang
+) -> tuple[int, DatasetEntry, dict[int, list[BudgetPart]]]:
+    this_year = datetime.now(UTC).year
+    if edition is not None and not constants.BUDGET_FIRST_EDITION <= edition <= this_year + 1:
+        raise_localized(
+            InvalidInput,
+            f"ab_opendata: edition is a budget year, {constants.BUDGET_FIRST_EDITION} to "
+            f"{this_year + 1} (2026 = Budget 2026, fiscal plan 2026-29).",
+            f"ab_opendata : edition est l'année d'un budget, de {constants.BUDGET_FIRST_EDITION} "
+            f"à {this_year + 1} (2026 = budget 2026, plan financier 2026-2029).",
+            lang,
+        )
+    names = (
+        [constants.BUDGET_DATASET_HISTORY]
+        if edition is not None and edition < constants.BUDGET_FIRST_CURRENT_EDITION
+        else [constants.BUDGET_DATASET_CURRENT, constants.BUDGET_DATASET_HISTORY]
+    )
+    for name in names:
+        entry = (await get_dataset(name, lang)).dataset
+        editions = budget_parts(entry)
+        if not editions:
+            continue
+        year = max(editions) if edition is None else edition
+        if year in editions:
+            return year, entry, editions
+    raise_localized(
+        NotFound,
+        f"ab_opendata: no fiscal plan tables for budget {edition} on {constants.DOMAIN}; "
+        "search with ab_opendata_search_datasets.",
+        f"ab_opendata : aucun tableau du plan financier pour le budget {edition} sur "
+        f"{constants.DOMAIN} ; cherchez avec ab_opendata_search_datasets.",
+        lang,
+    )
+
+
+def _pick(options: list[str], wanted: str, what: str, lang: str) -> str:
+    """An exact (case-insensitive) match, else the one option containing the text."""
+    text = " ".join(wanted.lower().split())
+    exact = [o for o in options if " ".join(o.lower().split()) == text]
+    partial = [o for o in options if text in " ".join(o.lower().split())]
+    if exact or len(partial) == 1:
+        return (exact or partial)[0]
+    raise_localized(
+        InvalidInput,
+        f"ab_opendata: {what} {wanted!r} matches {len(partial)}; give one of: "
+        f"{', '.join(options)}.",
+        f"ab_opendata : {what} {wanted!r} correspond à {len(partial)} ; donnez l'un de : "
+        f"{', '.join(options)}.",
+        lang,
+    )
+
+
+def _pick_sheet(sheets: list[BudgetSheet], wanted: str, lang: str) -> str:
+    """A sheet by its name or title: exact first, then the one containing the words.
+
+    "Statement of Operations" is the exact title of 'Sch 3 St of Ops' and part of
+    'Summary Statement of Operations' (Budget 2026 other tables), so exact wins.
+    """
+    text = " ".join(wanted.lower().split())
+
+    def norm(value: str | None) -> str:
+        return " ".join((value or "").lower().split())
+
+    for test in (
+        lambda s: norm(s.table) == text,
+        lambda s: norm(s.title) == text,
+        lambda s: text in norm(s.table),
+        lambda s: text in f"{norm(s.table)} {norm(s.title)}",
+    ):
+        found = [s.table for s in sheets if test(s)]
+        if len(found) == 1:
+            return found[0]
+        if len(found) > 1:
+            shown = "; ".join(f"{s.table} ({s.title})" if s.title else s.table for s in sheets)
+            raise_localized(
+                InvalidInput,
+                f"ab_opendata: table {wanted!r} matches {len(found)} sheets "
+                f"({', '.join(found)}); give one of: {shown}.",
+                f"ab_opendata : table {wanted!r} correspond à {len(found)} feuilles "
+                f"({', '.join(found)}) ; donnez l'une de : {shown}.",
+                lang,
+            )
+    shown = "; ".join(f"{s.table} ({s.title})" if s.title else s.table for s in sheets)
+    raise_localized(
+        InvalidInput,
+        f"ab_opendata: no sheet matches table {wanted!r}; give one of: {shown}.",
+        f"ab_opendata : aucune feuille ne correspond à table {wanted!r} ; donnez l'une de : "
+        f"{shown}.",
+        lang,
+    )
+
+
+async def get_budget_table(
+    part: str | None = None,
+    table: str | None = None,
+    edition: int | None = None,
+    contains: str | None = None,
+    lang: Lang = "en",
+) -> BudgetTable:
+    if table is not None and part is None:
+        raise_localized(
+            InvalidInput,
+            "ab_opendata: give `part` (the workbook) with `table`, e.g. part='revenue'.",
+            "ab_opendata : donnez `part` (le classeur) avec `table`, p. ex. part='revenue'.",
+            lang,
+        )
+    year, entry, editions = await _budget_dataset(edition, lang)
+    parts = editions[year]
+    common: dict[str, Any] = {
+        "edition": year,
+        "editions": sorted(editions),
+        "parts": parts,
+        "dataset": entry.name,
+        "dataset_title": entry.title,
+        "dataset_url": entry.dataset_url,
+        "licence": entry.licence,
+        "ogl_alberta": entry.ogl_alberta,
+        "attribution": _attribution(entry),
+    }
+    plan = pick(
+        lang,
+        f"Alberta Budget {year} fiscal plan tables (Treasury Board and Finance)",
+        f"Tableaux du plan financier du budget {year} de l'Alberta (Conseil du Trésor et Finances)",
+    )
+
+    def provenance(url: str, cached: bool, coverage: str, limits: str | None) -> Provenance:
+        return make_provenance(
+            source=constants.PROVENANCE_SOURCE,
+            url=url,
+            cached=cached,
+            schema_name="ab_opendata.BudgetTable",
+            freshness=pick(
+                lang,
+                f"As published with Budget {year}; the workbooks are not revised after "
+                "release (the next budget's tables replace the forecasts).",
+                f"Tel que publié avec le budget {year} ; les classeurs ne sont pas révisés "
+                "après leur parution (le budget suivant remplace les prévisions).",
+            ),
+            coverage=coverage,
+            limits=limits,
+            licence=_dataset_licence(entry, lang),
+            lang=lang,
+        )
+
+    if part is None:
+        names = ", ".join(p.part for p in parts)
+        return BudgetTable(
+            **common,
+            fiscal_plan=parts[0].fiscal_plan,
+            part=None,
+            table=None,
+            tables=[],
+            provenance=provenance(
+                entry.dataset_url,
+                False,
+                f"{plan}: workbooks {names}.",
+                pick(
+                    lang,
+                    "no part was given, so only the workbooks are listed; pass `part`",
+                    "aucune partie donnée : seuls les classeurs sont listés ; passez `part`",
+                ),
+            ),
+        )
+    chosen = _pick([p.part for p in parts], part, "part", lang)
+    workbook = next(p for p in parts if p.part == chosen)
+    size = next((r.size_bytes for r in entry.resources if r.url == workbook.url), None)
+    body, cached = await _body(workbook.url, size, lang)
+
+    async def read_titles() -> list[budget_sheets.SheetTitle]:
+        try:
+            return await run_parse(budget_sheets.list_sheets, body)
+        except UpstreamError:
+            raise
+        except Exception as exc:  # noqa: BLE001 (raise_localized re-raises it as UpstreamError)
+            raise_localized(
+                UpstreamError,
+                f"ab_opendata: could not read {workbook.url}: {exc}",
+                f"ab_opendata : impossible de lire {workbook.url} : {exc}",
+                lang,
+            )
+
+    titles, _ = await cached_fetch(
+        f"ab_opendata:budget_sheets:{workbook.url}", constants.CACHE_TTL_FILE_SECONDS, read_titles
+    )
+    sheets = [BudgetSheet(table=t.name, title=t.title) for t in titles]
+    common.update(fiscal_plan=workbook.fiscal_plan, part=chosen, tables=sheets, url=workbook.url)
+    if table is None:
+        return BudgetTable(
+            **common,
+            table=None,
+            provenance=provenance(
+                workbook.url,
+                cached,
+                f"{plan}, {workbook.resource_name}: {len(sheets)} tables.",
+                pick(
+                    lang,
+                    "no table was given, so only the sheets are listed; pass `table` (a sheet "
+                    "name or words of it)",
+                    "aucun tableau donné : seules les feuilles sont listées ; passez `table` "
+                    "(nom de feuille ou mots de celui-ci)",
+                ),
+            ),
+        )
+    sheet = _pick_sheet(sheets, table, lang)
+
+    async def read_sheet() -> budget_sheets.ParsedSheet:
+        try:
+            return await run_parse(budget_sheets.parse_sheet, body, sheet)
+        except UpstreamError:
+            raise
+        except Exception as exc:  # noqa: BLE001 (raise_localized re-raises it as UpstreamError)
+            raise_localized(
+                UpstreamError,
+                f"ab_opendata: could not read sheet {sheet!r} of {workbook.url}: {exc}",
+                f"ab_opendata : impossible de lire la feuille {sheet!r} de {workbook.url} : {exc}",
+                lang,
+            )
+
+    parsed, _ = await cached_fetch(
+        f"ab_opendata:budget_sheet:{workbook.url}:{sheet}",
+        constants.CACHE_TTL_FILE_SECONDS,
+        read_sheet,
+    )
+    rows = parsed.rows
+    if contains:
+        wanted = contains.casefold()
+        rows = [r for r in rows if wanted in f"{r.label or ''} {r.section or ''}".casefold()]
+    total = len(rows)
+    limits: list[str] = []
+    if total > constants.BUDGET_ROWS_MAX:
+        rows = rows[: constants.BUDGET_ROWS_MAX]
+        limits.append(
+            pick(
+                lang,
+                f"the first {constants.BUDGET_ROWS_MAX} of {total} rows; narrow with `contains`",
+                f"les {constants.BUDGET_ROWS_MAX} premières lignes sur {total} ; restreignez "
+                "avec `contains`",
+            )
+        )
+    limits.append(
+        pick(
+            lang,
+            "read as the published page shows it: hidden rows, columns and sheets are left "
+            "out, header rows are joined into column names, labels keep their footnote letters",
+            "lu tel que la page publiée l'affiche : lignes, colonnes et feuilles masquées "
+            "exclues, lignes d'en-tête jointes en noms de colonnes, libellés avec leurs appels "
+            "de note (en anglais, comme publiés)",
+        )
+    )
+    return BudgetTable(
+        **common,
+        table=sheet,
+        title=parsed.title,
+        title_lines=parsed.title_lines,
+        label_header=parsed.label_header,
+        columns=parsed.columns,
+        rows=[BudgetRow(label=r.label, section=r.section, values=r.values) for r in rows],
+        total_rows=total,
+        notes=parsed.notes,
+        provenance=provenance(
+            workbook.url,
+            cached,
+            f"{plan}, {workbook.resource_name}, sheet {sheet!r}"
+            + (f": {parsed.title}" if parsed.title else "")
+            + ".",
+            pick(lang, "; ", " ; ").join(limits),
         ),
     )

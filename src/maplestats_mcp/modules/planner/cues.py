@@ -59,6 +59,31 @@ CIVIC_CENSUS = (
     "population par quartier",
     "population des quartiers",
 )
+# Provincial budgets and fiscal plans (Alberta's fiscal plan tables).
+BUDGET = (
+    "budget",
+    "fiscal plan",
+    "deficit",
+    "surplus",
+    "royalt*",
+    "economic outlook",
+    "assumption*",
+    "oil price forecast",
+    "plan financier",
+    "perspectives economiques",
+    "redevance*",
+)
+# Population projections (provincial finance ministries).
+PROJECTIONS = (
+    "projection*",
+    "projected",
+    "forecast population",
+    "future population",
+    "2041",
+    "2046",
+    "2051",
+    "population future",
+)
 ENERGY = (
     "energy",
     "oil",

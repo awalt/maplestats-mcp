@@ -1811,6 +1811,15 @@ FR: dict[str, str] = {
     "Alberta": "Alberta",
     "Open Alberta Excel and CSV files": "fichiers Excel et CSV d'Open Alberta",
     "Alberta Economic Dashboard": "tableau de bord économique de l'Alberta",
+    "Alberta budget fiscal plan and economic outlook tables": (
+        "tableaux du plan financier et des perspectives économiques du budget de l'Alberta"
+    ),
+    "Manitoba Bureau of Statistics indicators and tables": (
+        "indicateurs et tableaux du Bureau des statistiques du Manitoba"
+    ),
+    "Ontario Ministry of Finance population projections to 2051": (
+        "projections démographiques du ministère des Finances de l'Ontario jusqu'en 2051"
+    ),
     "Alberta Energy Regulator reports": "rapports de l'Alberta Energy Regulator",
     "Quebec": "Québec",
     "Institut de la statistique du Quebec tables: query=<topic>": (

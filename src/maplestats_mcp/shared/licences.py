@@ -291,6 +291,21 @@ SOURCE_LICENCES: dict[str, str] = {
         "(https://www.ontario.ca/page/open-government-licence-ontario). Attribution: 'Contains "
         "information licensed under the Open Government Licence - Ontario.'"
     ),
+    "on-finance": (
+        "Source: Ontario Ministry of Finance, population projections "
+        "(https://data.ontario.ca/dataset/population-projections). Open Government Licence - "
+        "Ontario (https://www.ontario.ca/page/open-government-licence-ontario). Attribution: "
+        "'Contains information licensed under the Open Government Licence - Ontario.'"
+    ),
+    # Manitoba
+    "manitoba-bureau-of-statistics": (
+        "OpenMB Information and Data Use Licence "
+        "(https://www.gov.mb.ca/asset_library/en/legal/OpenMB-Information-Data-Use-Licence.pdf): "
+        "commercial and non-commercial use with attribution. Attribution: 'Contains information "
+        "from the Manitoba government, licensed under the OpenMB Information and Data Use "
+        "Licence (Manitoba.ca/OpenMB).' Manitoba Bureau of Statistics tables often repackage "
+        "Statistics Canada data, which is also under the Statistics Canada Open Licence."
+    ),
     "crea": (
         "Source: The Canadian Real Estate Association (CREA), MLS Home Price Index. CREA's "
         "terms (https://www.crea.ca/legal/) apply; this is not an open licence."
@@ -806,6 +821,22 @@ _PROVINCIAL_FR: dict[str, str] = {
         "Mention : « Contient des renseignements utilisés en vertu de la Licence du gouvernement "
         "ouvert – Ontario. »"
     ),
+    "on-finance": (
+        "Source : ministère des Finances de l'Ontario, projections démographiques "
+        "(https://data.ontario.ca/dataset/population-projections). Licence du gouvernement "
+        "ouvert – Ontario (https://www.ontario.ca/fr/page/licence-du-gouvernement-ouvert-ontario). "
+        "Mention : « Contient des renseignements utilisés en vertu de la Licence du gouvernement "
+        "ouvert – Ontario. »"
+    ),
+    "manitoba-bureau-of-statistics": (
+        "Licence d'utilisation de l'information et des données OpenMB (OpenMB Information and "
+        "Data Use Licence, https://www.gov.mb.ca/asset_library/en/legal/OpenMB-Information-Data-"
+        "Use-Licence.pdf) : usage commercial et non commercial permis avec mention. Mention "
+        "demandée, en anglais : « Contains information from the Manitoba government, licensed "
+        "under the OpenMB Information and Data Use Licence (Manitoba.ca/OpenMB). » Les tableaux "
+        "du Bureau des statistiques du Manitoba reprennent souvent des données de Statistique "
+        "Canada, qui relèvent aussi de la Licence ouverte de Statistique Canada."
+    ),
     "isq": (
         "Droits d'auteur du gouvernement du Québec (https://www.quebec.ca/en/copyright) : la "
         "reproduction, l'adaptation ou la publication exige l'autorisation préalable du "
@@ -915,6 +946,10 @@ _SOURCE_COMMERCIAL_USE: dict[str, CommercialUse] = {
     "nwt-bureau-of-statistics": "unknown",
     "oeb": "allowed",
     "on-fir": "allowed",
+    "on-finance": "allowed",
+    # OpenMB licence: "for both commercial and non-commercial purposes" (copyright page,
+    # read 2026-11-24).
+    "manitoba-bureau-of-statistics": "allowed",
     "crea": "not_allowed",
     # Commercial use is allowed if the BIS figures are not charged for separately.
     "bis": "allowed",
