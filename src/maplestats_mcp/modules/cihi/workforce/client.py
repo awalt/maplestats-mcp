@@ -560,7 +560,10 @@ async def resolve(workbook: str, lang: str) -> tuple[WorkbookRef, bool]:
             "workbook is required: an id from cihi_workforce_list_workbooks.",
             "workbook est obligatoire : un identifiant tiré de cihi_workforce_list_workbooks.",
         )
-    exact = [r for r in refs if r.id == value or r.url == value or workbook_id(value) == r.id]
+    # The address itself first: a workbook inside an archive shares its file name stem.
+    exact = [r for r in refs if r.url == value] or [
+        r for r in refs if r.id == value or workbook_id(value) == r.id
+    ]
     if exact:
         return exact[0], cached
     words = sheet_tables.normalize(value).split()

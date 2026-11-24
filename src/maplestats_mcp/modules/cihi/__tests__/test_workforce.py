@@ -824,6 +824,9 @@ async def test_a_workbook_inside_an_archive_is_read_by_ranges_without_the_archiv
     tables = await client.list_tables(ARCHIVE_MEMBER)
     assert [t.table for t in tables.tables] == ["1", "2.0", "2.1", "14.0", "Supply", "9"]
     assert tables.url.endswith(f"#npdb-data-tables-2022/{ARCHIVE_MEMBER}-en.xlsx")
+    # Its address finds it, not the archive whose file name it shares.
+    by_url, _ = await client.resolve(tables.url, "en")
+    assert by_url.id == ARCHIVE_MEMBER
     result = await client.get_table(ARCHIVE_MEMBER, "1", filters={"Group": "Total"})
     assert result.matching_rows == 2
     assert result.provenance.url == tables.url
