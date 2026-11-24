@@ -56,8 +56,6 @@ async def disclosure_search_contracts(
     contracts for ministers' offices, amendments only or standing offers.
     Each amendment is its own row and its contract_value is the amended
     total including taxes, so do not add rows up: use disclosure_summarize.
-    Contracts PSPC signs appear under the buying department; CanadaBuys
-    contract history repeats them under PSPC numbers, so never add the two.
     sort by date (default, newest first) or value; limit up to 100, page
     with offset. Every record carries its dataset and resource ids and the
     Open Government Portal page to cite.

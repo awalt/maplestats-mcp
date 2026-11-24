@@ -5,6 +5,14 @@ departments (National Defence and Public Services and Procurement Canada,
 PSPC). This note says what each source counts, how far they overlap and how
 to use them together without counting a contract twice.
 
+**CanadaBuys is not part of MapleStats.** Its module was removed on 2026-10-03
+for its terms, and on 2026-11-24 the owner had it left out of the `ckan_` tools
+too (canadabuys.canada.ca's robots.txt disallows every automated agent). This
+note is a record of the comparison, made once with files downloaded by hand,
+not a guide to a source this server serves. In MapleStats, federal contracts
+come from proactive disclosure alone: use `disclosure_summarize` for a
+department's totals.
+
 ## The three sources
 
 | | Proactive disclosure, contracts over $10,000 | CanadaBuys contract history | CanadaBuys award notices |
@@ -105,10 +113,10 @@ A few examples:
 - For what a department spent on contracts, use proactive disclosure alone
   (`disclosure_summarize`, which keeps the latest amendment). It covers every
   signer, PSPC included.
-- For what PSPC bought and for whom, use contract history alone, one row per
-  `contractNumber`, grouped by `endUserEntitiesName` (whose spellings vary:
-  "Department of National Defence (DND)" and "Department of National
-  Defence").
+- Outside MapleStats, for what PSPC bought and for whom, use contract history
+  alone, one row per `contractNumber`, grouped by `endUserEntitiesName` (whose
+  spellings vary: "Department of National Defence (DND)" and "Department of
+  National Defence").
 - To follow one contract across sources, search proactive disclosure by
   vendor and date near the award date, and check the value; do not expect the
   PSPC number to be there.
@@ -120,9 +128,9 @@ The CanadaBuys files are linked from the open.canada.ca record
 served from canadabuys.canada.ca, whose robots.txt (read 2026-11-24) allows
 only Google's and Bing's crawlers (`User-agent: *` / `Disallow: /`). This is
 the host whose terms led to removing the `canadabuys` module on 2026-10-03.
-The generic CKAN reader does not block that host, and on 2026-11-14 it read
-the 2025-26 file (issue #253); whether it should is an open question for the
-project owner. The fiscal-year files used here (contract history 2024-25,
+The generic CKAN reader did not block that host, and on 2026-11-14 it read
+the 2025-26 file (issue #253). Since 2026-11-24 it does: the hosts and the
+federal portal's CanadaBuys datasets are left out of every `ckan_` tool. The fiscal-year files used here (contract history 2024-25,
 18.9 MB; award notices 2024-25, 24.0 MB) were each downloaded once by hand for
 this note. Proactive disclosure was read with the server's own client
 (`proactive_disclosure.client.scan`).
