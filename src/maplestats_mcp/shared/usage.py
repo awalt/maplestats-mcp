@@ -11,7 +11,8 @@ caller typed. The one thing kept about who calls is a label from a fixed list
 (`CLIENT_LABELS`): the kind of client software, matched from the name it announces
 when it connects (never stored as sent), or `internal` for calls that carry the
 maintainer's secret header (MAPLE_INTERNAL_TOKEN), so their own use and benchmark
-runs can be told apart from everyone else's. `/stats` reports the period they cover, with
+runs can be told apart from everyone else's. `last_7_days` reports callers only, from
+per-tool counts by day kept TOOL_DAYS days. `/stats` reports the period they cover, with
 the upstream hosts' error counts and breaker states from shared/breaker.py.
 
 By default they live in memory, so a restart (a deploy, a free host's idle
@@ -39,7 +40,8 @@ from collections import Counter, deque
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from difflib import get_close_matches
 from pathlib import Path
 from typing import Any
 
@@ -70,9 +72,23 @@ LATENCY_SAMPLES = 500
 # (registered tool names plus "other", codes from ERROR_CODES); this keeps the ranking
 # short enough to read, and every tool's codes stay in `by_error`.
 TOP_FAILING = 20
+# Days of per-tool counts kept, and the days /stats' `last_7_days` covers. The
+# all-time counts mix in failures from before error codes (2026-11-09) and client
+# labels existed, and benchmark runs; on 2026-11-23 a third of all failures were
+# "uncoded" and two thirds of calls "untracked", so the totals could not say what
+# fails now. Per-tool counts by day answer that, and show whether a fix helped.
+TOOL_DAYS = 35
+RECENT_DAYS = 7
+# Labels left out of the per-tool daily counts: the maintainer's own calls, the
+# benchmark and the uptime probe, which are not what callers meet.
+NOT_CALLERS = frozenset({"internal", "maple-test", "uptime-check"})
+# The bucket for a call to an unknown tool name with no registered name close to it.
+NO_CLOSE_MATCH = "no_close_match"
 
 # What the file holds: counting since, calls by (tool, ok), calls by day, failures by
-# (tool, code), calls by (client label, ok), and calls by day and client label.
+# (tool, code), calls by (client label, ok), calls by day and client label, callers'
+# calls by day and (tool, outcome: "ok" or the error code), and calls to an unknown
+# tool by the registered name closest to it.
 _Saved = tuple[
     datetime,
     Counter[tuple[str, bool]],
@@ -80,6 +96,8 @@ _Saved = tuple[
     Counter[tuple[str, str]],
     Counter[tuple[str, bool]],
     dict[str, Counter[str]],
+    dict[str, Counter[tuple[str, str]]],
+    Counter[str],
 ]
 
 # The sources a blocked StatCan tool can be answered from (shared/substitution.py): a
@@ -186,6 +204,13 @@ class UsageStats:
         # labels were kept have none; the snapshot reports them as "untracked".
         self.clients: Counter[tuple[str, bool]] = Counter()
         self.client_days: dict[str, Counter[str]] = {}
+        # Callers' calls per day by (tool, outcome), outcome "ok" or the error code;
+        # NOT_CALLERS left out. Kept TOOL_DAYS days.
+        self.tool_days: dict[str, Counter[tuple[str, str]]] = {}
+        # Calls to a name that is no tool, by the registered name closest to it
+        # (NO_CLOSE_MATCH when none is): which tools callers misname. Only names
+        # from the registry are kept, never the name a caller sent.
+        self.unknown_closest: Counter[str] = Counter()
         # Answers a tool gave from a substitute source because its own was blocked
         # (shared/substitution.py), by source; in memory, like the latencies.
         self.fallbacks: Counter[str] = Counter()
@@ -208,6 +233,8 @@ class UsageStats:
         self._new_errors: Counter[tuple[str, str]] = Counter()
         self._new_clients: Counter[tuple[str, bool]] = Counter()
         self._new_client_days: dict[str, Counter[str]] = {}
+        self._new_tool_days: dict[str, Counter[tuple[str, str]]] = {}
+        self._new_unknown_closest: Counter[str] = Counter()
         self._task: asyncio.Task[None] | None = None
         if path is not None:
             try:
@@ -225,6 +252,8 @@ class UsageStats:
                     self.errors,
                     self.clients,
                     self.client_days,
+                    self.tool_days,
+                    self.unknown_closest,
                 ) = saved
 
     def register_tools(self, names: Iterable[str]) -> None:
@@ -234,6 +263,11 @@ class UsageStats:
     def _name(self, tool: str) -> str:
         name = tool if tool in self.tool_names else normalized_tool_name(tool)
         return name if name in self.tool_names else "other"
+
+    def _closest(self, tool: str) -> str:
+        """The registered tool name closest to an unknown one, or NO_CLOSE_MATCH."""
+        found = get_close_matches(normalized_tool_name(tool), sorted(self.tool_names), 1, 0.6)
+        return found[0] if found else NO_CLOSE_MATCH
 
     def record_fallback(self, source: str) -> None:
         """Count one answer served from `source` in place of a blocked StatCan source."""
@@ -267,6 +301,7 @@ class UsageStats:
         name = self._name(tool)
         self.tools[(name, ok)] += 1
         self._new_tools[(name, ok)] += 1
+        kind = "ok"
         if not ok:
             # Only a code from the fixed list is kept, never text from the failure.
             kind = code if code in ERROR_CODES else "error"
@@ -280,6 +315,14 @@ class UsageStats:
         day = datetime.now(UTC).date().isoformat()
         self.days.setdefault(day, Counter())[ok] += 1
         self._new_days.setdefault(day, Counter())[ok] += 1
+        if client not in NOT_CALLERS:
+            self.tool_days.setdefault(day, Counter())[(name, kind)] += 1
+            self._new_tool_days.setdefault(day, Counter())[(name, kind)] += 1
+            _drop_old_days(self.tool_days, TOOL_DAYS)
+            if name == "other":
+                closest = self._closest(tool)
+                self.unknown_closest[closest] += 1
+                self._new_unknown_closest[closest] += 1
         if client is not None:
             # Only a label from the fixed list is kept, never text a caller sent.
             label = client if client in KNOWN_CLIENT_LABELS else CLIENT_OTHER
@@ -339,10 +382,16 @@ class UsageStats:
             # The unsaved counts stay queued for the next save.
             logger.warning("Usage stats file unreadable, not saved this time: %s", exc)
             return False
-        since, tools, days, errors, clients, client_days = (
-            saved if saved is not None else (self.since, Counter(), {}, Counter(), Counter(), {})
+        since, tools, days, errors, clients, client_days, tool_days, unknown_closest = (
+            saved
+            if saved is not None
+            else (self.since, Counter(), {}, Counter(), Counter(), {}, {}, Counter())
         )
         tools.update(self._new_tools)
+        unknown_closest.update(self._new_unknown_closest)
+        for day, outcome_counts in self._new_tool_days.items():
+            tool_days.setdefault(day, Counter()).update(outcome_counts)
+        _drop_old_days(tool_days, TOOL_DAYS)
         errors.update(self._new_errors)
         clients.update(self._new_clients)
         for day, counts in self._new_days.items():
@@ -360,6 +409,8 @@ class UsageStats:
             "by_error": _by_error(errors),
             "by_client": _by_client(clients),
             "by_day_client": _by_day_client(client_days),
+            "by_day_tool": _by_day_tool(tool_days),
+            "unknown_tool_closest": dict(sorted(unknown_closest.items())),
         }
         temp = self.path.with_name(self.path.name + f".{os.getpid()}.tmp")
         try:
@@ -373,6 +424,9 @@ class UsageStats:
             return False
         self.since, self.tools, self.days, self.errors = since, tools, days, errors
         self.clients, self.client_days = clients, client_days
+        self.tool_days, self.unknown_closest = tool_days, unknown_closest
+        self._new_tool_days = {}
+        self._new_unknown_closest = Counter()
         self._new_tools = Counter()
         self._new_days = {}
         self._new_errors = Counter()
@@ -450,7 +504,9 @@ class UsageStats:
             "persisted": self.path is not None,
             "note": (
                 "Tool names, outcomes, error codes (a fixed list such as not_found or "
-                "invalid_input, never the message), the kind of client that called (a fixed "
+                "invalid_input, never the message), for a call to a tool that does not exist "
+                "the registered tool name closest to it (never the name sent), the kind of "
+                "client that called (a fixed "
                 "list such as claude-code or python-fastmcp, or internal for the "
                 "maintainer's own calls; never the name it sent or an address), "
                 "durations and result sizes (characters, "
@@ -474,6 +530,8 @@ class UsageStats:
             "top_failing_tools": _top_failing(per_tool, self.errors),
             "by_client": by_client,
             "by_day_client": _by_day_client(self.client_days),
+            "last_7_days": _recent(self.tool_days, self.client_days),
+            "unknown_tool_closest": dict(self.unknown_closest.most_common(TOP_FAILING)),
             "latency_ms": latency,
             "result_size": sizes,
             "fallbacks": dict(self.fallbacks.most_common()),
@@ -517,9 +575,74 @@ def _file_lock(path: Path) -> Iterator[None]:
         handle.close()  # closing releases the lock
 
 
-def _drop_old_days(days: dict[str, Counter[Any]]) -> None:
-    for old in sorted(days)[:-MAX_DAYS]:
+def _drop_old_days(days: dict[str, Counter[Any]], keep: int = MAX_DAYS) -> None:
+    for old in sorted(days)[:-keep]:
         del days[old]
+
+
+def _by_day_tool(
+    tool_days: dict[str, Counter[tuple[str, str]]],
+) -> dict[str, dict[str, dict[str, int]]]:
+    """Per day, per tool, calls by outcome ("ok" or an error code)."""
+    out: dict[str, dict[str, dict[str, int]]] = {}
+    for day, counts in sorted(tool_days.items()):
+        for (name, outcome), count in sorted(counts.items()):
+            if count:
+                out.setdefault(day, {}).setdefault(name, {})[outcome] = count
+    return out
+
+
+def _recent(
+    tool_days: dict[str, Counter[tuple[str, str]]], client_days: dict[str, Counter[str]]
+) -> dict[str, Any]:
+    """Callers' calls over the last RECENT_DAYS days (UTC, today included).
+
+    Every failure here has its code, and the maintainer's, benchmark and uptime calls
+    are left out: what fails for callers now. `daily` gives the five top failing
+    tools' calls and failures per day, to see a fix land.
+    """
+    first = (datetime.now(UTC).date() - timedelta(days=RECENT_DAYS - 1)).isoformat()
+    window = {day: counts for day, counts in tool_days.items() if day >= first}
+    outcomes: Counter[tuple[str, str]] = Counter()
+    for counts in window.values():
+        outcomes.update(counts)
+    per_tool: dict[str, dict[str, int]] = {}
+    errors: Counter[tuple[str, str]] = Counter()
+    for (name, outcome), count in outcomes.items():
+        ok = outcome == "ok"
+        per_tool.setdefault(name, {"ok": 0, "error": 0})["ok" if ok else "error"] += count
+        if not ok:
+            errors[(name, outcome)] += count
+    calls = sum(c["ok"] + c["error"] for c in per_tool.values())
+    failed = sum(c["error"] for c in per_tool.values())
+    codes: Counter[str] = Counter()
+    for (_, code), count in errors.items():
+        codes[code] += count
+    top = _top_failing(per_tool, errors)
+    daily: dict[str, dict[str, dict[str, int]]] = {}
+    for entry in top[:5]:
+        tool = entry["tool"]
+        daily[tool] = {
+            day: {
+                "calls": sum(n for (name, _), n in counts.items() if name == tool),
+                "errors": sum(n for (name, o), n in counts.items() if name == tool and o != "ok"),
+            }
+            for day, counts in sorted(window.items())
+        }
+    clients: Counter[str] = Counter()
+    for day, counts in client_days.items():
+        if day >= first:
+            clients.update(counts)
+    return {
+        "from": first,
+        "calls": calls,
+        "errors": failed,
+        "error_rate": round(failed / calls, 3) if calls else 0.0,
+        "error_codes": dict(codes.most_common()),
+        "top_failing_tools": top,
+        "daily": daily,
+        "by_client": dict(sorted(clients.items(), key=lambda item: (-item[1], item[0]))),
+    }
 
 
 def _by_tool(tools: Counter[tuple[str, bool]]) -> dict[str, dict[str, int]]:
@@ -640,8 +763,22 @@ def _parse(body: Any) -> _Saved:
     for day, counts in body.get("by_day_client", {}).items():
         datetime.strptime(day, "%Y-%m-%d")
         client_days[day] = Counter({str(label): _count(n) for label, n in counts.items()})
+    # Absent from a file written before 2026-11-23.
+    tool_days: dict[str, Counter[tuple[str, str]]] = {}
+    for day, by_tool in body.get("by_day_tool", {}).items():
+        datetime.strptime(day, "%Y-%m-%d")
+        day_counts: Counter[tuple[str, str]] = Counter()
+        for name, outcomes in by_tool.items():
+            for outcome, count in outcomes.items():
+                if not isinstance(name, str) or not isinstance(outcome, str):
+                    raise TypeError("tool name or outcome is not text")
+                day_counts[(name, outcome)] = _count(count)
+        tool_days[day] = day_counts
+    unknown_closest = Counter(
+        {str(name): _count(n) for name, n in body.get("unknown_tool_closest", {}).items()}
+    )
     # Zero entries are dropped so a tool with no failures shows as before.
-    return since, +tools, days, +errors, +clients, client_days
+    return since, +tools, days, +errors, +clients, client_days, tool_days, +unknown_closest
 
 
 # True while a counted call runs. reproduce_code and reproduce_workbook call the

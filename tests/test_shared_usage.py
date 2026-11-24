@@ -706,3 +706,64 @@ async def test_a_url_hint_names_the_client_only_when_it_is_a_known_label(monkeyp
     snap = stats.snapshot()
     assert snap["by_client"] == {"chat-demo": {"ok": 1, "error": 0}, "other": {"ok": 1, "error": 0}}
     assert "neighbour" not in json.dumps(snap)
+
+
+def test_last_7_days_counts_callers_only_with_codes_and_daily_series() -> None:
+    stats = UsageStats(("boc_get_observations", "wds_search_cubes"))
+    stats.record("boc_get_observations", True, client="claude")
+    stats.record("boc_get_observations", False, code="not_found", client="claude")
+    stats.record("boc_get_observations", False, code="invalid_input", client="internal")
+    stats.record("wds_search_cubes", False, code="upstream_error", client="maple-test")
+    stats.record("wds_search_cubes", True, client="uptime-check")
+    recent = stats.snapshot()["last_7_days"]
+    assert recent["calls"] == 2 and recent["errors"] == 1 and recent["error_rate"] == 0.5
+    assert recent["error_codes"] == {"not_found": 1}
+    assert recent["top_failing_tools"] == [
+        {
+            "tool": "boc_get_observations",
+            "calls": 2,
+            "errors": 1,
+            "error_rate": 0.5,
+            "codes": {"not_found": 1},
+        }
+    ]
+    [series] = recent["daily"]["boc_get_observations"].values()
+    assert series == {"calls": 2, "errors": 1}
+    # by_client keeps every label, so the left-out traffic is still visible.
+    assert set(recent["by_client"]) == {"claude", "internal", "maple-test", "uptime-check"}
+
+
+def test_last_7_days_leaves_out_older_days() -> None:
+    stats = UsageStats(("boc_get_observations",))
+    stats.tool_days["2020-01-01"] = Counter({("boc_get_observations", "not_found"): 9})
+    stats.record("boc_get_observations", True, client="claude")
+    recent = stats.snapshot()["last_7_days"]
+    assert recent["calls"] == 1 and recent["errors"] == 0 and recent["top_failing_tools"] == []
+
+
+def test_unknown_tool_counts_the_closest_registered_name_only() -> None:
+    stats = UsageStats(("boc_get_observations", "wds_search_cubes"))
+    stats.record("boc_get_observation", False, code="unknown_tool", client="claude")
+    stats.record("BOC.get-observations-x", False, code="unknown_tool", client="claude")
+    stats.record("delete everything", False, code="unknown_tool", client="claude")
+    assert stats.snapshot()["unknown_tool_closest"] == {
+        "boc_get_observations": 2,
+        "no_close_match": 1,
+    }
+
+
+def test_daily_tool_counts_and_closest_names_survive_a_restart(tmp_path) -> None:
+    path = tmp_path / "stats.json"
+    first = UsageStats(("boc_get_observations",), path=path)
+    first.record("boc_get_observations", False, code="not_found", client="claude")
+    first.record("boc_get_observatons", False, code="unknown_tool", client="claude")
+    assert first.save()
+    second = UsageStats(("boc_get_observations",), path=path)
+    second.record("boc_get_observations", True, client="claude")
+    assert second.save()
+    body = json.loads(path.read_text(encoding="utf-8"))
+    [day] = body["by_day_tool"].values()
+    assert day == {"boc_get_observations": {"not_found": 1, "ok": 1}, "other": {"unknown_tool": 1}}
+    assert body["unknown_tool_closest"] == {"boc_get_observations": 1}
+    third = UsageStats(("boc_get_observations",), path=path)
+    assert third.snapshot()["last_7_days"]["calls"] == 3
