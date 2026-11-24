@@ -1817,6 +1817,9 @@ FR: dict[str, str] = {
     "Manitoba Bureau of Statistics indicators and tables": (
         "indicateurs et tableaux du Bureau des statistiques du Manitoba"
     ),
+    "Ontario Economic Accounts and Fact Sheet tables": (
+        "tableaux des comptes économiques et du profil de l'Ontario"
+    ),
     "Ontario Ministry of Finance population projections to 2051": (
         "projections démographiques du ministère des Finances de l'Ontario jusqu'en 2051"
     ),

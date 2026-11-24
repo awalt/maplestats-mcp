@@ -84,6 +84,16 @@ PROJECTIONS = (
     "2051",
     "population future",
 )
+# A province's own economic accounts and fact sheet (Ontario Ministry of Finance).
+PROVINCIAL_ACCOUNTS = (
+    "gdp",
+    "economic accounts",
+    "fact sheet",
+    "quarterly growth",
+    "pib",
+    "comptes economiques",
+    "profil",
+)
 ENERGY = (
     "energy",
     "oil",

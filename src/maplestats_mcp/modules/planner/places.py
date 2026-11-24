@@ -46,6 +46,11 @@ PROVINCES: dict[str, tuple[str, tuple[PlanStep, ...]]] = {
                 "Ontario Ministry of Finance population projections to 2051",
                 cues=cues.PROJECTIONS,
             ),
+            PlanStep(
+                "on_finance_get_page_tables",
+                "Ontario Economic Accounts and Fact Sheet tables",
+                cues=cues.PROVINCIAL_ACCOUNTS,
+            ),
             _arcgis("ontario_geohub"),
         ),
     ),

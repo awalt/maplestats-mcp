@@ -22,11 +22,35 @@ Checked live on 2026-11-24 against data.ontario.ca (CKAN, portal "on"):
   public health unit file adds Mean Age and Median Age. Census division names
   carry trailing spaces. The components file has SCENARIO, PERIOD ("2025-26")
   and the components, ending each scenario with a 2051 start-population row.
-- Ontario Fact Sheet (ontario.ca/page/ontarios-population-labour-market-economy-
-  and-trade-fact-sheet) and Ontario Economic Accounts are HTML only, under Crown
-  copyright reproducible for non-commercial purposes without changes
-  (ontario.ca/page/copyright-information); they are not read.
+- Ontario Fact Sheet and Ontario Economic Accounts: HTML pages on ontario.ca under
+  Crown copyright (ontario.ca/page/copyright-information): reproduction for
+  non-commercial purposes, with credit, unchanged. Layout below (PAGES).
 """
+
+# The ministry's web pages read as published (checked live on 2026-11-24): the
+# Fact Sheet (11 HTML tables, no captions on the first, rows as <th scope="row">
+# label and <td> value; April 2026 edition) and the Ontario Economic Accounts (7
+# tables: 1.1 to 1.6 with a header row in <thead>, then Appendix A release dates;
+# Q2 2026 edition, updated October 09, 2026). Both have a French page with the same
+# tables, numbers written the French way ("39,0", "1 246 721") and negatives in
+# parentheses as in English ("(0,3)"). robots.txt asks for one second between
+# requests (Crawl-delay: 1).
+PAGES = {
+    "fact_sheet": (
+        "https://www.ontario.ca/page/ontarios-population-labour-market-economy-and-trade-fact-sheet",
+        "https://www.ontario.ca/fr/page/profil-population-marche-travail-economie-echanges-commerciaux-ontario",
+    ),
+    "economic_accounts": (
+        "https://www.ontario.ca/page/ontario-economic-accounts",
+        "https://www.ontario.ca/fr/page/comptes-economiques-de-lontario",
+    ),
+}
+PAGES_DOMAIN = "www.ontario.ca"
+PAGES_RATE_SOURCE = "ontario-ca"
+PAGES_RATE_PER_SECOND = 1.0
+CACHE_TTL_PAGE_SECONDS = 6 * 60 * 60
+MAX_PAGE_BYTES = 5 * 1024 * 1024
+PAGES_PROVENANCE_SOURCE = "on-finance-pages"
 
 PORTAL = "on"
 DATASET = "population-projections"

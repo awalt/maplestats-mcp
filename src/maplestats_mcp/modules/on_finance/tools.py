@@ -6,8 +6,12 @@ from typing import Literal
 
 from fastmcp.tools import tool
 
-from maplestats_mcp.modules.on_finance import client
-from maplestats_mcp.modules.on_finance.schemas import PopulationProjection, ProjectionComponents
+from maplestats_mcp.modules.on_finance import client, pages
+from maplestats_mcp.modules.on_finance.schemas import (
+    PageTables,
+    PopulationProjection,
+    ProjectionComponents,
+)
 
 Lang = Literal["en", "fr"]
 
@@ -88,3 +92,32 @@ async def on_finance_get_projection_components(
     return await client.get_projection_components(
         scenario=scenario, start_year=start_year, end_year=end_year, release=release, lang=lang
     )
+
+
+@tool
+async def on_finance_get_page_tables(
+    page: pages.PageName = "economic_accounts",
+    table: str | None = None,
+    lang: Lang = "en",
+) -> PageTables:
+    """Get the tables of the Ontario Economic Accounts or the Ontario Fact Sheet.
+
+    Use for: Ontario's quarterly real and nominal GDP growth from the Ministry of
+    Finance's Ontario Economic Accounts (summary, GDP by expenditure, by income,
+    implicit price indexes, real GDP by industry, external factors such as US GDP,
+    WTI oil and the exchange rate, and the release calendar), or the Ontario Fact
+    Sheet's headline figures (population and share of Canada, urban areas, labour
+    force, employment, unemployment and participation rates, GDP and household
+    income, top export markets, exports and imports). `page` is economic_accounts
+    (default) or fact_sheet; `table` keeps tables whose caption or heading contains
+    that text ('1.5', 'industry', 'export'). Cells come as published, with the same
+    cells read as numbers ('(0.3)' is -0.3). `lang=fr` reads the French page. Crown
+    copyright: non-commercial reproduction, unchanged. For the source series use
+    wds_.
+    Keywords: Ontario Economic Accounts, Ontario GDP growth, quarterly GDP, Ontario
+    Fact Sheet, Ontario economy, Ministry of Finance, real GDP by industry, exports.
+    Mots-clés : comptes économiques de l'Ontario, croissance du PIB de l'Ontario, PIB
+    trimestriel, profil de l'Ontario, économie ontarienne, ministère des Finances,
+    PIB réel par industrie, exportations.
+    """
+    return await pages.get_page_tables(page=page, table=table, lang=lang)

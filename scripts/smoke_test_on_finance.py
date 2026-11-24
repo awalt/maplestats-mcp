@@ -15,7 +15,7 @@ import sys
 
 from _smoke_common import skip_outage, verdict
 
-from maplestats_mcp.modules.on_finance import client
+from maplestats_mcp.modules.on_finance import client, pages
 from maplestats_mcp.shared.errors import InvalidInput
 from maplestats_mcp.shared.http import new_client
 
@@ -23,9 +23,13 @@ from maplestats_mcp.shared.http import new_client
 async def main() -> int:
     failures = 0
     try:
-        failures = await _checks()
+        failures += await _checks()
     except Exception as exc:  # noqa: BLE001 - only an outage is skipped
-        skip_outage("data.ontario.ca", exc)
+        skip_outage("data.ontario.ca", exc, rest_runs=True)
+    try:
+        failures += await _page_checks()
+    except Exception as exc:  # noqa: BLE001 - only an outage is skipped
+        skip_outage("www.ontario.ca", exc)
     return verdict("ON FINANCE", not failures)
 
 
@@ -96,6 +100,44 @@ async def _checks() -> int:
             check(False, "sub-provincial high scenario refused")
         except InvalidInput:
             check(True, "sub-provincial high scenario refused")
+
+    return failures
+
+
+async def _page_checks() -> int:
+    failures = 0
+
+    def check(ok: bool, label: str) -> None:
+        nonlocal failures
+        print(("OK: " if ok else "FAIL: ") + label)
+        failures += 0 if ok else 1
+
+    async with new_client():
+        accounts = await pages.get_page_tables(page="economic_accounts")
+        summary = accounts.tables[0] if accounts.tables else None
+        check(
+            summary is not None
+            and (summary.title or "").startswith("Table 1.1")
+            and summary.rows[0][0] == "Real GDP"
+            and all(n is not None for n in summary.numbers[0][1:]),
+            f"economic accounts -> {len(accounts.tables)} tables, updated {accounts.updated}, "
+            f"{summary.header if summary else None} {summary.rows[0] if summary else None}",
+        )
+        check(accounts.provenance.commercial_use == "not_allowed", "Crown copyright terms")
+        french = await pages.get_page_tables(page="economic_accounts", lang="fr", table="1.1")
+        check(
+            bool(french.tables) and french.tables[0].numbers[0][1:] == summary.numbers[0][1:]  # type: ignore[union-attr]
+            if summary
+            else False,
+            "French table 1.1 reads the same numbers",
+        )
+        fact = await pages.get_page_tables(page="fact_sheet")
+        first = fact.tables[0] if fact.tables else None
+        check(
+            first is not None and (first.numbers[0][1] or 0) > 10_000_000,
+            f"fact sheet -> {len(fact.tables)} tables, updated {fact.updated}, "
+            f"{first.rows[0] if first else None}",
+        )
 
     return failures
 

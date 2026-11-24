@@ -55,6 +55,27 @@ class PopulationProjection(BaseModel):
     provenance: Provenance
 
 
+class PageTable(BaseModel):
+    title: str | None = Field(description="The table's caption as published, if it has one.")
+    section: str | None = Field(default=None, description="The page heading above the table.")
+    header: list[str] = Field(description="Column headings; empty when the table has none.")
+    rows: list[list[str]] = Field(description="Cells as published (text), label first.")
+    numbers: list[list[float | None]] = Field(
+        description="The same cells read as numbers ('(0.3)' is -0.3, '1 246 721' and "
+        "'1,246,721' are 1246721, '39,0' on the French page is 39.0); null for text."
+    )
+
+
+class PageTables(BaseModel):
+    page: str = Field(description="'fact_sheet' or 'economic_accounts'.")
+    title: str | None = None
+    updated: str | None = Field(default=None, description="The page's 'Updated' date as shown.")
+    tables: list[PageTable]
+    table_titles: list[str | None] = Field(description="Every table on the page, in order.")
+    url: str
+    provenance: Provenance
+
+
 class ComponentsRow(BaseModel):
     scenario: Scenario
     period: str = Field(description="July-to-June period, e.g. '2026-27'; a lone year closes.")

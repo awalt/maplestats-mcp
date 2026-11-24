@@ -297,6 +297,13 @@ SOURCE_LICENCES: dict[str, str] = {
         "Ontario (https://www.ontario.ca/page/open-government-licence-ontario). Attribution: "
         "'Contains information licensed under the Open Government Licence - Ontario.'"
     ),
+    "on-finance-pages": (
+        "Crown copyright, King's Printer for Ontario "
+        "(https://www.ontario.ca/page/copyright-information): the materials may be reproduced "
+        "for non-commercial purposes if credit is given, Crown copyright is acknowledged and no "
+        "changes are made to the original content; commercial reproduction requires a licence "
+        "from the King's Printer. Source: Ontario Ministry of Finance."
+    ),
     # Manitoba
     "manitoba-bureau-of-statistics": (
         "OpenMB Information and Data Use Licence "
@@ -828,6 +835,13 @@ _PROVINCIAL_FR: dict[str, str] = {
         "Mention : « Contient des renseignements utilisés en vertu de la Licence du gouvernement "
         "ouvert – Ontario. »"
     ),
+    "on-finance-pages": (
+        "Droit d'auteur de la Couronne, Imprimeur du Roi pour l'Ontario "
+        "(https://www.ontario.ca/fr/page/droits-dauteur) : le contenu peut être reproduit à des fins non commerciales en "
+        "mentionnant la source et le droit d'auteur de la Couronne, sans modification du "
+        "contenu original ; la reproduction commerciale exige une licence de l'Imprimeur du "
+        "Roi. Source : ministère des Finances de l'Ontario."
+    ),
     "manitoba-bureau-of-statistics": (
         "Licence d'utilisation de l'information et des données OpenMB (OpenMB Information and "
         "Data Use Licence, https://www.gov.mb.ca/asset_library/en/legal/OpenMB-Information-Data-"
@@ -947,6 +961,9 @@ _SOURCE_COMMERCIAL_USE: dict[str, CommercialUse] = {
     "oeb": "allowed",
     "on-fir": "allowed",
     "on-finance": "allowed",
+    # Crown copyright: non-commercial reproduction, unchanged (ontario.ca/page/
+    # copyright-information, read 2026-11-24).
+    "on-finance-pages": "not_allowed",
     # OpenMB licence: "for both commercial and non-commercial purposes" (copyright page,
     # read 2026-11-24).
     "manitoba-bureau-of-statistics": "allowed",

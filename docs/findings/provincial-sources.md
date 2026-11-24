@@ -520,7 +520,7 @@ Finance is `ab_economic`).
 | BC Stats | `bc-stats` on BC CKAN: 99 datasets, CSV and XLSX, about half with DataStore; OGL-BC | Yes, `ckan_*` (`portal="bc"`) | Covered. Gap: XLSX-only tables (LFS, GDP, tourism, population projections) have no DataStore. |
 | Saskatchewan Bureau of Statistics | XLSX and PDF on `publications.saskatchewan.ca` (Provincial Economic Accounts, Labour Force Statistics, Monthly Statistical Review) | No | **Not built (2026-10-01)**: Crown copyright with non-commercial reproduction only, no open licence; see the section below. |
 | Manitoba Bureau of Statistics | Only the Economic Dashboard CSV (`gov.mb.ca/finance/economicdashboard/_asset/api/first_layer.csv`): 22 latest values, mostly StatCan | No | Small; not available for automated access. Not built. **Shipped 2026-11-24 as `mb_stats_`**: the Bureau's own CSV catalogue and 150 Excel tables were found; see below. |
-| Ontario Ministry of Finance | HTML tables on ontario.ca (quarterly demographics); datasets on data.ontario.ca | `ckan_*` (`portal="on"`) | data.ontario.ca answered HTTP 429 (Azure WAF) on four attempts from one IP: re-test the shipped `portal="on"` client. **Population projections shipped 2026-11-24 as `on_finance_`**; Fact Sheet and Economic Accounts not built (see below). |
+| Ontario Ministry of Finance | HTML tables on ontario.ca (quarterly demographics); datasets on data.ontario.ca | `ckan_*` (`portal="on"`) | data.ontario.ca answered HTTP 429 (Azure WAF) on four attempts from one IP: re-test the shipped `portal="on"` client. **Shipped 2026-11-24 as `on_finance_`**: population projections, the Fact Sheet and the Economic Accounts (see below). |
 | Nova Scotia Finance | Daily Stats commentary and chart images, no data files; Socrata copies archived in 2020 | Partly | Skip. |
 | New Brunswick Finance | gnb.ca | Socrata (`portal="nb"`) | Blocked by a Cloudflare challenge. |
 | PEI Statistics Bureau | princeedwardisland.ca | Almost nothing in the Hub | Blocked by a Radware bot challenge. |
@@ -621,15 +621,13 @@ PerplexityBot, cohere-ai, Amazonbot, Claude-Web, FacebookBot, Meta-ExternalAgent
 Diffbot, BytesSpider, others) and, for every other user agent, disallows only old expense
 files and internal paths, none under /mbs/. The module sends the project's own
 User-Agent (`maplestats-mcp/<version>`), which falls under `User-agent: *`, the same
-reading as the Toronto decision above. The block on named AI agents shows the province does
-not want AI assistants crawling its site; whether a server that AI assistants call should
-read it anyway is the owner's decision, flagged in the pull request. Requests are paced at
+reading as the Toronto decision above. Requests are paced at
 one a second and the CSV files are cached two hours.
 
 ### Ontario Ministry of Finance (on_finance)
 
-**Status:** Population projections shipped 2026-11-24 (#266), `modules/on_finance/`
-(2 tools). Fact Sheet and Economic Accounts not built.
+**Status:** Shipped 2026-11-24 (#266), `modules/on_finance/` (3 tools): population
+projections, components of change, and the Fact Sheet and Economic Accounts tables.
 
 - Population projections: data.ontario.ca dataset `population-projections` (organization
   `finance`, OGL-ON-1.0, yearly): 16 XLSX, each table in English and French under one
@@ -648,12 +646,22 @@ one a second and the CSV files are cached two hours.
   always lists them in English. Smoke test: the 49 census divisions add up to Ontario's
   2025 total (16,258,260).
 - Ontario Fact Sheet (ontario.ca/page/ontarios-population-labour-market-economy-and-trade-
-  fact-sheet, April 2026: about 40 figures, mostly StatCan) and Ontario Economic Accounts
-  (ontario.ca/page/ontario-economic-accounts): HTML only, no data files. ontario.ca/page/
-  copyright-information: materials "may be reproduced for non-commercial purposes if no
-  changes are made to the original content"; commercial reproduction needs a licence from
-  the King's Printer, except materials labelled as under the Open Government Licence -
-  Ontario, and neither page is so labelled. Not built.
+  fact-sheet, April 2026 edition) and Ontario Economic Accounts (ontario.ca/page/ontario-
+  economic-accounts, second quarter 2026, updated October 09, 2026): HTML only, no data
+  files; `on_finance_get_page_tables` reads their tables. The Fact Sheet has 11 tables; the
+  first has no caption, and its rows are a `<th scope="row">` label beside a `<td>` value.
+  The Economic Accounts have tables 1.1 to 1.6 with a `<thead>` header row (2024, 2025,
+  then the last four quarters; table 1.6 the last six) and negatives in parentheses,
+  "(0.3)", and an Appendix A table of release dates. The French pages
+  (/fr/page/profil-population-marche-travail-economie-echanges-commerciaux-ontario and
+  /fr/page/comptes-economiques-de-lontario) carry the same tables with French numbers
+  ("39,0", "1 246 721") and "Mis à jour" / "Mise à jour" dates. Terms:
+  ontario.ca/page/copyright-information: materials "may be reproduced for non-commercial
+  purposes if no changes are made to the original content", with credit and Crown
+  copyright acknowledged; commercial reproduction needs a licence from the King's
+  Printer. Cells are returned as published, beside the same cells read as numbers, and
+  results carry `commercial_use: not_allowed`. robots.txt asks for one second between
+  requests (Crawl-delay: 1).
 
 ## Provincial general election results
 

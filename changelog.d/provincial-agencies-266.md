@@ -22,3 +22,10 @@
   `on_finance_get_projection_components` (births, deaths, immigration, emigration,
   non-permanent residents, interprovincial migration). Read from the ministry's
   workbooks on data.ontario.ca; Open Government Licence - Ontario.
+- `on_finance_get_page_tables`: the tables of two Ontario Ministry of Finance web pages,
+  the Ontario Economic Accounts (quarterly real and nominal GDP growth, GDP by
+  expenditure, income and industry, implicit price indexes, external factors, release
+  calendar) and the Ontario Fact Sheet (population, labour market, economy and trade),
+  English or French page. Cells come as published, beside the same cells read as
+  numbers. Crown copyright: reproduction for non-commercial purposes, with credit and
+  unchanged; each result is marked `commercial_use: not_allowed`.
