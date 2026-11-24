@@ -1435,10 +1435,44 @@ and 1971-2000 histories (27.5 MB and 4.9 MB), the National Physician Database
 2024-2025 utilization and payments tables, the historical utilization (2015-2024,
 24.9 MB, 204,000 rows on one sheet) and payments (1999-2024) workbooks, and the
 2025 nursing, pharmacist, physiotherapist, occupational therapist and Alberta
-personal support worker workbooks. Not read: Quick Stats (interactive
-dashboards over hidden sheets), the two `.zip` archives, hidden helper sheets
-and drop-down tabs inside workbooks, and any workbook over the existing 30 MB
-download cap (the NPDB historical utilization 1996 to 2014 is 40.3 MB).
+personal support worker workbooks. Read since 2026-11-24 (issue #252, the files the
+first release left out; every layout checked on the downloaded files first):
+
+- Quick Stats 2022-2024: its tabs are drop-downs over hidden data sheets (a row of
+  column numbers over an "ID, Year, ..." header: DirectCareData, Supply_WF_Flow,
+  NursProfileData, VacancyData, ...). Those sheets are read as tables, named after the
+  sheet; the tabs and the figure helpers are skipped. Alberta's 2024 registered nurse
+  supply in Supply_WF_Flow is 42,694, as in Nursing in Canada Table 3a.
+- Hidden flat tables behind drop-downs: the physician workbook's `Supply` sheet (behind
+  Table B; Alberta 2025: 12,494, as in Table A). The NPDB D.x drop-down tabs read pivot
+  caches of Tables 1 and 2, whose rows are already read (D.3.1's 899 reciprocal billing
+  services, 2014-2015, P.E.I. host and N.L. patients, is a Table 2 row). Hidden totals
+  checks, drop-down lists and the payments workbook's "Percent Change" working tables
+  stay out.
+- COVID-19 health care workers, COVID-19 intervention scans, the three virtual care
+  workbooks, the 2016-2020 health care providers and the Commonwealth Fund 2019 and 2022
+  survey tables and quick stats: "Table N" titles after all, with a banner row over the
+  header (skipped; the header repeats its words), "Table 1A" ids, zero-width spaces in
+  cells ("1,067" followed by U+200B), and survey questions as titles ("Q68", one table per caption and
+  header, "Q87.2"). Cross-checks: providers Table 9, Alberta pharmacists 2020 = 5,575 =
+  Pharmacists Table 3a; Commonwealth Fund Q68 (Canada) = its quick stats Table 3.
+- The two `.zip` archives (NPDB 2022, 63.3 MB; physicians 2023, 28.9 MB): their seven
+  workbooks are listed one by one and each is read by HTTP range requests, never the
+  whole archive. 2023 physicians Table 1.0, Alberta, all physicians = 11,275 = the 2025
+  workbook's Supply sheet for 2023; NPDB 2022 payments Table A.2.1, Alberta =
+  $4,356,297.55 thousand = the 1999-2024 history's 4,356,297,550.37.
+- The NPDB historical utilization 1996-2014 (40.3 MB): read by parts within the 30 MiB
+  cap (its own ZIP parts fetched by range and rebuilt without the pivot caches). Tables
+  2 and 3 and the notes are read.
+
+Still not read, with the reason in the tool's output: the 1996-2014 workbook's Table 1
+(418,139 rows; 29.5 MB compressed with the parts it needs, the sheet alone fills the cap;
+239 MB of XML that takes 76 s to iterate here against the 60 s parse budget), and the
+NPDB 1996-2012 utilization workbook inside the 2022 archive (34.7 MB, deflated as one
+member, so its sheets cannot be reached by parts). The years both cover (1996-1997 to
+2014-2015 for Table 1) are in no smaller CIHI file. Archived 2023 physician Tables 7.0
+and 7.1 have a two-row header (Count / Percentage under each place of graduation): the
+percentage columns come back as `column_3`, `column_5`, ...; the 2025 release has one row.
 
 Layout (checked on all of the above): a title row "Table 3a  ..." in column A,
 a header row, vertically merged label cells (blank under their first row in

@@ -30,8 +30,9 @@ async def cihi_workforce_list_workbooks(
     title, topic, publication date, its address and an id for cihi_workforce_list_tables.
     `query` keeps workbooks whose title, topic or description holds every word (English or
     French); earlier releases that a later one replaces are left out unless
-    include_earlier=true. Quick Stats dashboards, .zip archives and workbooks in other layouts
-    (COVID-19, surveys, virtual care) are listed with a `reason`, not read.
+    include_earlier=true. Also listed: Quick Stats, the COVID-19, virtual care and Commonwealth
+    Fund survey tables, and each workbook inside the two .zip archives of older releases
+    (`archive` names it). A file that cannot be read says why in `reason`.
     CIHI's terms limit commercial use and use inside software applications without its
     written authorization: read `terms` and provenance.caveats before reusing any value.
     Keywords: CIHI, health workforce, physicians, nurses, nursing, pharmacists,
@@ -52,11 +53,13 @@ async def cihi_workforce_list_tables(workbook: str, lang: Lang = "en") -> Workbo
     it: each table's id ('3a', '1.0', 'A.1'), title, sheet, cell range, the label columns
     to filter on (jurisdiction, profession, specialty, year, age group, sex) and the value
     columns (years or jurisdictions across the top). Tables that repeat their header for
-    each group list those groups as `sections`. Hidden helper sheets and drop-down (interactive)
-    tabs are skipped and named in `skipped`; notes, definitions and methodology pages are
-    in text_sheets (cihi_workforce_get_notes). `workbook` is an id or a distinctive name
-    ("nursing", "pharmacists"); the first call downloads the file (0.1 to 27 MB; about 2 to
-    10 s) and later calls are cached for hours. Workbooks over 30 MB are refused, not read.
+    each group list those groups as `sections`. A hidden sheet holding the flat data behind a
+    drop-down tab or a Quick Stats dashboard is a table too (`hidden_sheet`, id = sheet name);
+    drop-down tabs and helper sheets are named in `skipped`; notes, definitions and methodology
+    pages are in text_sheets (cihi_workforce_get_notes). `workbook` is an id or a distinctive
+    name ("nursing", "pharmacists"); the first call downloads the file (0.1 to 30 MB; about 2
+    to 10 s) and later calls are cached for hours. A file over 30 MiB is read by parts, and a
+    sheet that does not fit is in `skipped` with its size.
     CIHI's terms limit commercial use and use inside software applications without its
     written authorization (see provenance.caveats).
     Keywords: CIHI, health workforce, table of contents, tables, sheets, columns,
@@ -90,8 +93,8 @@ async def cihi_workforce_get_table(
     'x' suppressed, 'n/r') comes back as that mark, never as zero or blank; a percentage cell
     comes back as text ('90.4%'); the table's own `notes` define the marks and say what is
     missing (in the 2025 physician tables the Ontario column, and so the Canada totals, is
-    '—': data release delayed). `table` is
-    an id from cihi_workforce_list_tables. `filters` match label columns exactly (case,
+    '—': data release delayed). `table` is an id from cihi_workforce_list_tables ('3a', 'A.1',
+    'Q68' for a survey question, 'Supply_WF_Flow' for a hidden data sheet). `filters` match label columns exactly (case,
     accents and Alberta = Alta. = Alb. ignored; a list is any-of), e.g. {"Jurisdiction":
     "Alberta", "Year": "2024"}; `contains` is part of any label; `columns` picks value
     columns by name or part of a name (["Alberta", "Canada"], ["2025"]). 50 rows by default,

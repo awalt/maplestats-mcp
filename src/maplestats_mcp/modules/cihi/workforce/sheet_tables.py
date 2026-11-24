@@ -9,7 +9,9 @@ share one layout, which this module reads and nothing else:
   nothing else on the row (French: "Tableau 3a ..."; the space after the word
   can be a no-break space). A sheet can hold several tables, announced by an
   intro line ("There are 3 tables on this tab"), each with its own title row;
-- the *header row*: the first row after the title with two or more filled cells;
+- the *header row*: the first row after the title with two or more filled cells. A
+  *banner* above it (column A blank, at most half the row filled: "Ontario" over the
+  four Ontario columns) is skipped, since the header repeats its words in each cell;
 - the *body*: wide human tables (jurisdictions or years across the top) and flat
   database tables (one record per row, 100,000 rows) alike. Vertically merged
   label cells arrive as one value then blanks (read-only mode does not expose
@@ -20,6 +22,12 @@ share one layout, which this module reads and nothing else:
   "Source", "End of worksheet"), up to the next title row or the end of the sheet.
   Hyperlink cells repeated beside a note ("https://...", "'Table of contents'!A1")
   are not content.
+
+Checked live 2026-11-24, the same reading covers the COVID-19, virtual care and 2016-2020
+provider workbooks (banners, "Table 1A" ids, zero-width spaces in cells) and, with
+question titles ("Q1  How often ...", one table per caption and header below it), the
+Commonwealth Fund survey workbooks. A hidden sheet is read only as the one flat table
+behind a drop-down or a Quick Stats dashboard (read_sheet_tables).
 
 Interactive tabs (a drop-down picks what the table shows: "Instructions: Select
 ...") are recognised and left out: their cells show one selection, not a table.
@@ -45,13 +53,31 @@ from maplestats_mcp.shared.executor import check_deadline
 # "Table A1  Statistics Canada population". Upper-case ids only, so "Table of contents" never
 # matches; the word is followed by a space or a no-break space.
 _TITLE = re.compile(
-    r"^(?:Table|Tableau)[\s\u00a0]+((?:[A-Z]\.)?[A-Z]?\d+(?:\.\d+)*[a-z]?|[A-Z])(?![\w.])"
+    r"^(?:Table|Tableau)[\s\u00a0]+((?:[A-Z]\.)?[A-Z]?\d+(?:\.\d+)*[a-zA-Z]?|[A-Z])(?![\w.])"
     r"[\s\u00a0:–—-]*(.*)$",
     re.DOTALL,
 )
+# "Table 1A  Number of services" (COVID-19 physician services workbook) has an upper-case
+# suffix; "Table 1 About" cannot match, since nothing may follow the id but a space or a colon.
+# The Commonwealth Fund survey workbooks title each table by its question, "Q1  How often does
+# your practice ...", "Q87  Demographics ..." (checked 2026-11-24, 2019 and 2022 files). Spaces
+# follow the id, never a colon: a note such as "Q1: Lowest income quintile" is not a title.
+_QUESTION = re.compile(r"^(Q\d+[a-z]?)[\s\u00a0]+(\S.*)$", re.DOTALL)
+# Zero-width characters CIHI's COVID-19 health care worker tables leave in labels and numbers
+# ("N.L.\u200b", "1,067\u200b"): they print as nothing, so a cell is read without them.
+_INVISIBLE = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff"))
+# A hidden sheet holds a table only when it says so within its first rows (see table_events).
+HIDDEN_TITLE_ROWS = 10
 # "Instructions: Select a jurisdiction ..." (French: "Instructions : Sélectionnez ...") marks a
 # tab driven by drop-downs. The Instructions sheet itself starts "Instructions\nThe following".
 _INTERACTIVE = re.compile(r"^Instructions?[\s\u00a0]*:", re.IGNORECASE)
+# The same, said above the first table: "Screen reader users: There are 3 interactive tables
+# on this tab" (virtual care mental health, 2022). The words are that specific so that an
+# Instructions sheet mentioning drop-down lists stays a text sheet.
+_DROP_DOWN_INTRO = re.compile(
+    r"interactive tables? on this tab|tableaux? interactifs? (?:dans|sur) cet onglet",
+    re.IGNORECASE,
+)
 _LINK = re.compile(r"^(?:https?://|'[^']+'!|[\w ]+!\$?[A-Z]+\$?\d+$)", re.IGNORECASE)
 # CIHI's marks seen live: "—" (no data), "n/a" (not applicable), "n/r" (not reported), "x"
 # (suppressed). A single letter other than "x" is a code (sex F/M), not a mark.
@@ -63,14 +89,24 @@ _GROUPED_NUMBER = re.compile(r"^[-+−]?\d{1,3}(?:[,\u00a0\u202f ]\d{3})+(?:\.\d
 _NUMBER_LIKE = re.compile(r"^[-+−]?[\d\s\u00a0.,]*\d[\d\s\u00a0.,]*\s*%?$")
 # A header or label hint: these columns identify a row even when their cells are numbers.
 _LABEL_HEADER = re.compile(
-    r"^(?:fiscal year|year|ann[ée]e|exercice|rank|rang|id)$|\bsort$|\bcode$|\btri$", re.IGNORECASE
+    r"^(?:fiscal year|year|ann[ée]e|exercice|rank|rang|id)$|\bsort$|\bcode$|\btri$"
+    # The data sheets behind Quick Stats name their year columns "data_year", "REPORTING_YEAR".
+    r"|^[a-z]+_year$",
+    re.IGNORECASE,
 )
 _MARKS_RE = re.compile(r"[*†‡§]+$")
 # A footer's own headings and its last line say nothing: "Notes", "End of worksheet (back to ...)".
 _NOTE_NOISE = re.compile(
     r"^(?:(?:notes?|remarques?)(?: ?:)?|(?:end of worksheet|fin de l.onglet).*)$"
 )
-_EXCEL_COLUMN = re.compile(r"^(?:Column|Colonne)\d+$")
+# "Column12021 (2)": a junk name Excel wrote twice, made unique by unique_names (2023 physician
+# Table 1.2 runs to Column12021, in the archived release).
+_EXCEL_COLUMN = re.compile(r"^(?:Column|Colonne)\d+(?: \(\d+\))?$")
+
+
+def visible_text(text: str) -> str:
+    """The text without the zero-width characters some cells carry."""
+    return text.translate(_INVISIBLE)
 
 
 def _has_content(value: Any) -> bool:
@@ -95,7 +131,8 @@ def normalize(text: str) -> str:
     Cached: a flat table repeats a few dozen labels over 200,000 rows, and normalizing each
     cell afresh was most of the time a scan took.
     """
-    decomposed = unicodedata.normalize("NFKD", text.replace("\u2011", "-").replace("\u2010", "-"))
+    text = visible_text(text).replace("\u2011", "-").replace("\u2010", "-")
+    decomposed = unicodedata.normalize("NFKD", text)
     plain = "".join(c for c in decomposed if not unicodedata.combining(c))
     return _MARKS_RE.sub("", " ".join(plain.casefold().split())).strip()
 
@@ -149,7 +186,7 @@ def names_match(candidate: str, wanted: str) -> bool:
 
 
 def is_empty(value: Any) -> bool:
-    return value is None or (isinstance(value, str) and not value.strip())
+    return value is None or (isinstance(value, str) and not visible_text(value).strip())
 
 
 def text_of(value: Any) -> str:
@@ -164,12 +201,12 @@ def text_of(value: Any) -> str:
         return value.date().isoformat() if not value.time() else value.isoformat(sep=" ")
     if isinstance(value, date):
         return value.isoformat()
-    return " ".join(str(value).split())
+    return " ".join(visible_text(str(value)).split())
 
 
 def is_symbol(text: str) -> bool:
     """A suppression or no-data mark ("—", "n/a", "x"), not a name or a number."""
-    lowered = text.strip().lower()
+    lowered = visible_text(text).strip().lower()
     return (
         lowered in _SYMBOLS
         or bool(_SLASH_MARK.match(lowered))
@@ -182,7 +219,7 @@ def looks_numeric(value: Any) -> bool:
         return False
     if isinstance(value, int | float):
         return True
-    return isinstance(value, str) and bool(_NUMBER_LIKE.match(value.strip()))
+    return isinstance(value, str) and bool(_NUMBER_LIKE.match(visible_text(value).strip()))
 
 
 def _plain_number(text: str) -> int | float | None:
@@ -226,7 +263,7 @@ def value_of(value: Any, number_format: str | None = None) -> int | float | str 
         return _round(float(value)) if isinstance(value, float) else value
     if isinstance(value, datetime | date):
         return text_of(value)
-    text = " ".join(str(value).split())
+    text = " ".join(visible_text(str(value)).split())
     if not text:
         return None
     number = _plain_number(text)
@@ -243,7 +280,7 @@ def _has_text_or_number(value: Any) -> bool:
         return False
     if type(value) is not str:
         return True
-    stripped = value.strip()
+    stripped = visible_text(value).strip()
     if not stripped:
         return False
     return not ((stripped.startswith(("http", "'")) or "!" in stripped) and _LINK.match(stripped))
@@ -330,28 +367,110 @@ class Interactive:
     row: int
 
 
-Event = Title | Header | Section | Body | Footer | Interactive
+@dataclass
+class Caption:
+    """The line naming the first block of a survey question ("By country, 2022")."""
+
+    row: int
+    text: str
 
 
-def table_events(rows: Iterable[Row]) -> Iterator[Event]:
-    """Titles, headers, body rows, section headings and footers of every table on a sheet."""
+Event = Title | Header | Section | Body | Footer | Interactive | Caption
+
+
+def _is_numbering(row: Row) -> bool:
+    """A row of column numbers, 1, 2, 3, ... (the first row of a Quick Stats data sheet).
+
+    The numbers can stop before the row does, with marks or blanks after them (the 2023
+    StaffingData sheet numbers 27 of its 37 columns, then "—").
+    """
+    count = 0
+    for value in row.values:
+        if isinstance(value, bool) or text_of(value) != str(count + 1):
+            break
+        count += 1
+    rest = row.values[count:]
+    return count >= 3 and all(is_empty(v) or (isinstance(v, str) and is_symbol(v)) for v in rest)
+
+
+def _is_banner(row: Row) -> bool:
+    """A row above the header naming groups of its columns, "Ontario" over four of them.
+
+    Column A is blank and at most half of the row is filled (the names sit over merged
+    cells). The header row below repeats each name in its own cells ("2019–2020 Ontario"),
+    so the banner is not needed to name a column. Live: the COVID-19, virtual care and
+    2016-2020 provider workbooks (checked 2026-11-24).
+    """
+    values = row.values
+    if not values or _has_text_or_number(values[0]):
+        return False
+    return len(row.filled()) * 2 <= len(values)
+
+
+def _header_like(row: Row) -> bool:
+    """Every filled cell is a name (no number, no mark): a header, not a row of data."""
+    filled = row.filled()
+    return len(filled) >= 2 and all(
+        isinstance(row.values[i], str)
+        and not looks_numeric(row.values[i])
+        and not is_symbol(row.values[i])
+        for i in filled
+    )
+
+
+def table_events(
+    rows: Iterable[Row],
+    *,
+    numbered_title: str | None = None,
+    title_within: int | None = None,
+) -> Iterator[Event]:
+    """Titles, headers, body rows, section headings and footers of every table on a sheet.
+
+    `numbered_title` names the table that a row of column numbers (1, 2, 3, ...) starts,
+    for the data sheets behind Quick Stats, which have no title row. With `title_within`
+    the sheet is given up (no events) when no table has started by that row.
+
+    A survey question ("Q1  How often ...") opens a table only before any other table on
+    the sheet, and splits into one table per block: each block has a caption line ("By
+    country, 2022", "Canada, by province/territory, 2022") and its own header row. Its
+    tables are "Q1", "Q1.2", "Q1.3", ...
+    """
     state = "title"
     header: list[str] = []
     header_second = ""
     pending: list[tuple[int, str]] = []
+    question: tuple[str, str] | None = None
+    captions: list[str] = []
+    block = 1
+    numbered = False
 
     def footer() -> Footer | None:
         if not pending:
             return None
         return Footer(pending[0][0], pending[-1][0], [text for _, text in pending])
 
+    def start_header(row: Row) -> Header:
+        nonlocal header, header_second
+        header = [text_of(v) for v in row.values]
+        header_second = normalize(header[1]) if len(header) > 1 else ""
+        return Header(row.number, header)
+
     for row in rows:
+        if state == "title" and title_within is not None and row.number > title_within:
+            return
         kind, text = row.kind()
         single = kind == "single"
-        if single and _INTERACTIVE.match(text):
+        if single and (
+            _INTERACTIVE.match(text) or (state == "title" and _DROP_DOWN_INTRO.search(text))
+        ):
             yield Interactive(row.number)
             return
         title = _TITLE.match(text) if single else None
+        if title is None and single and state == "title":
+            title = _QUESTION.match(text)
+            if title is not None:
+                question = (title.group(1), " ".join(title.group(2).split()))
+                captions = []
         if title is not None:
             done = footer() if state == "body" else None
             if done is not None:
@@ -360,18 +479,44 @@ def table_events(rows: Iterable[Row]) -> Iterator[Event]:
             yield Title(row.number, title.group(1), " ".join(title.group(2).split()))
             state = "header"
             continue
+        if state == "title" and numbered_title is not None and _is_numbering(row):
+            numbered = True
+            yield Title(row.number, numbered_title, numbered_title)
+            state = "header"
+            continue
+        if kind == "blank" and state == "body" and numbered:
+            # A numbered data sheet is one flat table: its first blank row ends it. The 2022
+            # Quick Stats "Phyprofile" sheet declares 1,046,703 rows for 420 of data, and
+            # reading the empty rest took 30 s (checked 2026-11-24). A titled hidden sheet is
+            # read to its end, to see whether a second table follows.
+            done = footer()
+            if done is not None:
+                yield done
+            return
         if kind == "blank" or state == "title":
             continue
         if state == "header":
             if single:
+                if question is not None:
+                    captions.append(text)
                 continue
-            header = [text_of(v) for v in row.values]
-            header_second = normalize(header[1]) if len(header) > 1 else ""
-            yield Header(row.number, header)
+            if _is_banner(row):
+                continue
+            if question is not None and captions:
+                yield Caption(row.number, captions[-1])
+            yield start_header(row)
             state = "body"
             continue
         if single:
             pending.append((row.number, text))
+            continue
+        if question is not None and pending and _header_like(row):
+            # A new block of the question: its caption is the last line above its header.
+            block += 1
+            caption = pending[-1][1]
+            pending = []
+            yield Title(row.number, f"{question[0]}.{block}", f"{question[1]} — {caption}")
+            yield start_header(row)
             continue
         for number, section in pending:
             yield Section(number, section)
@@ -434,6 +579,8 @@ class TableInfo:
     sampled_only: bool = False
     notes_shared: bool = False
     declared_rows: int | None = None
+    # A flat data table on a hidden sheet (the data a drop-down tab or dashboard shows).
+    hidden: bool = False
 
     @property
     def last_column(self) -> str:
@@ -464,12 +611,14 @@ def unique_names(header: list[str], width: int) -> list[str]:
     return names
 
 
-def classify_labels(names: list[str], sample: list[Row]) -> int:
+def classify_labels(names: list[str], sample: list[Row], *, prefix: bool = False) -> int:
     """How many leading columns identify a row (the rest hold values).
 
     A column is a label when most of its filled cells are names (text that is neither a
     number nor a symbol) or its header says it identifies a row (year, sort, code). Every
-    column before the last label is one too, and the first column always is.
+    column before the last label is one too, and the first column always is. With
+    `prefix` the labels end at the first column that is not one: the data sheets behind
+    Quick Stats end with text columns (a second id, a label for a figure) after their counts.
     """
     last = 0
     for index, name in enumerate(names):
@@ -483,6 +632,8 @@ def classify_labels(names: list[str], sample: list[Row]) -> int:
                 texts += 1
         if _LABEL_HEADER.search(normalize(name)) or (filled and texts * 2 >= filled and texts):
             last = index
+        elif prefix and index:
+            break
     return last + 1
 
 
@@ -541,16 +692,17 @@ class TableReader:
         # ("Column1" ... "Column16384", live: nursing Table 10a, and French physician Table 5.1
         # where the file even fills them with "—") are not columns. One holds data only if a
         # sampled cell in it is a number or a name rather than blank or a mark.
+        # The last sampled column with content, found once: a sheet can carry 12,000 junk names.
+        used = max(
+            (i for row in sample for i, v in enumerate(row.values) if _has_content(v)), default=0
+        )
         while (
             len(info.names) > 1
             and _EXCEL_COLUMN.match(info.names[-1])
-            and not any(
-                len(row.values) >= len(info.names) and _has_content(row.values[len(info.names) - 1])
-                for row in sample
-            )
+            and len(info.names) - 1 > used
         ):
             info.names.pop()
-        info.label_count = classify_labels(info.names, sample)
+        info.label_count = classify_labels(info.names, sample, prefix=info.hidden)
         if headed:
             # Header text in column A names the first section ("1.0 Family medicine" over a
             # table of universities): the real label column has no name in the file.
@@ -608,6 +760,7 @@ def read_sheet_tables(
     emit_for: Callable[[str, str], Callable[[TableInfo, ParsedRow], None] | None] | None = None,
     first_table_only: bool = False,
     stop_after: str | None = None,
+    hidden: bool = False,
 ) -> tuple[list[TableInfo], bool]:
     """Every table of a sheet, and whether the sheet is an interactive tab.
 
@@ -620,17 +773,42 @@ def read_sheet_tables(
     A tab with several tables usually has one set of notes after the last of them; each
     earlier table takes it (`notes_shared`), since a reader of Table 1.0 needs the symbols
     and caveats printed below Table 1.2.
+
+    A `hidden` sheet holds one flat table, named after the sheet, or none. It must start
+    within its first HIDDEN_TITLE_ROWS rows, with a row of column numbers (Quick Stats data
+    sheets: "1, 2, 3 ..." over "ID, Year, ...") or a single title row (the physician
+    workbook's "Supply" sheet, the data behind the Table B drop-down, still titled "Table 3"
+    from an earlier layout). Every other hidden sheet (drop-down lists, figure ranges, totals
+    checks, a sheet of several working tables) is left out, checked live 2026-11-24.
     """
     tables: list[TableInfo] = []
     reader: TableReader | None = None
     interactive = False
     without_notes: list[TableInfo] = []
     seeking_notes = False
-    for event in table_events(rows):
+    name = sheet.strip()
+    events = table_events(
+        rows,
+        numbered_title=name if hidden else None,
+        title_within=HIDDEN_TITLE_ROWS if hidden else None,
+    )
+    for event in events:
         if isinstance(event, Interactive):
             interactive = True
             break
+        if isinstance(event, Caption):
+            if reader is not None:
+                reader.info.title = f"{reader.info.title} — {event.text}"
+            continue
         if isinstance(event, Title):
+            if hidden:
+                if tables or reader is not None:
+                    # Several titled tables on a hidden sheet are working copies (the NPDB
+                    # payments workbook's "Percent Change", growth rates computed for checks),
+                    # not the one flat table a drop-down reads.
+                    return [], interactive
+                # A title row on a hidden sheet is kept for its words; the id is the sheet's.
+                event = Title(event.row, name, name if event.table_id == name else event.title)
             if reader is not None and reader.info.header_row:
                 done = reader.finish(None)
                 tables.append(done)
@@ -639,6 +817,7 @@ def read_sheet_tables(
                     seeking_notes = True
             emit = emit_for(event.table_id, event.title) if emit_for else None
             reader = TableReader(sheet, event, emit)
+            reader.info.hidden = hidden
         elif isinstance(event, Header) and reader is not None:
             reader.header(event)
         elif isinstance(event, Body | Section) and reader is not None:
@@ -661,6 +840,8 @@ def read_sheet_tables(
                 break
     if reader is not None and reader.info.header_row:
         tables.append(reader.finish(None))
+    for table in tables:
+        table.hidden = hidden
     return [t for t in tables if t.names and t.body_rows], interactive
 
 
