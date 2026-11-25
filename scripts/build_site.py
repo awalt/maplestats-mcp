@@ -882,6 +882,14 @@ SOURCES: dict[str, Source] = {
         "RNCan énergie",
         domain="energy",
     ),
+    "nrcan_fuel_prices": Source(
+        "Natural Resources Canada: retail fuel prices by city",
+        "Ressources naturelles Canada : prix de détail des carburants par ville",
+        "national",
+        "NRCan fuel prices",
+        "RNCan carburants",
+        domain="energy",
+    ),
     "nrcan_geo": Source(
         "Natural Resources Canada: geolocation and place names",
         "Ressources naturelles Canada : géolocalisation et toponymes",
