@@ -4373,6 +4373,20 @@ def _yoy(points: list[tuple[str, float]], months: int = 12) -> list[tuple[str, f
     ]
 
 
+def _steps(points: list[tuple[str, float]], months: int) -> list[tuple[str, float, float]]:
+    """(date, value, previous value) for each point whose period before is present.
+
+    A pair of points either side of a missing period would otherwise read as
+    one period's change.
+    """
+    values = dict(points)
+    return [
+        (d, v, values[_months_back(d, months)])
+        for d, v in points
+        if _months_back(d, months) in values
+    ]
+
+
 def _on_or_before(points: list[tuple[str, float]], day: str) -> tuple[str, float]:
     return [p for p in points if p[0] <= day][-1]
 
@@ -4435,7 +4449,7 @@ def pulse_context(lang: Lang) -> dict[str, str]:
 
     # Labour
     emp = s["employment"]["points"]
-    emp_changes = [(b[0], (b[1] - a[1]) * 1000) for a, b in pairwise(emp)]
+    emp_changes = [(d, (v - prev) * 1000) for d, v, prev in _steps(emp, 1)]
     emp_last_iso, emp_last = emp_changes[-1]
     emp_3m = sum(v for _, v in emp_changes[-3:]) / 3
     unemp = s["unemployment"]["points"]
@@ -4449,14 +4463,17 @@ def pulse_context(lang: Lang) -> dict[str, str]:
     median = s["cpi_median"]["points"][-1][1]
     # Output
     gdp = s["gdp"]["points"]
-    gdp_growth = [(b[0], ((b[1] / a[1]) ** 4 - 1) * 100) for a, b in pairwise(gdp)]
+    gdp_growth = [(d, ((v / prev) ** 4 - 1) * 100) for d, v, prev in _steps(gdp, 3)]
     gdp_iso, gdp_last = gdp_growth[-1]
-    gdp_4q = (gdp[-1][1] / gdp[-5][1] - 1) * 100
+    gdp_4q = _yoy(gdp)[-1][1]
     fdd = s["fdd"]["points"]
-    fdd_last = ((fdd[-1][1] / fdd[-2][1]) ** 4 - 1) * 100
+    _, fdd_now, fdd_prev = _steps(fdd, 3)[-1]
+    fdd_last = ((fdd_now / fdd_prev) ** 4 - 1) * 100
     gdpm = s["gdp_monthly"]["points"]
-    gdpm_iso, gdpm_last = gdpm[-1][0], (gdpm[-1][1] / gdpm[-2][1] - 1) * 100
+    gdpm_iso, gdpm_now, gdpm_prev = _steps(gdpm, 1)[-1]
+    gdpm_last = (gdpm_now / gdpm_prev - 1) * 100
     starts = s["starts"]["points"]
+    starts_step = _steps(starts, 1)[-1]
     # Markets
     year = boc["BD.CDN.10YR.DQ.YLD"]["points"][-1][0][:4]
     year_end = f"{int(year) - 1}-12-31"
@@ -4553,7 +4570,7 @@ def pulse_context(lang: Lang) -> dict[str, str]:
             "Housing starts" if en else "Mises en chantier",
             number(starts[-1][1] * 1000, lang),
             mname(starts[-1][0]) + (", annual rate" if en else ", taux annuel"),
-            _spct((starts[-1][1] / starts[-2][1] - 1) * 100, lang)
+            _spct((starts_step[1] / starts_step[2] - 1) * 100, lang)
             + (" m/m" if en else " d'un mois à l'autre"),
         ),
         _tile(
