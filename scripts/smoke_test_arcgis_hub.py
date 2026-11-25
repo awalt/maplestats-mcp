@@ -80,25 +80,101 @@ async def check_ottawa_files() -> None:
     )
     if catalogue.total_count <= excel.total_count or not excel.items:
         raise AssertionError("Ottawa catalogue did not include the expected Excel entries")
-    for item_id, fmt, member, sheet, header_row in (
-        ("b60d39e570114311b69a76bb94206050", "csv", None, None, None),
-        ("a8992582cb764c1a9edaebfb0b30e9c7", "xlsx", None, "January 2026", 9),
+    for item_id, member in (
+        ("b60d39e570114311b69a76bb94206050", None),
         (
             "e88c52d7727e4a9dba6d427c9bd6445c",
-            "csv",
             "2026 Draft Budget Explorer/1_Operating_overview_expenditure.csv",
-            None,
-            None,
         ),
     ):
         result = await _check(
-            f"Ottawa {fmt} table {item_id}",
-            files.query_file(
-                "ottawa", item_id, member=member, sheet=sheet, header_row=header_row, limit=2
-            ),
+            f"Ottawa CSV table {item_id}",
+            files.query_file("ottawa", item_id, member=member, limit=2),
         )
-        if result.format != fmt or not result.columns or not result.rows:
-            raise AssertionError(f"Ottawa item {item_id} did not return {fmt} table rows")
+        if result.format != "csv" or not result.columns or not result.rows:
+            raise AssertionError(f"Ottawa item {item_id} did not return CSV table rows")
+
+    await check_ottawa_election_results()
+    await check_ottawa_construction_permits()
+
+
+async def check_ottawa_election_results() -> None:
+    item_id = "28d0d0f0d4704ba295dd362a31c07aee"
+    summary_sheet, ward_sheet = "Summary_résumé", "Ward_quartier_2"
+    choices = await _check("Ottawa election worksheets", files.query_file("ottawa", item_id))
+    if (
+        choices.format != "xlsx"
+        or choices.selection_required != "sheet"
+        or not {summary_sheet, ward_sheet}.issubset(choices.sheets)
+    ):
+        raise AssertionError("Ottawa election workbook did not list the expected worksheets")
+
+    voting_place = "Voting place / Bureau de vote"
+    subdivision = "02-002 - Blackburn Hamlet Arena and Community Hall"
+    results = await _check(
+        "Ottawa Ward 2 results for polling subdivision 02-002",
+        files.query_file(
+            "ottawa",
+            item_id,
+            sheet=ward_sheet,
+            header_row=3,
+            filters={voting_place: subdivision},
+            columns=[
+                voting_place,
+                "Votes cast / Nombre de votes exprimés",
+                "Laura Dudas",
+                "Jenna Jessop",
+                "David Purchase",
+            ],
+        ),
+    )
+    if results.total_rows != 1 or results.rows != [
+        {
+            voting_place: subdivision,
+            "Votes cast / Nombre de votes exprimés": "931",
+            "Laura Dudas": "593",
+            "Jenna Jessop": "120",
+            "David Purchase": "215",
+        }
+    ]:
+        raise AssertionError(f"Unexpected official results for {subdivision}: {results.rows}")
+
+
+async def check_ottawa_construction_permits() -> None:
+    query = "Construction, Demolition, and Pool Permits"
+    title = f"{query} 2026"
+    search = await _check(
+        "Ottawa construction permits keyword search",
+        client.search_datasets("ottawa", query, item_type="Microsoft Excel", limit=15),
+    )
+    match = next((item for item in search.items if item.title == title), None)
+    if match is None:
+        raise AssertionError(f"Ottawa Excel search did not find {title!r}")
+    detail = await _check(
+        "Ottawa construction permits detail", client.get_dataset("ottawa", match.id)
+    )
+    if detail.title != title or detail.item_type != "Microsoft Excel":
+        raise AssertionError(f"Ottawa item {match.id} did not resolve to the permits workbook")
+
+    sheet = "January 2026"
+    choices = await _check("Ottawa permits worksheets", files.query_file("ottawa", match.id))
+    if choices.selection_required != "sheet" or sheet not in choices.sheets:
+        raise AssertionError("Ottawa permits workbook did not list the January worksheet")
+    columns = ["PERMIT NUMBER", "ISSUED DATE", "BUILDING TYPE"]
+    permits = await _check(
+        "Ottawa January 2026 permit rows",
+        files.query_file("ottawa", match.id, sheet=sheet, header_row=9, columns=columns, limit=2),
+    )
+    if (
+        permits.format != "xlsx"
+        or permits.columns != columns
+        or len(permits.rows) != 2
+        or not all(
+            row["PERMIT NUMBER"] and row["ISSUED DATE"].startswith("2026-01-")
+            for row in permits.rows
+        )
+    ):
+        raise AssertionError(f"Ottawa permits workbook did not return January rows: {permits.rows}")
 
 
 async def check_portal(portal: str) -> int:
