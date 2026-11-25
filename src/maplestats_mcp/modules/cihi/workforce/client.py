@@ -7,6 +7,10 @@ through shared/file_download (host allow-list, the cihi size cap, redirect check
 raw bytes cached in the shared byte budget, and opened only after the shared
 inflated-size check (shared/xlsx_sheets.open_workbook). Sheets are read as they are
 published; see sheet_tables.py for the layout they share.
+
+Files over the cap are read by parts inside it (ranged.py): the workbooks of a .zip
+archive one at a time, and a workbook over the cap rebuilt from the parts and sheets
+that fit, the rest named as left out.
 """
 
 from __future__ import annotations
@@ -14,13 +18,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from itertools import islice
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup, Tag
 
-from maplestats_mcp.modules.cihi.workforce import constants, sheet_tables
+from maplestats_mcp.modules.cihi.workforce import constants, ranged, sheet_tables
 from maplestats_mcp.modules.cihi.workforce.schemas import (
     Cell,
     SkippedSheet,
@@ -36,7 +41,13 @@ from maplestats_mcp.modules.cihi.workforce.schemas import (
 from maplestats_mcp.shared import file_download, xlsx_sheets
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance
-from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError, UpstreamUnavailable
+from maplestats_mcp.shared.errors import (
+    InvalidInput,
+    NotFound,
+    TooLarge,
+    UpstreamError,
+    UpstreamUnavailable,
+)
 from maplestats_mcp.shared.executor import ParseBudgetExceeded, run_parse
 from maplestats_mcp.shared.fr_typography import fr_or_en, lang_error, truncation_note_lang
 from maplestats_mcp.shared.http import get_raw
@@ -109,9 +120,16 @@ _TOPICS: tuple[tuple[str, str, str], ...] = (
         "health workforce overview providers quick stats main-d'œuvre de la santé dispensateurs",
     ),
 )
-# Workbooks whose layout was checked and is not the one sheet_tables.py reads.
-_UNSUPPORTED_LAYOUT = re.compile(r"cmwf|covid-19|virtual-care|health-care-providers")
-_TOPIC_OTHER = ("other", "covid commonwealth fund survey virtual care")
+# COVID-19, Commonwealth Fund survey and virtual care workbooks: read since 2026-11-24 (their
+# banner rows over the header, "Q1" question titles and zero-width characters, sheet_tables.py).
+_TOPIC_OTHER = (
+    "other",
+    (
+        "covid covid-19 commonwealth fund survey primary care international virtual "
+        "care telehealth pandemic health care workers cases deaths interventions sondage "
+        "soins virtuels travailleurs de la santé"
+    ),
+)
 
 
 @dataclass
@@ -324,23 +342,86 @@ def _supersede(cards: list[dict[str, Any]]) -> set[str]:
 def _unreadable(url: str, stem: str) -> tuple[str, str | None]:
     """(kind, reason it is not read) for a workbook."""
     if url.lower().endswith(".zip"):
-        return "archive", (
-            "A .zip archive of an older release: this reader opens .xlsx workbooks only."
-        )
-    if "quickstats" in stem or "quick-stats" in stem:
-        return "interactive", (
-            "Quick Stats is an interactive dashboard: its visible tabs show one drop-down "
-            "selection and its data sit on hidden helper sheets. The same figures are in the "
-            "topic workbooks (nursing, pharmacists, ...)."
-        )
-    if _UNSUPPORTED_LAYOUT.search(stem):
-        return "data tables", (
-            "The sheets of this workbook (COVID-19, Commonwealth Fund survey, virtual care and "
-            "the 2016-2020 provider tables) do not follow the 'Table N' title-and-header layout "
-            "this reader handles (checked 2026-11-16), so its rows would be misread: open it "
-            "on cihi.ca."
-        )
+        return "archive", _ARCHIVE_REASON
+    if "quickstats" in stem:
+        # The dashboard tabs are skipped; the data sheets behind them are read as tables.
+        return "interactive", None
     return "data tables", None
+
+
+_ARCHIVE_REASON = (
+    "A .zip archive of an older release; its workbooks could not be listed from it just now "
+    "(the archive is read by parts, with range requests): open it on cihi.ca."
+)
+
+
+def _archive_reason(ids: list[str], lang: str) -> str:
+    listed = ", ".join(ids)
+    return fr_or_en(
+        lang,
+        f"A .zip archive of an older release, not read itself: its workbooks are listed as "
+        f"their own entries (earlier releases; include_earlier=true): {listed}.",
+        f"Archive .zip d'une diffusion antérieure, non lue elle-même : ses classeurs sont "
+        f"listés comme entrées distinctes (diffusions antérieures ; include_earlier=true) : "
+        f"{listed}.",
+    )
+
+
+def _member_refs(
+    archive: WorkbookRef, members: list[Any], taken: set[str], lang: str
+) -> list[WorkbookRef]:
+    """The workbooks of a .zip archive as listing entries of their own."""
+    refs: list[WorkbookRef] = []
+    for member in members:
+        filename = str(member.name).rsplit("/", 1)[-1]
+        if not filename.lower().endswith(".xlsx"):
+            continue
+        stem = workbook_id(filename)
+        member_id = stem if stem not in taken else f"{archive.id}-{stem}"
+        taken.add(member_id)
+        topic, _ = classify_topic(stem)
+        size_mb = f"{member.size / 1e6:.1f}"
+        too_large = max(member.size, member.compressed_size) > constants.MAX_FILE_BYTES
+        reason = None
+        if too_large:
+            reason = fr_or_en(
+                lang,
+                f"{size_mb} MB inside the archive, over this reader's 30 MiB cap. The "
+                "archive compresses it as one piece, so its sheets cannot be fetched by parts: "
+                "open it on cihi.ca.",
+                f"{size_mb} Mo dans l'archive, au-delà de la limite de 30 Mio de ce lecteur. "
+                "L'archive le compresse d'un seul tenant : ses feuilles ne peuvent donc pas "
+                "être lues par parties. Ouvrez-le sur cihi.ca.",
+            )
+        refs.append(
+            WorkbookRef(
+                id=member_id,
+                title=f"{archive.title} — {filename}",
+                topic=topic,
+                published=archive.published,
+                edition="earlier",
+                kind="data tables",
+                readable=not too_large,
+                reason=reason,
+                description=fr_or_en(
+                    lang,
+                    f"Workbook inside the .zip archive {archive.id} ({size_mb} MB).",
+                    f"Classeur de l'archive .zip {archive.id} ({size_mb} Mo).",
+                ),
+                url=f"{archive.url}#{member.name}",
+                archive=archive.id,
+            )
+        )
+    return refs
+
+
+async def _archive_members(url: str) -> list[Any]:
+    members, _ = await cached_fetch(
+        f"cihi_workforce:members:{url}",
+        constants.CACHE_TTL_LISTING_SECONDS,
+        lambda: ranged.members(url),
+    )
+    return members
 
 
 async def _listing(lang: str) -> tuple[list[WorkbookRef], bool]:
@@ -387,9 +468,31 @@ async def _listing(lang: str) -> tuple[list[WorkbookRef], bool]:
             )
         return refs
 
-    return await cached_fetch(
+    pages, cached = await cached_fetch(
         f"cihi_workforce:listing:{lang}", constants.CACHE_TTL_LISTING_SECONDS, fetch
     )
+    # The archives' workbooks are added on every call, from their own cache entry, which
+    # keeps only a listing that succeeded: a host that fails once leaves the archive listed
+    # with its reason this time, and the next call tries again (the page listing above is
+    # never cached without them). Copies, so the cached entries are never changed.
+    refs = list(pages)
+    taken = {r.id for r in refs}
+    for index, archive in enumerate(pages):
+        if archive.kind != "archive":
+            continue
+        # Two range requests per archive (the end of the file); a host that stops answering
+        # ranges leaves the archive listed with the reason, not the listing broken.
+        try:
+            members = await _archive_members(archive.url)
+        except (UpstreamError, UpstreamUnavailable):
+            continue
+        inside = _member_refs(archive, members, taken, lang)
+        if inside:
+            refs.extend(inside)
+            refs[index] = archive.model_copy(
+                update={"reason": _archive_reason([r.id for r in inside], lang)}
+            )
+    return refs, cached
 
 
 def _haystack(ref: WorkbookRef) -> str:
@@ -421,10 +524,11 @@ async def list_workbooks(
     if unread:
         extra = fr_or_en(
             lang,
-            f"{len(unread)} listed file(s) are not read (interactive dashboards and archives): "
-            "see `reason`.",
-            f"{len(unread)} fichier(s) listé(s) ne sont pas lus (tableaux de bord interactifs "
-            "et archives) : voir `reason`.",
+            f"{len(unread)} listed file(s) are not read themselves (archives, whose workbooks "
+            "are listed on their own, and files too large for this reader): see `reason`.",
+            f"{len(unread)} fichier(s) listé(s) ne sont pas lus eux-mêmes (archives, dont les "
+            "classeurs sont listés à part, et fichiers trop volumineux pour ce lecteur) : voir "
+            "`reason`.",
         )
         note = f"{note} {extra}" if note else extra
     base = constants.FR_LISTING_URL if lang == "fr" else constants.LISTING_URL
@@ -466,7 +570,10 @@ async def resolve(workbook: str, lang: str) -> tuple[WorkbookRef, bool]:
             "workbook is required: an id from cihi_workforce_list_workbooks.",
             "workbook est obligatoire : un identifiant tiré de cihi_workforce_list_workbooks.",
         )
-    exact = [r for r in refs if r.id == value or r.url == value or workbook_id(value) == r.id]
+    # The address itself first: a workbook inside an archive shares its file name stem.
+    exact = [r for r in refs if r.url == value] or [
+        r for r in refs if r.id == value or workbook_id(value) == r.id
+    ]
     if exact:
         return exact[0], cached
     words = sheet_tables.normalize(value).split()
@@ -511,23 +618,104 @@ async def _body(ref: WorkbookRef, lang: str) -> tuple[bytes, bool]:
             f"cihi : {ref.id} n'est pas lu : {ref.reason}",
         )
 
+    if ref.archive:
+        return await _member_body(ref, lang)
+
     async def fetch() -> file_download.Downloaded:
         # Streamed under the cap: a declared Content-Length above it is refused before
-        # the body is read (the 40 MB NPDB historical utilization 1996-2014 is refused here),
-        # an undeclared one stops at the cap, and every redirect hop stays on CIHI's host.
-        return await file_download.download(
-            ref.url,
-            allow_host=lambda host: host in constants.ALLOWED_HOSTS,
-            limiter_for=lambda _host: _LIMITER,
-            max_bytes=constants.MAX_FILE_BYTES,
-            context="cihi",
-            timeout=180.0,
-        )
+        # the body is read, an undeclared one stops at the cap, and every redirect hop stays
+        # on CIHI's host.
+        try:
+            return await file_download.download(
+                ref.url,
+                allow_host=lambda host: host in constants.ALLOWED_HOSTS,
+                limiter_for=lambda _host: _LIMITER,
+                max_bytes=constants.MAX_FILE_BYTES,
+                context="cihi",
+                timeout=180.0,
+            )
+        except TooLarge:
+            # Over the cap (the 40 MB NPDB historical utilization 1996-2014): read by parts,
+            # inside the same cap, with the sheets that do not fit left out and named. The
+            # rebuilt workbook is cached in place of the file, so the next call reads it.
+            return await _by_parts(ref, lang)
 
     downloaded, cached = await file_download.cached_download(
         file_download.cache_key(ref.url), constants.CACHE_TTL_FILE_SECONDS, fetch
     )
     return downloaded.body, cached
+
+
+async def _by_parts(ref: WorkbookRef, lang: str) -> file_download.Downloaded:
+    try:
+        body, _omitted = await ranged.slim_workbook(ref.url)
+    except ranged.RangeRefused as exc:
+        raise lang_error(
+            TooLarge,
+            lang,
+            f"cihi: {ref.url} is over this reader's {constants.MAX_FILE_BYTES:,}-byte cap and "
+            "the server did not answer range requests, so it cannot be read by parts: open it "
+            "on cihi.ca.",
+            f"cihi : {ref.url} dépasse la limite de {constants.MAX_FILE_BYTES:,} octets de ce "
+            "lecteur et le serveur n'a pas répondu aux requêtes par plage ; il ne peut donc pas "
+            "être lu par parties. Ouvrez-le sur cihi.ca.",
+        ) from exc
+    return file_download.Downloaded(body=body, final_url=ref.url, content_type="")
+
+
+async def _member_body(ref: WorkbookRef, lang: str) -> tuple[bytes, bool]:
+    archive_url, _, name = ref.url.partition("#")
+    members = await _archive_members(archive_url)
+    member = next((m for m in members if m.name == name), None)
+    if member is None:
+        raise lang_error(
+            NotFound,
+            lang,
+            f"cihi: {name} is no longer in {archive_url}.",
+            f"cihi : {name} ne figure plus dans {archive_url}.",
+        )
+
+    async def fetch() -> file_download.Downloaded:
+        body = await ranged.read_member(archive_url, member)
+        return file_download.Downloaded(body=body, final_url=ref.url, content_type="")
+
+    downloaded, cached = await file_download.cached_download(
+        file_download.cache_key(ref.url), constants.CACHE_TTL_FILE_SECONDS, fetch
+    )
+    return downloaded.body, cached
+
+
+_INTERACTIVE_REASON = (
+    "interactive: a drop-down tab that shows one selection at a time; its figures are rows "
+    "of the workbook's flat tables or hidden data sheets (see `tables`)"
+)
+_HIDDEN_REASON = "hidden: a helper sheet (drop-down lists, figure ranges or totals checks)"
+# A sheet with no table that says it is driven by a drop-down (Quick Stats 2022 dashboards,
+# the virtual care mental health "1-3 Interactive tables" tab) is a dashboard, not notes.
+_DROP_DOWN = re.compile(r"drop[- ]?down|d[ée]roulant|select (?:a|an|the|one)\b", re.IGNORECASE)
+_HEAD_ROWS = 12
+_CONTENTS = re.compile(r"^(?:table of contents|table des matieres)$")
+
+
+def _too_large_reason(note: ranged.Omitted) -> str:
+    rows = f"{note.rows:,} rows, " if note.rows else ""
+    return (
+        f"too large: {rows}{note.compressed_size / 1e6:.1f} MB compressed "
+        f"({note.size / 1e6:.0f} MB of sheet XML). The workbook is over this reader's 30 MiB "
+        "download cap, so it is read by parts, and this sheet does not fit in the cap with "
+        "the rest: open it on cihi.ca"
+    )
+
+
+def _sheet_head(sheet: Any) -> tuple[list[str], bool]:
+    """The text of a sheet's first rows, and whether any of them has several cells."""
+    texts: list[str] = []
+    several = False
+    for row in islice(sheet_tables.sheet_rows(sheet), _HEAD_ROWS):
+        filled = row.filled()
+        several = several or len(filled) >= 2
+        texts.extend(sheet_tables.text_of(row.values[i]) for i in filled)
+    return texts, several
 
 
 def _scan_inventory(body: bytes) -> Inventory:
@@ -536,20 +724,41 @@ def _scan_inventory(body: bytes) -> Inventory:
     try:
         for sheet in workbook.worksheets:
             title = str(sheet.title)
-            if sheet.sheet_state != "visible":
-                inventory.skipped.append(SkippedSheet(sheet=title.strip(), reason="hidden"))
-                continue
+            hidden = sheet.sheet_state != "visible"
             declared = int(sheet.max_row or 0)
+            if not hidden and _CONTENTS.match(sheet_tables.normalize(title)):
+                # Its lines name the tables; one with a link cell beside it looked like a
+                # header row (2023 physician release, archived).
+                inventory.text_sheets.append(title)
+                continue
             xlsx_sheets.fix_dimensions(sheet)
             tables, interactive = sheet_tables.read_sheet_tables(
                 sheet_tables.sheet_rows(sheet),
                 title,
                 first_table_only=declared > constants.LIST_FULL_SCAN_ROWS,
+                hidden=hidden,
             )
+            if hidden and not tables:
+                inventory.skipped.append(SkippedSheet(sheet=title.strip(), reason=_HIDDEN_REASON))
+                continue
             if interactive:
-                inventory.skipped.append(SkippedSheet(sheet=title.strip(), reason="interactive"))
+                inventory.skipped.append(
+                    SkippedSheet(sheet=title.strip(), reason=_INTERACTIVE_REASON)
+                )
                 continue
             if not tables:
+                head, several = _sheet_head(sheet)
+                omitted = ranged.omitted_note(head[0]) if head else None
+                if omitted is not None:
+                    inventory.skipped.append(
+                        SkippedSheet(sheet=title.strip(), reason=_too_large_reason(omitted))
+                    )
+                    continue
+                if several and any(_DROP_DOWN.search(text) for text in head):
+                    inventory.skipped.append(
+                        SkippedSheet(sheet=title.strip(), reason=_INTERACTIVE_REASON)
+                    )
+                    continue
                 inventory.text_sheets.append(title)
                 if inventory.citation is None and declared <= 400:
                     inventory.citation = _citation(
@@ -600,9 +809,11 @@ async def _inventory(ref: WorkbookRef, body: bytes, lang: str) -> Inventory:
 def _table_ref(table: sheet_tables.TableInfo, lang: str) -> TableRef:
     word = fr_or_en(lang, "Table", "Tableau")
     values = table.value_names
+    # A survey question ("Q1") and a hidden data sheet ("DirectCareData") are named as is.
+    plain = table.hidden or re.match(r"^Q\d", table.table_id) is not None
     return TableRef(
         table=table.table_id,
-        name=f"{word} {table.table_id}",
+        name=table.table_id if plain else f"{word} {table.table_id}",
         sheet=table.sheet.strip(),
         title=table.title,
         cells=table.range if not table.sampled_only else f"A{table.header_row}:{table.last_column}",
@@ -613,6 +824,7 @@ def _table_ref(table: sheet_tables.TableInfo, lang: str) -> TableRef:
         value_column_count=len(values),
         sections=table.sections[: constants.NAMES_LISTED_MAX] if table.has_sections else [],
         footnotes=len(table.notes),
+        hidden_sheet=table.hidden,
     )
 
 
@@ -866,8 +1078,12 @@ class _Outcome:
     collector: _Collector
 
 
-def _scan_table(body: bytes, sheet: str, table_id: str, spec: _Spec, lang: str) -> _Outcome:
+def _scan_table(
+    body: bytes, sheet: str, table_id: str, spec: _Spec, lang: str, hidden: bool = False
+) -> _Outcome:
     collector = _Collector(spec, lang)
+    # An id seen twice in a workbook was listed as "<id>@<sheet>"; on its sheet it is plain.
+    plain_id = table_id.split("@", 1)[0]
     workbook = xlsx_sheets.open_workbook(body)
     try:
         worksheet = workbook[sheet]
@@ -875,12 +1091,15 @@ def _scan_table(body: bytes, sheet: str, table_id: str, spec: _Spec, lang: str) 
         tables, _ = sheet_tables.read_sheet_tables(
             sheet_tables.sheet_rows(worksheet),
             sheet,
-            emit_for=lambda found_id, _title: collector if found_id == table_id else None,
-            stop_after=table_id,
+            emit_for=lambda found_id, _title: collector if found_id == plain_id else None,
+            stop_after=plain_id,
+            hidden=hidden,
         )
     finally:
         workbook.close()
-    info = next((t for t in tables if t.table_id == table_id), None)
+    info = next((t for t in tables if t.table_id == plain_id), None)
+    if info is not None:
+        info.table_id = table_id
     if info is None:
         raise lang_error(
             UpstreamError,
@@ -959,7 +1178,9 @@ async def get_table(
     found = _find_table(inventory, table, lang)
     spec = _Spec(_plain_filters(filters), contains, columns, limit, offset)
     try:
-        outcome = await run_parse(_scan_table, body, found.sheet, found.table_id, spec, lang)
+        outcome = await run_parse(
+            _scan_table, body, found.sheet, found.table_id, spec, lang, found.hidden
+        )
     except ParseBudgetExceeded as exc:
         # The parse budget is fixed (MAPLE_PARSE_TIMEOUT_SECONDS): a flat table of 100,000 rows
         # takes 20 to 40 s to read on a fast machine, so a slow host can run past it.

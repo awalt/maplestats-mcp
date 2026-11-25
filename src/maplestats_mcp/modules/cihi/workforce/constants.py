@@ -15,8 +15,13 @@ Confirmed live 2026-11-16:
   page 0 alone.
 - File sizes by HEAD: 0.1 to 7 MB for every topic workbook, 24.9 MB for the
   NPDB historical utilization 2015-2024, 27.5 MB for the physician supply
-  2001-2024 history, 40.3 MB for the NPDB historical utilization 1996-2014
-  (over this reader's cap, so it is refused, not read).
+  2001-2024 history, 40.3 MB for the NPDB historical utilization 1996-2014.
+- Confirmed live 2026-11-24: the two .zip archives are 63.3 MB (NPDB 2022: five
+  workbooks, 0.4 to 34.7 MB) and 28.9 MB (physicians 2023: two workbooks). Files
+  over the cap are read by parts with range requests, inside the cap (ranged.py):
+  every workbook of the archives but the 34.7 MB NPDB 1996-2012 utilization, and the
+  1996-2014 workbook without its Table 1 (29.5 MB compressed, 239 MB of XML;
+  iterating it alone takes 76 s here, past the 60 s parse budget).
 """
 
 from maplestats_mcp.modules.cihi import constants as cihi_constants

@@ -28,13 +28,20 @@ class WorkbookRef(BaseModel):
         "from file names and dates); earlier releases are listed only on request."
     )
     kind: Literal["data tables", "interactive", "archive"] = Field(
-        description="'interactive' (Quick Stats) and 'archive' (.zip) files are listed but "
-        "not read; so are data tables in a layout this reader does not handle (see reason)."
+        description="'interactive' (Quick Stats): the dashboard tabs are skipped and the data "
+        "sheets behind them are read as tables. 'archive' (.zip): not read itself; each "
+        "workbook in it is listed as its own entry (with `archive` set)."
     )
     readable: bool
     reason: str | None = Field(default=None, description="Why a workbook is not read.")
     description: str | None = None
-    url: str = Field(description="The workbook on cihi.ca.")
+    url: str = Field(
+        description="The workbook on cihi.ca; for a workbook inside a .zip, the archive's "
+        "address followed by '#' and the workbook's file name."
+    )
+    archive: str | None = Field(
+        default=None, description="Id of the .zip archive this workbook is read from."
+    )
 
 
 class WorkbookList(BaseModel):
@@ -67,6 +74,11 @@ class TableRef(BaseModel):
         "when it has them; filter with filters={'Section': ...}.",
     )
     footnotes: int = Field(description="Note lines after the table, returned with its rows.")
+    hidden_sheet: bool = Field(
+        default=False,
+        description="True for a flat data table on a hidden sheet: the data a drop-down tab "
+        "or a Quick Stats dashboard shows one selection of. Its id is the sheet's name.",
+    )
 
 
 class SkippedSheet(BaseModel):
@@ -86,7 +98,8 @@ class WorkbookTables(BaseModel):
         "cihi_workforce_get_notes)."
     )
     skipped: list[SkippedSheet] = Field(
-        description="Sheets left out: hidden helper sheets and drop-down (interactive) tabs."
+        description="Sheets left out: drop-down (interactive) tabs, hidden helper sheets, and "
+        "sheets too large to fetch within this reader's download cap."
     )
     citation: str | None = Field(
         default=None, description="CIHI's own 'How to cite this document' line."
