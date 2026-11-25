@@ -208,7 +208,13 @@ async def slim_workbook(url: str) -> tuple[bytes, list[Omitted]]:
     last = max(listed, key=lambda m: m.header_offset)
     last_end = last.header_offset + 30 + len(last.name.encode()) + last.compressed_size
     spans = _spans(listed, min(total, last_end + _LAST_SLACK))
-    budget = constants.MAX_FILE_BYTES - min(total, _DIRECTORY_BYTES)
+    # list_members read the end of the file and, when the central directory starts before
+    # it, the whole directory again (with a ZIP64 end record of 56 bytes). The directory
+    # and end records lie after the last member's data, so that span bounds what it read.
+    tail = min(total, _DIRECTORY_BYTES)
+    after_data = max(0, total - last_end)
+    directory_read = tail + (after_data + 56 if after_data > tail else 0)
+    budget = constants.MAX_FILE_BYTES - directory_read
     needed = [
         m for m in listed if not _NOT_NEEDED.search(m.name) and not _SHEET.match(m.name)
     ]  # fmt: skip
@@ -227,12 +233,15 @@ async def slim_workbook(url: str) -> tuple[bytes, list[Omitted]]:
         else:
             left_out.append(sheet)
     if used > budget:
+        # Over the cap, not a broken file: the same TooLarge as a direct download over it.
         raise call_error(
-            UpstreamError,
+            TooLarge,
             f"cihi: {url}: the parts every sheet needs come to {used:,} bytes, over this "
-            f"reader's {constants.MAX_FILE_BYTES:,}-byte cap.",
-            f"cihi : {url} : les parties communes du classeur font {used:,} octets, au-delà "
-            f"de la limite de {constants.MAX_FILE_BYTES:,} octets de ce lecteur.",
+            f"reader's {constants.MAX_FILE_BYTES:,}-byte cap, so it cannot be read by parts: "
+            "open it on cihi.ca.",
+            f"cihi : {url} : les parties communes du classeur font {fr_number(used)} octets, "
+            f"au-delà de la limite de {fr_number(constants.MAX_FILE_BYTES)} octets de ce "
+            "lecteur ; il ne peut donc pas être lu par parties. Ouvrez-le sur cihi.ca.",
         )
     entries: list[tuple[str, bytes, int, int, int, int]] = []
     # Members next to each other in the file are fetched in one request.

@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from itertools import islice
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, unquote, urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup, Tag
@@ -408,7 +408,8 @@ def _member_refs(
                     f"Workbook inside the .zip archive {archive.id} ({size_mb} MB).",
                     f"Classeur de l'archive .zip {archive.id} ({size_mb} Mo).",
                 ),
-                url=f"{archive.url}#{member.name}",
+                # Percent-encoded, so spaces or a "#" in the path keep the address whole.
+                url=f"{archive.url}#{quote(member.name, safe='/')}",
                 archive=archive.id,
             )
         )
@@ -664,7 +665,9 @@ async def _by_parts(ref: WorkbookRef, lang: str) -> file_download.Downloaded:
 
 
 async def _member_body(ref: WorkbookRef, lang: str) -> tuple[bytes, bool]:
-    archive_url, _, name = ref.url.partition("#")
+    # The member's path is percent-encoded after the "#" (_member_refs).
+    archive_url, _, fragment = ref.url.partition("#")
+    name = unquote(fragment)
     members = await _archive_members(archive_url)
     member = next((m for m in members if m.name == name), None)
     if member is None:

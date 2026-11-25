@@ -958,8 +958,41 @@ async def test_the_parts_every_sheet_needs_must_fit_in_the_cap(httpx_mock, monke
     monkeypatch.setattr(remote_zip, "_TAIL_BYTES", 8192)
     monkeypatch.setattr(ranged, "_DIRECTORY_BYTES", 8192)
     _serve(httpx_mock, {"big.xlsx": body})
-    with pytest.raises(UpstreamError, match="over this reader's 12,000-byte cap"):
+    # Over the cap, not a broken file: TooLarge, as a direct download over the cap is.
+    with pytest.raises(TooLarge, match="over this reader's 12,000-byte cap"):
         await ranged.slim_workbook(f"{FILES}/big.xlsx")
+
+
+async def test_a_central_directory_read_apart_counts_against_the_cap(httpx_mock, monkeypatch):
+    # A directory longer than the end of the file read first is fetched again whole: those
+    # bytes count too, so the parts and sheets fetched after it still keep the total in the cap.
+    body, _ = _over_cap_workbook()
+    source = zipfile.ZipFile(io.BytesIO(body))
+    padded = io.BytesIO()
+    with zipfile.ZipFile(padded, "w", zipfile.ZIP_DEFLATED) as out:
+        for item in source.infolist():
+            out.writestr(item, source.read(item))
+        # Parts a values-only reader never fetches, named long enough to fill the directory.
+        for number in range(len(body) // 4 // 120):
+            out.writestr(f"xl/media/{'image' * 12}{number:05d}.png", b"")
+    monkeypatch.setattr(constants, "MAX_FILE_BYTES", len(body) + 8192)
+    monkeypatch.setattr(remote_zip, "_TAIL_BYTES", 8192)
+    monkeypatch.setattr(ranged, "_DIRECTORY_BYTES", 8192)
+    server = _serve(httpx_mock, {"big.xlsx": padded.getvalue()})
+    rebuilt, _omitted = await ranged.slim_workbook(f"{FILES}/big.xlsx")
+    assert zipfile.ZipFile(io.BytesIO(rebuilt)).testzip() is None
+    assert server.range_bytes <= constants.MAX_FILE_BYTES
+
+
+async def test_an_archived_workbook_address_is_percent_encoded(httpx_mock):
+    # A path with spaces (or a "#") stays one address, and that address reads the workbook.
+    name = "NPDB payments 2022 #2-en.xlsx"
+    _mock_listing(httpx_mock, archive=_archive({name: _workbook()}))
+    listed = await client.list_workbooks(include_earlier=True)
+    (member,) = [w for w in listed.workbooks if w.archive]
+    assert member.url == f"{ARCHIVE}#npdb-data-tables-2022/NPDB%20payments%202022%20%232-en.xlsx"
+    tables = await client.list_tables(member.url)
+    assert "1" in [t.table for t in tables.tables]
 
 
 # ---- layouts read since 2026-11-24 ------------------------------------------------------
