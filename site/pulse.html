@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="{{lang}}" data-root="{{root}}">
+<head>
+{{> head}}
+<title>{en}Canada's economy at a glance{fr}L'économie canadienne en un coup d'œil{/} · MapleStats MCP</title>
+<link rel="stylesheet" href="{{root}}assets/charts.css">
+<script src="{{root}}assets/charts.js" defer></script>
+<meta name="description" content="{en}Canada's economy at a glance: growth, jobs, inflation, rates and housing, from Statistics Canada and the Bank of Canada via MapleStats MCP.{fr}L'économie canadienne en un coup d'œil : croissance, emploi, inflation, taux et logement, selon Statistique Canada et la Banque du Canada.{/}">
+</head>
+<body>
+{{> header}}
+<main id="main" class="post">
+<div class="wrap post-shell">
+
+<header class="post-head">
+  <p class="label">{en}Pulse · Recorded {{pulse_captured}}{fr}Pouls · Enregistré le {{pulse_captured}}{/}</p>
+  <h1>{en}Canada's economy at a glance{fr}L'économie canadienne en un coup d'œil{/}</h1>
+  <p class="post-dek">{en}A running read on the health of the Canadian economy. Every number below came from Statistics Canada and the Bank of Canada through {{pulse_calls}} calls to MapleStats MCP, the same calls your AI agent can make.{fr}Un suivi continu de la santé de l'économie canadienne. Chaque chiffre ci-dessous vient de Statistique Canada et de la Banque du Canada, par {{pulse_calls}} appels à MapleStats MCP, les mêmes que votre agent d'IA peut faire.{/}</p>
+</header>
+
+<nav class="post-toc" data-toc aria-label="{en}On this page{fr}Sur cette page{/}">
+  <details open>
+    <summary>{en}On this page{fr}Sur cette page{/}</summary>
+    <ol>
+      <li><a href="#indicators">{en}Key indicators{fr}Indicateurs clés{/}</a></li>
+      <li><a href="#questions">{en}Four questions{fr}Quatre questions{/}</a></li>
+      <li><a href="#growth">{en}Growth{fr}Croissance{/}</a></li>
+      <li><a href="#jobs">{en}Jobs{fr}Emploi{/}</a></li>
+      <li><a href="#prices">{en}Inflation{fr}Inflation{/}</a></li>
+      <li><a href="#rates">{en}Rates{fr}Taux{/}</a></li>
+      <li><a href="#housing">{en}Housing{fr}Logement{/}</a></li>
+      <li><a href="#next">{en}Coming up{fr}À venir{/}</a></li>
+      <li><a href="#how">{en}Ask your agent{fr}Demandez à votre agent{/}</a></li>
+    </ol>
+  </details>
+</nav>
+
+<article class="post-body">
+
+<section class="post-sec" id="indicators">
+  <h2>{en}Key indicators{fr}Indicateurs clés{/}</h2>
+  <div class="post-wide">{{pulse_tiles}}</div>
+  <p class="post-wide pulse-fine">{{pulse_tiles_source}}. {en}Monthly figures are seasonally adjusted except the CPI and wages, which are compared with the same month a year earlier.{fr}Les chiffres mensuels sont désaisonnalisés, sauf l'IPC et les salaires, comparés au même mois de l'année précédente.{/}</p>
+</section>
+
+<section class="post-sec" id="questions">
+  <h2>{en}The economy in four questions{fr}L'économie en quatre questions{/}</h2>
+  <div class="post-wide pulse-questions">
+    <article class="pulse-q">
+      <h3>{en}Is inflation back at 2%?{fr}L'inflation est-elle revenue à 2 %?{/}</h3>
+      <dl>
+        <div><dt>{en}CPI, past 12 months{fr}IPC, 12 derniers mois{/}</dt><dd>{{pq_cpi}}</dd></div>
+        <div><dt>{en}Core: CPI-trim / CPI-median{fr}Fondamentale : IPC-tronq / IPC-méd{/}</dt><dd>{{pq_trim}} / {{pq_median}}</dd></div>
+      </dl>
+      <p>{en}The Bank of Canada aims for 2% inflation, the middle of a 1% to 3% range. CPI-trim and CPI-median leave out each month's largest price swings, so they show the underlying trend the Bank watches. Figures for {{pq_cpi_month}}.{fr}La Banque du Canada vise une inflation de 2 %, au milieu d'une fourchette de 1 % à 3 %. L'IPC-tronq et l'IPC-méd écartent les plus fortes variations de prix de chaque mois : ils montrent la tendance de fond que suit la Banque. Chiffres de {{pq_cpi_month}}.{/}</p>
+      <a href="#prices">{en}Inflation{fr}Inflation{/} →</a>
+    </article>
+    <article class="pulse-q">
+      <h3>{en}Is the job market weakening?{fr}Le marché du travail s'affaiblit-il?{/}</h3>
+      <dl>
+        <div><dt>{en}Jobs, last month{fr}Emplois, dernier mois{/}</dt><dd>{{pq_jobs}}</dd></div>
+        <div><dt>{en}3-month average{fr}Moyenne sur 3 mois{/}</dt><dd>{{pq_jobs_3m}}</dd></div>
+        <div><dt>{en}Unemployment rate{fr}Taux de chômage{/}</dt><dd>{{pq_unemp}} <small>({en}{{pq_unemp_year}} a year ago{fr}{{pq_unemp_year}} il y a un an{/})</small></dd></div>
+      </dl>
+      <p>{en}Hiring and the unemployment rate together say whether firms are still adding workers faster than the population grows. One month of the Labour Force Survey is noisy; the three-month average is the steadier read.{fr}L'embauche et le taux de chômage disent ensemble si les entreprises ajoutent encore des travailleurs plus vite que la population ne croît. Un mois de l'Enquête sur la population active est bruité; la moyenne sur trois mois est plus stable.{/}</p>
+      <a href="#jobs">{en}Jobs{fr}Emploi{/} →</a>
+    </article>
+    <article class="pulse-q">
+      <h3>{en}Is the economy still growing?{fr}L'économie croît-elle encore?{/}</h3>
+      <dl>
+        <div><dt>{en}Real GDP, {{pq_gdp_quarter}} (annualized){fr}PIB réel, {{pq_gdp_quarter}} (annualisé){/}</dt><dd>{{pq_gdp}}</dd></div>
+        <div><dt>{en}Past four quarters{fr}Quatre derniers trimestres{/}</dt><dd>{{pq_gdp_4q}}</dd></div>
+        <div><dt>{en}Final domestic demand (annualized){fr}Demande intérieure finale (annualisée){/}</dt><dd>{{pq_fdd}}</dd></div>
+      </dl>
+      <p>{en}GDP swings with trade and inventories. Final domestic demand, the spending of Canadian households, businesses and governments, is the steadier read on how much the country is buying.{fr}Le PIB varie avec le commerce et les stocks. La demande intérieure finale, soit les dépenses des ménages, des entreprises et des administrations publiques au Canada, montre de façon plus stable ce que le pays achète.{/}</p>
+      <a href="#growth">{en}Growth{fr}Croissance{/} →</a>
+    </article>
+    <article class="pulse-q">
+      <h3>{en}What is the bond market pricing?{fr}Qu'anticipe le marché obligataire?{/}</h3>
+      <dl>
+        <div><dt>{en}Long-term Canada yield, {{pq_since}}{fr}Rendement à long terme du Canada, {{pq_since}}{/}</dt><dd>{{pq_long}}</dd></div>
+        <div><dt>{en}Expected inflation (breakeven){fr}Inflation attendue (point mort){/}</dt><dd>{{pq_breakeven}}</dd></div>
+        <div><dt>{en}Real yield (Real Return Bonds){fr}Rendement réel (obligations à rendement réel){/}</dt><dd>{{pq_real}}</dd></div>
+      </dl>
+      <p>{en}A long bond's yield is roughly expected inflation plus a real return. The gap between the nominal long-term bond and the Real Return Bond is the market's inflation expectation; which part moved says whether investors fear inflation or demand a higher real return. The policy rate is {{pq_policy}}; the last change was {{pq_policy_move}} on {{pq_policy_move_day}}.{fr}Le rendement d'une obligation à long terme est à peu près l'inflation attendue plus un rendement réel. L'écart entre l'obligation nominale à long terme et l'obligation à rendement réel donne l'inflation qu'attend le marché; la partie qui a bougé dit si les investisseurs craignent l'inflation ou exigent un rendement réel plus élevé. Le taux directeur est de {{pq_policy}}; la dernière variation, de {{pq_policy_move}}, date du {{pq_policy_move_day}}.{/}</p>
+      <a href="#rates">{en}Rates{fr}Taux{/} →</a>
+    </article>
+  </div>
+</section>
+
+<section class="post-sec" id="growth">
+  <h2>{en}Growth{fr}Croissance{/}</h2>
+  <p>{en}Real GDP, quarter over quarter at an annual rate. Statistics Canada's monthly GDP by industry comes out about two months after the month ends, a month ahead of the quarterly accounts.{fr}PIB réel, d'un trimestre à l'autre au taux annuel. Le PIB mensuel par industrie de Statistique Canada paraît environ deux mois après la fin du mois, un mois avant les comptes trimestriels.{/}</p>
+  {{pulse_chart_gdp}}
+</section>
+
+<section class="post-sec" id="jobs">
+  <h2>{en}Jobs{fr}Emploi{/}</h2>
+  <p>{en}The monthly change in employment from the Labour Force Survey, and the unemployment rate since 2019.{fr}La variation mensuelle de l'emploi selon l'Enquête sur la population active, et le taux de chômage depuis 2019.{/}</p>
+  {{pulse_chart_jobs}}
+  {{pulse_chart_unemp}}
+</section>
+
+<section class="post-sec" id="prices">
+  <h2>{en}Inflation{fr}Inflation{/}</h2>
+  <p>{en}The all-items Consumer Price Index against the same month a year earlier. The shaded band is the Bank of Canada's 1% to 3% control range.{fr}L'indice des prix à la consommation, ensemble, comparé au même mois un an plus tôt. La bande ombrée est la fourchette de maîtrise de l'inflation de 1 % à 3 % de la Banque du Canada.{/}</p>
+  {{pulse_chart_cpi}}
+</section>
+
+<section class="post-sec" id="rates">
+  <h2>{en}Rates{fr}Taux{/}</h2>
+  <p>{en}The Bank of Canada's policy rate sets the cost of overnight money; the 10-year Government of Canada yield is what markets charge to lend to Ottawa for a decade, and it sets the tone for five-year fixed mortgages.{fr}Le taux directeur de la Banque du Canada fixe le coût de l'argent à un jour; le rendement à 10 ans du gouvernement du Canada est le prix que demandent les marchés pour prêter à Ottawa pendant dix ans, et il donne le ton aux prêts hypothécaires à taux fixe de cinq ans.{/}</p>
+  {{pulse_chart_policy}}
+  {{pulse_chart_ten}}
+</section>
+
+<section class="post-sec" id="housing">
+  <h2>{en}Housing{fr}Logement{/}</h2>
+  <p>{en}Housing starts, the Canada Mortgage and Housing Corporation's count of new homes begun, at a seasonally adjusted annual rate.{fr}Les mises en chantier, le compte des nouveaux logements commencés de la Société canadienne d'hypothèques et de logement, au taux annuel désaisonnalisé.{/}</p>
+  {{pulse_chart_starts}}
+</section>
+
+<section class="post-sec" id="next">
+  <h2>{en}Coming up{fr}À venir{/}</h2>
+  <p>{en}Statistics Canada's next major releases, from its release calendar (<code>statcan_daily_get_release_calendar</code>).{fr}Les prochaines grandes diffusions de Statistique Canada, tirées de son calendrier (<code>statcan_daily_get_release_calendar</code>).{/}</p>
+  {{pulse_upcoming}}
+</section>
+
+<section class="post-sec" id="how">
+  <h2>{en}Ask your agent the same questions{fr}Posez les mêmes questions à votre agent{/}</h2>
+  <p>{en}This page is not a separate data pipeline. A script calls MapleStats MCP's own tools, <code>wds_get_data_from_vectors</code> for Statistics Canada and <code>boc_get_observations</code> for the Bank of Canada, and the page is drawn from what they return, citations included. Connect MapleStats to Claude, ChatGPT or any MCP client and ask "How is the Canadian job market doing?": your agent gets the same figures, with the table and vector to cite.{fr}Cette page n'a pas sa propre chaîne de données. Un script appelle les outils de MapleStats MCP, <code>wds_get_data_from_vectors</code> pour Statistique Canada et <code>boc_get_observations</code> pour la Banque du Canada, et la page est tirée de ce qu'ils renvoient, citations comprises. Connectez MapleStats à Claude, à ChatGPT ou à tout client MCP et demandez « Comment se porte le marché du travail au Canada? » : votre agent obtient les mêmes chiffres, avec le tableau et le vecteur à citer.{/}</p>
+  {{how_pulse}}
+  <ul class="post-next">
+    <li><a href="{{root}}connect.html">{en}Connect MapleStats to your agent{fr}Connecter MapleStats à votre agent{/}</a><span>{en}One address, no account or API key.{fr}Une adresse, sans compte ni clé d'API.{/}</span></li>
+    <li><a href="{{root}}statcan.html">{en}How MapleStats reads Statistics Canada{fr}Comment MapleStats lit Statistique Canada{/}</a><span>{en}Tables, vectors, the census and microdata.{fr}Les tableaux, les vecteurs, le recensement et les microdonnées.{/}</span></li>
+    <li><a href="{{root}}sources.html">{en}Every source{fr}Toutes les sources{/}</a><span>{en}Federal, provincial and city publishers in one server.{fr}Les éditeurs fédéraux, provinciaux et municipaux dans un seul serveur.{/}</span></li>
+  </ul>
+  <p class="pulse-fine">{en}Official data for information only, not investment, tax or financial advice. Statistics Canada Open Licence; Bank of Canada Terms of Use.{fr}Données officielles fournies à titre informatif seulement, et non comme conseil en placement, en fiscalité ou en finances. Licence ouverte de Statistique Canada; conditions d'utilisation de la Banque du Canada.{/}</p>
+</section>
+
+</article>
+</div>
+</main>
+{{> footer}}
+</body>
+</html>

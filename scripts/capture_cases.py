@@ -215,6 +215,79 @@ CASES: dict[str, list[dict[str, Any]]] = {
             "arguments": {"vector_id": 41690973, "last_n_observations": 3},
         },
     ],
+    # The Pulse page (site/pulse.html): a running read on the Canadian
+    # economy. Refreshed before every website build (.github/workflows/pages.yml);
+    # "compact" keeps each observation's date and value only, so the file stays
+    # small enough to commit.
+    "pulse": [
+        # Monthly, seasonally adjusted unless noted: unemployment rate and
+        # employment (14-10-0287), CPI all-items NSA (18-10-0004), CPI-median
+        # and CPI-trim (18-10-0256, already year-over-year), monthly real GDP
+        # (36-10-0434), housing starts SAAR (34-10-0158), average hourly wage
+        # (14-10-0063, unadjusted, so compared year over year).
+        {
+            "name": "wds_get_data_from_vectors",
+            "arguments": {
+                "vector_ids": [
+                    2062815,
+                    2062811,
+                    41690973,
+                    108785714,
+                    108785715,
+                    65201210,
+                    52300157,
+                    2132579,
+                ],
+                "latest_n": 133,
+            },
+            "compact": True,
+        },
+        # Quarterly real GDP and final domestic demand (36-10-0104).
+        {
+            "name": "wds_get_data_from_vectors",
+            "arguments": {"vector_ids": [62305752, 62305753], "latest_n": 45},
+            "compact": True,
+        },
+        {
+            "name": "boc_get_observations",
+            "arguments": {"series_names": ["V39079"], "start_date": "2015-01-01"},
+            "compact": True,
+        },
+        # Daily markets since January 1 of last year: enough for the
+        # year-to-date changes (from last year's final close) and a chart.
+        {
+            "name": "boc_get_observations",
+            "arguments": {
+                "series_names": [
+                    "BD.CDN.2YR.DQ.YLD",
+                    "BD.CDN.10YR.DQ.YLD",
+                    "BD.CDN.LONG.DQ.YLD",
+                    "BD.CDN.RRB.DQ.YLD",
+                    "FXUSDCAD",
+                ],
+                "start_date": f"{datetime.now(UTC).year - 1}-01-01",
+            },
+            "compact": True,
+        },
+        {
+            "name": "boc_get_observations",
+            "arguments": {"series_names": ["M.BCPI"], "recent": 25},
+            "compact": True,
+        },
+        # What comes next, in both languages (the titles come from StatCan).
+        *(
+            {
+                "name": "statcan_daily_get_release_calendar",
+                "arguments": {
+                    "kind": "key_indicators",
+                    "upcoming_only": True,
+                    "limit": 8,
+                    "lang": lang,
+                },
+            }
+            for lang in ("en", "fr")
+        ),
+    ],
     # The home page's worked example: the last three days of the policy
     # rate, shown as its request, response and reproduce_code scripts.
     "policy_rate": [
@@ -342,6 +415,33 @@ def _trim(name: str, arguments: dict[str, Any], response: Any) -> Any:
     return response
 
 
+def _compact(name: str, response: Any) -> Any:
+    """Observations as [date, value] pairs; the citation and labels kept."""
+    if name == "wds_get_data_from_vectors":
+        keep = ("citation", "table_id", "table_url", "series_title", "unit", "frequency")
+        series = [
+            {
+                "vector_id": s["vector_id"],
+                "context": {k: s["context"].get(k) for k in keep},
+                "observations": [[o["ref_period"], o["value"]] for o in s["observations"]],
+            }
+            for s in response["series"]
+        ]
+        return {"series": series, "provenance": response["provenance"]}
+    if name == "boc_get_observations":
+        names = list(response["series"])
+        points: dict[str, list[list[Any]]] = {n: [] for n in names}
+        for obs in sorted(response["observations"], key=lambda o: o["ref_date"]):
+            for n, value in obs["values"].items():
+                if value is not None:
+                    points[n].append([obs["ref_date"], value])
+        series = {
+            n: {"label": response["series"][n]["label"], "observations": points[n]} for n in names
+        }
+        return {"series": series, "provenance": response["provenance"]}
+    raise ValueError(f"no compact form for {name}")
+
+
 async def _microdata_products(client: Client, name: str, arguments: dict[str, Any]) -> Any:
     """Page through the Data catalogue and count distinct microdata products."""
     products: dict[str, str] = {}
@@ -364,6 +464,8 @@ async def _record(client: Client, call: dict[str, Any], with_scripts: bool) -> d
     name, arguments = call["name"], call["arguments"]
     if call.get("all_pages"):
         response = await _microdata_products(client, name, arguments)
+    elif call.get("compact"):
+        response = _compact(name, await _call(client, name, arguments))
     else:
         response = _trim(name, arguments, await _call(client, name, arguments))
     record: dict[str, Any] = {"name": name, "arguments": arguments, "response": response}

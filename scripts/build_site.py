@@ -4289,6 +4289,557 @@ def toronto_context(modules: list[ModuleDoc], lang: Lang) -> dict[str, str]:
     }
 
 
+# --------------------------------------------------------------------------
+# The Pulse page (site/pulse.html): a running read on the Canadian economy,
+# cut from site/_data/cases/pulse.json. The Website workflow re-records that
+# file before each build (scripts/capture_cases.py pulse), so the page is as
+# fresh as the last build; when a source is unreachable the committed file is
+# used and the page says when it was recorded.
+# --------------------------------------------------------------------------
+
+PULSE_VECTORS = {
+    "unemployment": 2062815,
+    "employment": 2062811,
+    "cpi": 41690973,
+    "cpi_median": 108785714,
+    "cpi_trim": 108785715,
+    "gdp_monthly": 65201210,
+    "starts": 52300157,
+    "wage": 2132579,
+    "gdp": 62305752,
+    "fdd": 62305753,
+}
+MINUS = "−"
+
+
+def _signed(text: str, value: float) -> str:
+    """'+1.2%' / '−1.2%': a real minus sign, and no sign on a value shown as zero."""
+    if text.lstrip("0.,%   kpb") == "":
+        return text
+    return ("+" if value > 0 else MINUS if value < 0 else "") + text
+
+
+def _spct(value: float, lang: Lang, decimals: int = 1) -> str:
+    return _signed(percent(abs(value), lang, decimals), round(value, decimals))
+
+
+def _sbp(value: float, lang: Lang) -> str:
+    """A change in basis points, with a sign."""
+    whole = round(value)
+    unit = "bp" if lang == "en" else f"{NBSP}pb"
+    sign = "+" if whole > 0 else MINUS if whole < 0 else ""
+    return f"{sign}{number(abs(whole), lang)}{' ' if lang == 'en' else ''}{unit}".replace(
+        f" {NBSP}", NBSP
+    )
+
+
+def _quarter(iso: str, lang: Lang) -> str:
+    q = (int(iso[5:7]) - 1) // 3 + 1
+    return f"{'Q' if lang == 'en' else 'T'}{q} {iso[:4]}"
+
+
+def _months_back(iso: str, n: int) -> str:
+    y, m = int(iso[:4]), int(iso[5:7]) - n
+    while m < 1:
+        y, m = y - 1, m + 12
+    return f"{y:04d}-{m:02d}-01"
+
+
+def _pulse_series(case: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """StatCan series by vector id, and Bank of Canada series by name."""
+    wds: dict[int, Any] = {}
+    boc: dict[str, Any] = {}
+    for call in case["calls"]:
+        response = call["response"]
+        if call["name"] == "wds_get_data_from_vectors":
+            for s in response["series"]:
+                obs = [(d[:10], float(v)) for d, v in s["observations"] if v is not None]
+                wds[s["vector_id"]] = {**s, "points": sorted(obs)}
+        elif call["name"] == "boc_get_observations":
+            for name, s in response["series"].items():
+                obs = [(d[:10], float(v)) for d, v in s["observations"] if v is not None]
+                boc[name] = {**s, "points": sorted(obs)}
+    by_key = {key: wds[vector] for key, vector in PULSE_VECTORS.items()}
+    return by_key, boc
+
+
+def _yoy(points: list[tuple[str, float]], months: int = 12) -> list[tuple[str, float]]:
+    """Percent change over `months` months, for each point that has one."""
+    values = dict(points)
+    return [
+        (d, (v / values[_months_back(d, months)] - 1) * 100)
+        for d, v in points
+        if _months_back(d, months) in values
+    ]
+
+
+def _steps(points: list[tuple[str, float]], months: int) -> list[tuple[str, float, float]]:
+    """(date, value, previous value) for each point whose period before is present.
+
+    A pair of points either side of a missing period would otherwise read as
+    one period's change.
+    """
+    values = dict(points)
+    return [
+        (d, v, values[_months_back(d, months)])
+        for d, v in points
+        if _months_back(d, months) in values
+    ]
+
+
+def _on_or_before(points: list[tuple[str, float]], day: str) -> tuple[str, float]:
+    return [p for p in points if p[0] <= day][-1]
+
+
+def _wds_cite(series: dict[str, Any], lang: Lang) -> str:
+    ctx = series["context"]
+    url = ctx["table_url"] if lang == "en" else ctx["table_url"].replace("/en/", "/fr/")
+    word = "table" if lang == "en" else "tableau"
+    return f'<a href="{esc(url)}">{word} {esc(ctx["table_id"])}</a>'
+
+
+def _pulse_source(lang: Lang, statcan: list[dict[str, Any]], boc: list[str]) -> str:
+    """'Source: Statistics Canada, table …; Bank of Canada Valet, series …'."""
+    parts = []
+    if statcan:
+        tables: list[str] = []
+        for s in statcan:
+            cite = _wds_cite(s, lang)
+            if cite not in tables:
+                tables.append(cite)
+        publisher = "Statistics Canada" if lang == "en" else "Statistique Canada"
+        last = ("and " if lang == "en" else "et ") + tables[-1]
+        listed = ", ".join(tables[:-1]) + ("," if len(tables) > 2 and lang == "en" else "")
+        parts.append(
+            f"{publisher}, {listed} {last}" if len(tables) > 1 else f"{publisher}, {tables[0]}"
+        )
+    if boc:
+        publisher = "Bank of Canada" if lang == "en" else "Banque du Canada"
+        names = ", ".join(f"<code>{esc(n)}</code>" for n in boc)
+        page = "https://www.bankofcanada.ca/valet/docs" + ("" if lang == "en" else "?lang=fr")
+        word = "series" if lang == "en" else "séries" if len(boc) > 1 else "série"
+        parts.append(f'{publisher}, <a href="{page}">Valet</a>, {word} {names}')
+    label = "Source:" if lang == "en" else f"Source{NBSP}:"
+    return f'<span class="case-source">{label} {"; ".join(parts)}</span>'
+
+
+def _tile(label: str, value: str, period: str, note: str = "") -> str:
+    extra = f'<span class="pulse-tile-note">{note}</span>' if note else ""
+    return (
+        f'<li class="pulse-tile"><span class="pulse-tile-label">{label}</span>'
+        f'<span class="pulse-tile-value">{value}</span>'
+        f'<span class="pulse-tile-period">{period}</span>{extra}</li>'
+    )
+
+
+def _figure(title: str, chart: str, source: str) -> str:
+    return (
+        f'<figure class="chart-wrap post-wide"><p class="pulse-chart-title">{esc(title)}</p>'
+        f"{chart}<figcaption>{source}</figcaption></figure>"
+    )
+
+
+def pulse_context(lang: Lang) -> dict[str, str]:
+    case = load_case("pulse")
+    s, boc = _pulse_series(case)
+    en = lang == "en"
+
+    def mname(iso: str) -> str:
+        return month_name(iso, lang)
+
+    # Labour
+    emp = s["employment"]["points"]
+    emp_changes = [(d, (v - prev) * 1000) for d, v, prev in _steps(emp, 1)]
+    emp_last_iso, emp_last = emp_changes[-1]
+    emp_3m = sum(v for _, v in emp_changes[-3:]) / 3
+    unemp = s["unemployment"]["points"]
+    unemp_iso, unemp_last = unemp[-1]
+    unemp_year_ago = dict(unemp)[_months_back(unemp_iso, 12)]
+    wage_yoy = _yoy(s["wage"]["points"])
+    # Prices
+    cpi_yoy = _yoy(s["cpi"]["points"])
+    cpi_iso, cpi_last = cpi_yoy[-1]
+    trim = s["cpi_trim"]["points"][-1][1]
+    median = s["cpi_median"]["points"][-1][1]
+    # Output
+    gdp = s["gdp"]["points"]
+    gdp_growth = [(d, ((v / prev) ** 4 - 1) * 100) for d, v, prev in _steps(gdp, 3)]
+    gdp_iso, gdp_last = gdp_growth[-1]
+    gdp_4q = _yoy(gdp)[-1][1]
+    fdd = s["fdd"]["points"]
+    _, fdd_now, fdd_prev = _steps(fdd, 3)[-1]
+    fdd_last = ((fdd_now / fdd_prev) ** 4 - 1) * 100
+    gdpm = s["gdp_monthly"]["points"]
+    gdpm_iso, gdpm_now, gdpm_prev = _steps(gdpm, 1)[-1]
+    gdpm_last = (gdpm_now / gdpm_prev - 1) * 100
+    starts = s["starts"]["points"]
+    starts_step = _steps(starts, 1)[-1]
+    # Markets
+    year = boc["BD.CDN.10YR.DQ.YLD"]["points"][-1][0][:4]
+    year_end = f"{int(year) - 1}-12-31"
+
+    def ytd(name: str) -> tuple[str, float, float]:
+        pts = boc[name]["points"]
+        return pts[-1][0], pts[-1][1], _on_or_before(pts, year_end)[1]
+
+    ten_day, ten, ten_base = ytd("BD.CDN.10YR.DQ.YLD")
+    _, two, two_base = ytd("BD.CDN.2YR.DQ.YLD")
+    _, long_, long_base = ytd("BD.CDN.LONG.DQ.YLD")
+    _, rrb, rrb_base = ytd("BD.CDN.RRB.DQ.YLD")
+    fx_day, fx, fx_base = ytd("FXUSDCAD")
+    cad, cad_base = 100 / fx, 100 / fx_base
+    policy = boc["V39079"]["points"]
+    policy_day, policy_last = policy[-1]
+    policy_moves = [(b[0], b[1] - a[1]) for a, b in pairwise(policy) if a[1] != b[1]]
+    bcpi_yoy = _yoy(boc["M.BCPI"]["points"])
+
+    def pct(v: float) -> str:
+        return percent(v, lang)
+
+    k = "k" if en else NNBSP + "k"
+    since_ye = (
+        f"since 31 December {int(year) - 1}" if en else f"depuis le 31 décembre {int(year) - 1}"
+    )
+
+    def jobs(v: float) -> str:
+        return _signed(number(abs(v) / 1000, lang) + k, round(v / 1000))
+
+    tiles = [
+        _tile(
+            "Real GDP" if en else "PIB réel",
+            _spct(gdp_last, lang),
+            f"{_quarter(gdp_iso, lang)}, {'annualized' if en else 'taux annualisé'}",
+        ),
+        _tile(
+            "Monthly GDP" if en else "PIB mensuel",
+            _spct(gdpm_last, lang),
+            f"{mname(gdpm_iso)}, m/m" if en else f"{mname(gdpm_iso)}, d'un mois à l'autre",
+        ),
+        _tile(
+            "Employment" if en else "Emploi",
+            jobs(emp_last),
+            mname(emp_last_iso),
+            ("3-month avg " if en else "moyenne sur 3 mois ") + jobs(emp_3m),
+        ),
+        _tile(
+            "Unemployment" if en else "Chômage",
+            pct(unemp_last),
+            mname(unemp_iso),
+            (f"{pct(unemp_year_ago)} a year ago" if en else f"{pct(unemp_year_ago)} il y a un an"),
+        ),
+        _tile(
+            "CPI inflation" if en else "Inflation (IPC)",
+            pct(cpi_last),
+            mname(cpi_iso) + (", y/y" if en else ", sur 12 mois"),
+        ),
+        _tile(
+            "Core: trim / median" if en else "Fondamentale : tronquée / médiane",
+            f"{pct(trim)} / {pct(median)}",
+            mname(s["cpi_trim"]["points"][-1][0]) + (", y/y" if en else ", sur 12 mois"),
+        ),
+        _tile(
+            "Hourly wages" if en else "Salaire horaire",
+            _spct(wage_yoy[-1][1], lang),
+            mname(wage_yoy[-1][0]) + (", y/y" if en else ", sur 12 mois"),
+        ),
+        _tile(
+            "Policy rate" if en else "Taux directeur",
+            percent(policy_last, lang, 2),
+            long_date(policy_day, lang),
+        ),
+        _tile(
+            "10-year yield" if en else "Rendement à 10 ans",
+            percent(ten, lang, 2),
+            long_date(ten_day, lang),
+            _sbp((ten - ten_base) * 100, lang) + (" this year" if en else " cette année"),
+        ),
+        _tile(
+            "2y–10y spread" if en else "Écart 2-10 ans",
+            _sbp((ten - two) * 100, lang).lstrip("+"),
+            long_date(ten_day, lang),
+            _sbp(((ten - two) - (ten_base - two_base)) * 100, lang)
+            + (" this year" if en else " cette année"),
+        ),
+        _tile(
+            "Canadian dollar" if en else "Dollar canadien",
+            f"{number(cad, lang, 2)}{'¢ US' if en else NNBSP + '¢ US'}",
+            long_date(fx_day, lang),
+            _spct((cad / cad_base - 1) * 100, lang) + (" this year" if en else " cette année"),
+        ),
+        _tile(
+            "Housing starts" if en else "Mises en chantier",
+            number(starts[-1][1] * 1000, lang),
+            mname(starts[-1][0]) + (", annual rate" if en else ", taux annuel"),
+            _spct((starts_step[1] / starts_step[2] - 1) * 100, lang)
+            + (" m/m" if en else " d'un mois à l'autre"),
+        ),
+        _tile(
+            "Commodity prices" if en else "Prix des produits de base",
+            _spct(bcpi_yoy[-1][1], lang),
+            mname(bcpi_yoy[-1][0]) + (", y/y" if en else ", sur 12 mois"),
+        ),
+    ]
+
+    # Charts. Dates in tooltips: ISO in English, written out in French.
+    tip_m, tip_d = tip_date(lang, monthly=True), tip_date(lang, monthly=False)
+
+    def chart(
+        key: str, svg: str, caption: str, head: tuple[str, ...], rows: list[list[str]]
+    ) -> str:
+        return chart_table(svg, f"pulse-{key}", lang, caption, head, rows)
+
+    date_head = "Date"
+    month_head = "Month" if en else "Mois"
+    cpi_points = cpi_yoy[-85:]
+    cpi_label = (
+        "Consumer Price Index, all-items, 12-month change, with the Bank of Canada's 1% to 3% control range"
+        if en
+        else "Indice des prix à la consommation, ensemble, variation sur 12 mois, avec la fourchette de maîtrise de 1 % à 3 % de la Banque du Canada"
+    )
+    chart_cpi = chart(
+        "cpi",
+        charts.line_chart(
+            cpi_points,
+            label=cpi_label,
+            value_format=pct,
+            x_tick_format=year_ticks,
+            band=(1.0, 3.0, "Target range" if en else "Fourchette cible"),
+            date_format=tip_m,
+        ),
+        cpi_label,
+        (month_head, "CPI, y/y" if en else "IPC, sur 12 mois"),
+        charts.time_rows(cpi_points, pct, mname),
+    )
+
+    unemp_label = (
+        "Unemployment rate, Canada, seasonally adjusted, monthly"
+        if en
+        else "Taux de chômage, Canada, désaisonnalisé, mensuel"
+    )
+    chart_unemp = chart(
+        "unemployment",
+        charts.line_chart(
+            unemp,
+            label=unemp_label,
+            value_format=pct,
+            x_tick_format=year_ticks,
+            date_format=tip_m,
+        ),
+        unemp_label,
+        (month_head, "Rate" if en else "Taux"),
+        charts.time_rows(unemp, pct, mname),
+    )
+
+    jobs_shown = emp_changes[-13:]
+    cats = [month_name(d, lang)[:3] + " " + d[2:4] for d, _ in jobs_shown]
+    if not en:
+        cats = [f"{MONTHS_FR[int(d[5:7]) - 1][:4].rstrip('.')}. {d[2:4]}" for d, _ in jobs_shown]
+    jobs_series: list[tuple[str, list[float | None]]] = [
+        ("Employment change" if en else "Variation de l'emploi", [v for _, v in jobs_shown])
+    ]
+    jobs_label = (
+        "Monthly change in employment, thousands of people, seasonally adjusted, last 13 months"
+        if en
+        else "Variation mensuelle de l'emploi, en milliers de personnes, désaisonnalisée, 13 derniers mois"
+    )
+    chart_jobs = chart(
+        "jobs",
+        charts.grouped_bars(cats, jobs_series, label=jobs_label, value_format=jobs),
+        jobs_label,
+        (month_head, "Change" if en else "Variation"),
+        [[mname(d), jobs(v)] for d, v in jobs_shown],
+    )
+
+    gdp_shown = gdp_growth[-12:]
+    gdp_cats = [_quarter(d, lang) for d, _ in gdp_shown]
+    gdp_label = (
+        "Real GDP growth, quarter over quarter at an annual rate, last 12 quarters"
+        if en
+        else "Croissance du PIB réel, d'un trimestre à l'autre au taux annuel, 12 derniers trimestres"
+    )
+    gdp_series: list[tuple[str, list[float | None]]] = [
+        ("Real GDP" if en else "PIB réel", [v for _, v in gdp_shown])
+    ]
+    chart_gdp = chart(
+        "gdp",
+        charts.grouped_bars(gdp_cats, gdp_series, label=gdp_label, value_format=pct),
+        gdp_label,
+        ("Quarter" if en else "Trimestre", "Growth" if en else "Croissance"),
+        charts.bar_rows(gdp_cats, gdp_series, pct),
+    )
+
+    def rate(v: float) -> str:
+        return percent(v, lang, 2)
+
+    policy_label = (
+        "Bank of Canada target for the overnight rate, daily since 2015"
+        if en
+        else "Taux cible du financement à un jour de la Banque du Canada, quotidien depuis 2015"
+    )
+    chart_policy = chart(
+        "policy",
+        charts.step_chart(
+            policy,
+            label=policy_label,
+            value_format=rate,
+            x_tick_format=year_ticks,
+            date_format=tip_d,
+        ),
+        policy_label,
+        (date_head, "Rate" if en else "Taux"),
+        charts.time_rows(policy, rate, lambda iso: long_date(iso, lang), steps=True),
+    )
+
+    tens = boc["BD.CDN.10YR.DQ.YLD"]["points"]
+    ten_label = (
+        f"10-year Government of Canada benchmark bond yield, daily since January {int(year) - 1}"
+        if en
+        else f"Rendement de l'obligation de référence du gouvernement du Canada à 10 ans, quotidien depuis janvier {int(year) - 1}"
+    )
+    chart_ten = chart(
+        "ten",
+        charts.line_chart(
+            tens,
+            label=ten_label,
+            value_format=rate,
+            x_tick_format=lambda iso: (
+                (month_name(iso, lang)[:3] + " " + iso[:4]) if iso[5:7] in ("01", "07") else None
+            ),
+            date_format=tip_d,
+        ),
+        ten_label,
+        (month_head, "Average yield" if en else "Rendement moyen"),
+        [[mname(f"{m}-01"), rate(sum(vs) / len(vs))] for m, vs in _by_month(tens).items()],
+    )
+
+    starts_k = [(d, v * 1000) for d, v in starts]
+    starts_label = (
+        "Housing starts, all areas, seasonally adjusted at annual rates, monthly"
+        if en
+        else "Mises en chantier, toutes les régions, désaisonnalisées au taux annuel, mensuel"
+    )
+
+    def units(v: float) -> str:
+        return number(v, lang)
+
+    chart_starts = chart(
+        "starts",
+        charts.line_chart(
+            starts_k,
+            label=starts_label,
+            value_format=units,
+            x_tick_format=year_ticks,
+            date_format=tip_m,
+        ),
+        starts_label,
+        (month_head, "Units" if en else "Logements"),
+        charts.time_rows(starts_k, units, mname),
+    )
+
+    # What comes next: the calendar call in this page's language.
+    calendar = next(
+        c["response"]
+        for c in case["calls"]
+        if c["name"] == "statcan_daily_get_release_calendar" and c["arguments"]["lang"] == lang
+    )
+    upcoming = "".join(
+        f'<li><time datetime="{e["release_date"]}">{esc(long_date(e["release_date"], lang))}</time>'
+        f"<span>{esc(e['title'])}"
+        + (f", {esc(e['reference_period'])}" if e.get("reference_period") else "")
+        + "</span></li>"
+        for e in calendar["entries"][:6]
+    )
+
+    last_move_day, last_move = policy_moves[-1]
+    return {
+        "pulse_captured": esc(long_date(case["captured"], lang)),
+        "pulse_calls": str(len(case["calls"])),
+        "pulse_series": str(len(PULSE_VECTORS) + sum(1 for _ in boc)),
+        "pulse_tiles": f'<ul class="pulse-tiles">{"".join(tiles)}</ul>',
+        "pulse_upcoming": f'<ol class="pulse-upcoming">{upcoming}</ol>',
+        # The four questions
+        "pq_cpi": esc(pct(cpi_last)),
+        "pq_cpi_month": esc(mname(cpi_iso)),
+        "pq_trim": esc(pct(trim)),
+        "pq_median": esc(pct(median)),
+        "pq_jobs": esc(jobs(emp_last)),
+        "pq_jobs_3m": esc(jobs(emp_3m)),
+        "pq_unemp": esc(pct(unemp_last)),
+        "pq_unemp_year": esc(pct(unemp_year_ago)),
+        "pq_gdp": esc(_spct(gdp_last, lang)),
+        "pq_gdp_4q": esc(_spct(gdp_4q, lang)),
+        "pq_fdd": esc(_spct(fdd_last, lang)),
+        "pq_gdp_quarter": esc(_quarter(gdp_iso, lang)),
+        "pq_long": esc(_sbp((long_ - long_base) * 100, lang)),
+        "pq_breakeven": esc(_sbp(((long_ - rrb) - (long_base - rrb_base)) * 100, lang)),
+        "pq_real": esc(_sbp((rrb - rrb_base) * 100, lang)),
+        "pq_since": esc(since_ye),
+        "pq_policy": esc(rate(policy_last)),
+        "pq_policy_move": esc(_sbp(last_move * 100, lang)),
+        "pq_policy_move_day": esc(long_date(last_move_day, lang)),
+        # Charts and their sources
+        "pulse_chart_cpi": _figure(
+            "Consumer prices, 12-month change"
+            if en
+            else "Prix à la consommation, variation sur 12 mois",
+            chart_cpi,
+            _pulse_source(lang, [s["cpi"], s["cpi_trim"]], []),
+        ),
+        "pulse_chart_unemp": _figure(
+            "Unemployment rate" if en else "Taux de chômage",
+            chart_unemp,
+            _pulse_source(lang, [s["unemployment"]], []),
+        ),
+        "pulse_chart_jobs": _figure(
+            "Jobs added or lost each month" if en else "Emplois gagnés ou perdus chaque mois",
+            chart_jobs,
+            _pulse_source(lang, [s["employment"]], []),
+        ),
+        "pulse_chart_gdp": _figure(
+            "Real GDP growth, annualized" if en else "Croissance du PIB réel, annualisée",
+            chart_gdp,
+            _pulse_source(lang, [s["gdp"], s["gdp_monthly"]], []),
+        ),
+        "pulse_chart_policy": _figure(
+            "Bank of Canada policy rate" if en else "Taux directeur de la Banque du Canada",
+            chart_policy,
+            _pulse_source(lang, [], ["V39079"]),
+        ),
+        "pulse_chart_ten": _figure(
+            "10-year Government of Canada bond yield"
+            if en
+            else "Rendement des obligations du Canada à 10 ans",
+            chart_ten,
+            _pulse_source(
+                lang,
+                [],
+                ["BD.CDN.10YR.DQ.YLD"],
+            ),
+        ),
+        "pulse_chart_starts": _figure(
+            "Housing starts, annual rate" if en else "Mises en chantier, taux annuel",
+            chart_starts,
+            _pulse_source(lang, [s["starts"]], []),
+        ),
+        "pulse_tiles_source": _pulse_source(
+            lang,
+            [
+                s[k]
+                for k in ("gdp", "gdp_monthly", "employment", "cpi", "cpi_trim", "wage", "starts")
+            ],
+            ["V39079", "BD.CDN.2YR.DQ.YLD", "BD.CDN.10YR.DQ.YLD", "FXUSDCAD", "M.BCPI"],
+        ),
+        "how_pulse": how_block(case, "pulse", lang),
+    }
+
+
+def _by_month(points: list[tuple[str, float]]) -> dict[str, list[float]]:
+    out: dict[str, list[float]] = {}
+    for d, v in points:
+        out.setdefault(d[:7], []).append(v)
+    return out
+
+
 def _code_list(names: list[str], lang: Lang) -> str:
     """<code>a</code>, <code>b</code> and <code>c</code>."""
     codes = [f"<code>{esc(name)}</code>" for name in names]
@@ -4713,6 +5264,7 @@ def _write_site(
         target_dir.mkdir(parents=True, exist_ok=True)
         statcan = statcan_context(modules, lang, root, statcan_searched[lang])
         toronto = toronto_context(modules, lang)
+        pulse = pulse_context(lang)
         for page in pages:
             context = {
                 **shared,
@@ -4721,6 +5273,7 @@ def _write_site(
                 **cases[lang],
                 **statcan,
                 **toronto,
+                **pulse,
                 "lang": lang,
                 "root": root,
                 "page": page.name,
@@ -4747,6 +5300,7 @@ def _write_site(
                 "cur_cases": ' aria-current="page"' if page.name == "cases.html" else "",
                 "cur_statcan": ' aria-current="page"' if page.name == "statcan.html" else "",
                 "cur_toronto": ' aria-current="page"' if page.name == "toronto.html" else "",
+                "cur_pulse": ' aria-current="page"' if page.name == "pulse.html" else "",
                 "cur_contributing": (
                     ' aria-current="page"' if page.name == "contributing.html" else ""
                 ),
@@ -4760,7 +5314,7 @@ def _write_site(
                 "level_filters": level_filters(modules, lang),
             }
             rendered = render(page.read_text(encoding="utf-8"), lang, context)
-            if page.name in ("statcan.html", "toronto.html"):
+            if page.name in ("statcan.html", "toronto.html", "pulse.html"):
                 rendered = link_tools(rendered, set(by_name), root)
             if lang == "fr":
                 rendered = french_links(rendered)
@@ -4877,6 +5431,7 @@ def llms_txt(modules: list[ModuleDoc], counts: dict[str, int]) -> str:
         f"- [Sources]({page_url('sources.html', 'en')}): which agencies and portals cover where",
         f"- [Statistics Canada]({page_url('statcan.html', 'en')}): tables, census and microdata",
         f"- [City of Toronto]({page_url('toronto.html', 'en')}): open.toronto.ca datasets, what their columns mean, and the portal's rules",
+        f"- [Pulse]({page_url('pulse.html', 'en')}): a running read on the Canadian economy, every figure fetched through MapleStats",
         f"- [Demos]({page_url('cases.html', 'en')}): recorded calls behind real questions",
         f"- [FAQ and licences]({page_url('faq.html', 'en')}): whether queries are saved, and what applies to the data",
         f"- [About]({page_url('about.html', 'en')}): what MapleStats is, who builds it, alternatives",
