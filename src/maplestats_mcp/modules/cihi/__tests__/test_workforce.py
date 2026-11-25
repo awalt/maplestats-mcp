@@ -341,6 +341,36 @@ async def test_list_workbooks_classifies_editions_topics_and_unreadable_files(ht
     assert "CIHI" in result.terms and "copyright@cihi.ca" in result.terms
 
 
+async def test_an_archive_that_fails_once_is_listed_again_on_the_next_call(httpx_mock):
+    # The page listing is cached; the archive's workbooks are not cached with it, so a host
+    # that refuses the archive once (www.cihi.ca answered 403 on 2026-11-24) does not hide
+    # them for the listing's whole cache period.
+    cards = [*_EN_CARDS, _ZIP_CARD]
+    base = re.escape(f"{BASE}/en/topics/health-workforce/data-tables")
+    for number in range(2):
+        httpx_mock.add_response(url=re.compile(base + rf"\?.*page={number}$"), text=_page(cards))
+    server = Server(
+        {"npdb-data-tables-2022-en.zip": _archive({f"{ARCHIVE_MEMBER}-en.xlsx": _workbook()})}
+    )
+    refusing = True
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403) if refusing else server(request)
+
+    httpx_mock.add_callback(answer, url=ARCHIVE, is_reusable=True, is_optional=True)
+
+    first = await client.list_workbooks(include_earlier=True)
+    by_id = {w.id: w for w in first.workbooks}
+    assert ARCHIVE_MEMBER not in by_id
+    assert not by_id["npdb-data-tables-2022"].readable
+
+    refusing = False
+    second = await client.list_workbooks(include_earlier=True)
+    by_id = {w.id: w for w in second.workbooks}
+    assert by_id[ARCHIVE_MEMBER].archive == "npdb-data-tables-2022"
+    assert ARCHIVE_MEMBER in (by_id["npdb-data-tables-2022"].reason or "")
+
+
 async def test_list_workbooks_hides_earlier_releases_and_filters_by_query(httpx_mock):
     _mock_listing(httpx_mock)
     result = await client.list_workbooks()
@@ -971,6 +1001,31 @@ def test_a_banner_over_the_header_and_zero_width_characters():
     assert table.names[1] == "Number of health care worker cases"
     assert _values(table, rows)[0] == ["N.S.", 184, 0, "—", 1067]
     assert sheet_tables.match_key("N.S.\u200b") == sheet_tables.match_key("Nova Scotia")
+
+
+def test_a_header_with_a_blank_corner_is_not_taken_for_a_banner():
+    # A header whose corner cell is blank, in a row padded to a wider sheet: it looks like a
+    # banner (column A blank, at most half filled), but the row below holds data, so it is
+    # the header.
+    rows = _rows(
+        ["Table 2  Supply by profession"],
+        [None, "Physicians", "Nurses", None, None, None, None, None],
+        ["N.L.", 1234, 5678, None, None, None, None, None],
+        ["Alta.", 12494, 42694, None, None, None, None, None],
+    )
+    (table,) = sheet_tables.read_sheet_tables(rows, "Table 2")[0]
+    assert table.header_row == 2 and table.names[1:3] == ["Physicians", "Nurses"]
+    assert _values(table, rows)[0][:3] == ["N.L.", 1234, 5678]
+
+    # Years across the top of a blank corner are a header, never a banner.
+    rows = _rows(
+        ["Table 3  Supply by year"],
+        [None, 2023, 2024, None, None, None, None],
+        ["Alta.", 12100, 12494, None, None, None, None],
+    )
+    (table,) = sheet_tables.read_sheet_tables(rows, "Table 3")[0]
+    assert table.header_row == 2
+    assert _values(table, rows)[0][:3] == ["Alta.", 12100, 12494]
 
 
 def test_survey_questions_split_into_one_table_per_block():

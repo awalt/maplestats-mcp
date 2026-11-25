@@ -466,23 +466,33 @@ async def _listing(lang: str) -> tuple[list[WorkbookRef], bool]:
                     url=card["url"],
                 )
             )
-        taken = {r.id for r in refs}
-        for archive in [r for r in refs if r.kind == "archive"]:
-            # Two range requests per archive (the end of the file); a host that stops
-            # answering ranges leaves the archive listed with the reason, not the listing broken.
-            try:
-                members = await _archive_members(archive.url)
-            except (UpstreamError, UpstreamUnavailable):
-                continue
-            inside = _member_refs(archive, members, taken, lang)
-            if inside:
-                refs.extend(inside)
-                archive.reason = _archive_reason([r.id for r in inside], lang)
         return refs
 
-    return await cached_fetch(
+    pages, cached = await cached_fetch(
         f"cihi_workforce:listing:{lang}", constants.CACHE_TTL_LISTING_SECONDS, fetch
     )
+    # The archives' workbooks are added on every call, from their own cache entry, which
+    # keeps only a listing that succeeded: a host that fails once leaves the archive listed
+    # with its reason this time, and the next call tries again (the page listing above is
+    # never cached without them). Copies, so the cached entries are never changed.
+    refs = list(pages)
+    taken = {r.id for r in refs}
+    for index, archive in enumerate(pages):
+        if archive.kind != "archive":
+            continue
+        # Two range requests per archive (the end of the file); a host that stops answering
+        # ranges leaves the archive listed with the reason, not the listing broken.
+        try:
+            members = await _archive_members(archive.url)
+        except (UpstreamError, UpstreamUnavailable):
+            continue
+        inside = _member_refs(archive, members, taken, lang)
+        if inside:
+            refs.extend(inside)
+            refs[index] = archive.model_copy(
+                update={"reason": _archive_reason([r.id for r in inside], lang)}
+            )
+    return refs, cached
 
 
 def _haystack(ref: WorkbookRef) -> str:

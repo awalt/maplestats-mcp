@@ -400,11 +400,35 @@ def _is_banner(row: Row) -> bool:
     cells). The header row below repeats each name in its own cells ("2019–2020 Ontario"),
     so the banner is not needed to name a column. Live: the COVID-19, virtual care and
     2016-2020 provider workbooks (checked 2026-11-24).
+
+    A banner names groups, so a row with a number in it (years across the top of a header
+    with a blank corner cell) is not one. This is only a candidate: table_events skips it
+    only when the row below it names columns too (_names_columns).
     """
     values = row.values
     if not values or _has_text_or_number(values[0]):
         return False
-    return len(row.filled()) * 2 <= len(values)
+    filled = row.filled()
+    if any(looks_numeric(values[i]) for i in filled):
+        return False
+    return len(filled) * 2 <= len(values)
+
+
+_YEAR = re.compile(r"^(?:19|20)\d\d(?:[-–/](?:19|20)?\d\d)?$")
+
+
+def _names_columns(row: Row) -> bool:
+    """A header row: every filled cell is a name or a year ("2019", "2019–2020"), no data."""
+    filled = row.filled()
+    return len(filled) >= 2 and all(
+        _YEAR.match(text_of(row.values[i]))
+        or (
+            isinstance(row.values[i], str)
+            and not looks_numeric(row.values[i])
+            and not is_symbol(row.values[i])
+        )
+        for i in filled
+    )
 
 
 def _header_like(row: Row) -> bool:
@@ -443,6 +467,7 @@ def table_events(
     captions: list[str] = []
     block = 1
     numbered = False
+    banner: Row | None = None
 
     def footer() -> Footer | None:
         if not pending:
@@ -450,7 +475,8 @@ def table_events(
         return Footer(pending[0][0], pending[-1][0], [text for _, text in pending])
 
     def start_header(row: Row) -> Header:
-        nonlocal header, header_second
+        nonlocal header, header_second, banner
+        banner = None
         header = [text_of(v) for v in row.values]
         header_second = normalize(header[1]) if len(header) > 1 else ""
         return Header(row.number, header)
@@ -500,13 +526,19 @@ def table_events(
                 if question is not None:
                     captions.append(text)
                 continue
-            if _is_banner(row):
+            if banner is None and _is_banner(row):
+                banner = row
                 continue
+            # A banner candidate is skipped only when the row below it names columns too;
+            # when that row holds data, the candidate was the header (a blank corner cell
+            # over a table narrower than its sheet) and this row is the first of the body.
+            first = banner if banner is not None and not _names_columns(row) else row
             if question is not None and captions:
-                yield Caption(row.number, captions[-1])
-            yield start_header(row)
+                yield Caption(first.number, captions[-1])
+            yield start_header(first)
             state = "body"
-            continue
+            if first is row:
+                continue
         if single:
             pending.append((row.number, text))
             continue
