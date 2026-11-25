@@ -30,6 +30,8 @@ class Portal:
     # Service hosts known to fail from some networks; the live smoke test skips
     # their items instead of failing the whole portal.
     unreliable_hosts: tuple[str, ...] = ()
+    # Exact HTTPS hosts for file URLs in this portal's Document Link items.
+    file_hosts: tuple[str, ...] = ()
 
 
 PORTALS: dict[str, Portal] = {
@@ -93,7 +95,12 @@ PORTALS: dict[str, Portal] = {
         "Catalogue de données ouvertes de la Ville de Surrey",
     ),
     "ottawa": Portal(
-        "open.ottawa.ca", "City of Ottawa Open Data", "Données ouvertes de la Ville d'Ottawa"
+        "open.ottawa.ca",
+        "City of Ottawa Open Data",
+        "Données ouvertes de la Ville d'Ottawa",
+        # Ottawa puts Excel workbooks in "document", outside "dataset".
+        collection="all",
+        file_hosts=("opendata.ottawa.ca", "311opendatastorage.blob.core.windows.net"),
     ),
     "halifax": Portal(
         "data-hrm.hub.arcgis.com",

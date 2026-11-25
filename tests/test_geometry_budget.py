@@ -172,7 +172,7 @@ def test_the_note_says_rows_were_dropped_not_vertices():
 
 ITEM_ID = "14cca5b087f74d2d9eadc018c261d1b3"
 SERVICE = "https://services.arcgis.com/G6F8XLCl5KtAlZ2G/arcgis/rest/services/Parks/FeatureServer"
-COLLECTION = "https://open.ottawa.ca/api/search/v1/collections/dataset"
+COLLECTION = "https://open.ottawa.ca/api/search/v1/collections/all"
 
 
 @pytest.mark.parametrize("detail", ["full", None])

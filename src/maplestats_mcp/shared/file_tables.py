@@ -102,19 +102,21 @@ def decode(body: bytes) -> str:
             return body.decode("latin-1")
 
 
-def _is_workbook_zip(body: bytes) -> bool:
-    try:
-        names = zipfile.ZipFile(io.BytesIO(body)).namelist()
-    except zipfile.BadZipFile:
-        return False
+def is_workbook_archive(archive: zipfile.ZipFile) -> bool:
+    """Recognize the Office workbook container inside a ZIP directory."""
+    names = archive.namelist()
     return "[Content_Types].xml" in names and any(n.startswith("xl/") for n in names)
 
 
 def detect_format(body: bytes, declared: str | None) -> FileFormat:
     """The real format from the first bytes; `declared` only breaks a text tie."""
     if body.startswith(_XLSX_MAGIC):
-        if _is_workbook_zip(body):
-            return "xlsx"
+        try:
+            with zipfile.ZipFile(io.BytesIO(body)) as archive:
+                if is_workbook_archive(archive):
+                    return "xlsx"
+        except zipfile.BadZipFile:
+            pass
         # Confirmed live: "XLSX"/"CSV" resources that are zipped shapefiles or CSVs.
         raise call_error(
             UpstreamError,
@@ -168,13 +170,19 @@ def _normal(text: str) -> str:
 
 
 def _unique_names(header: list[str], width: int) -> list[str]:
+    bases = [
+        (" ".join(header[index].split()) if index < len(header) else "") or f"column_{index + 1}"
+        for index in range(width)
+    ]
+    reserved = {base.casefold() for base in bases}
     names: list[str] = []
     seen: dict[str, int] = {}
-    for index in range(width):
-        base = " ".join(header[index].split()) if index < len(header) else ""
-        base = base or f"column_{index + 1}"
-        count = seen.get(base.casefold(), 0) + 1
-        seen[base.casefold()] = count
+    for base in bases:
+        key = base.casefold()
+        count = seen.get(key, 0) + 1
+        while count > 1 and f"{key}_{count}" in reserved:
+            count += 1
+        seen[key] = count
         names.append(base if count == 1 else f"{base}_{count}")
     return names
 
@@ -240,6 +248,7 @@ def scan_rows(
     contains: str | None = None,
     offset: int = 0,
     limit: int = ROWS_LIMIT_DEFAULT,
+    max_page_cells: int | None = None,
 ) -> ScanResult:
     """One pass over `rows`: header, filters, count, and the requested page."""
     if header_row is not None and header_row > MAX_HEADER_ROW:
@@ -281,6 +290,14 @@ def scan_rows(
 
     wanted = [(locate(k), _normal(v)) for k, v in (filters or {}).items()]
     chosen = [locate(c) for c in columns] if columns else list(range(len(names)))
+    if max_page_cells is not None and limit * len(chosen) > max_page_cells:
+        raise call_error(
+            InvalidInput,
+            f"limit times the number of selected columns must be at most {max_page_cells}; "
+            "request fewer rows or select fewer columns.",
+            f"le produit de limit et du nombre de colonnes doit être au plus {max_page_cells} ; "
+            "demandez moins de lignes ou sélectionnez moins de colonnes.",
+        )
     needle = _normal(contains) if contains else None
 
     total = 0
@@ -526,6 +543,7 @@ def scan(
     contains: str | None,
     offset: int,
     limit: int,
+    max_page_cells: int | None = None,
 ) -> ScanResult:
     options: dict[str, Any] = {
         "header_row": header_row,
@@ -535,6 +553,7 @@ def scan(
         "contains": contains,
         "offset": offset,
         "limit": limit,
+        "max_page_cells": max_page_cells,
     }
     try:
         if fmt == "csv":

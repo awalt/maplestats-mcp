@@ -7,7 +7,7 @@ import sys
 from collections.abc import Awaitable
 from typing import Any
 
-from maplestats_mcp.modules.arcgis_hub import client, constants
+from maplestats_mcp.modules.arcgis_hub import client, constants, files
 from maplestats_mcp.shared.arcgis import LayerNotQueryable
 from maplestats_mcp.shared.errors import InvalidInput, NotFound
 from maplestats_mcp.shared.http import new_client
@@ -72,17 +72,53 @@ async def check_links(portal: str) -> int:
     return failed
 
 
+async def check_ottawa_files() -> None:
+    catalogue = await _check("full Ottawa catalogue", client.search_datasets("ottawa", limit=1))
+    excel = await _check(
+        "Ottawa Excel search",
+        client.search_datasets("ottawa", item_type="Microsoft Excel", limit=1),
+    )
+    if catalogue.total_count <= excel.total_count or not excel.items:
+        raise AssertionError("Ottawa catalogue did not include the expected Excel entries")
+    for item_id, fmt, member, sheet, header_row in (
+        ("b60d39e570114311b69a76bb94206050", "csv", None, None, None),
+        ("a8992582cb764c1a9edaebfb0b30e9c7", "xlsx", None, "January 2026", 9),
+        (
+            "e88c52d7727e4a9dba6d427c9bd6445c",
+            "csv",
+            "2026 Draft Budget Explorer/1_Operating_overview_expenditure.csv",
+            None,
+            None,
+        ),
+    ):
+        result = await _check(
+            f"Ottawa {fmt} table {item_id}",
+            files.query_file(
+                "ottawa", item_id, member=member, sheet=sheet, header_row=header_row, limit=2
+            ),
+        )
+        if result.format != fmt or not result.columns or not result.rows:
+            raise AssertionError(f"Ottawa item {item_id} did not return {fmt} table rows")
+
+
 async def check_portal(portal: str) -> int:
     print(f"--- {portal}")
+    item_type = None
+    if portal == "ottawa":
+        await check_ottawa_files()
+        item_type = "Feature Service"  # The broader catalogue is checked above.
     search = await _check(
-        "search_datasets(water)", client.search_datasets(portal, "water", limit=10)
+        "search_datasets(water)",
+        client.search_datasets(portal, "water", item_type=item_type, limit=10),
     )
     if not search.items:
         # A catalogue's content is not guaranteed to include any given
         # keyword -- confirmed live that some portals return zero
         # "water" matches despite having plenty of other datasets.
         print("(no 'water' matches; falling back to an unfiltered listing)")
-        search = await _check("search_datasets()", client.search_datasets(portal, limit=10))
+        search = await _check(
+            "search_datasets()", client.search_datasets(portal, item_type=item_type, limit=10)
+        )
     if not search.items:
         print(f"FAIL: {portal} returned no search results at all")
         return 1

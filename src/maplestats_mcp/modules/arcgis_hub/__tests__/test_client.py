@@ -19,7 +19,7 @@ def _clear_cache():
 
 PORTAL = "ottawa"
 _MISSING = "0123456789abcdef0123456789abcdef"
-_COLLECTION_URL = f"https://{constants.PORTALS[PORTAL].domain}/api/search/v1/collections/dataset"
+_COLLECTION_URL = "https://open.ottawa.ca/api/search/v1/collections/all"
 
 _SEARCH_FEATURE = {
     "id": "14cca5b087f74d2d9eadc018c261d1b3",

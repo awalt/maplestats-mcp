@@ -14,15 +14,17 @@ from typing import Literal
 
 from fastmcp.tools import tool
 
-from maplestats_mcp.modules.arcgis_hub import client
+from maplestats_mcp.modules.arcgis_hub import client, files
 from maplestats_mcp.modules.arcgis_hub.constants import ROWS_LIMIT_DEFAULT, SEARCH_LIMIT_DEFAULT
 from maplestats_mcp.modules.arcgis_hub.schemas import (
     DatasetSearchResult,
     FeatureQueryResult,
+    FileTableResult,
     ItemDetail,
     PortalKey,
     PortalList,
 )
+from maplestats_mcp.shared.file_tables import ROWS_LIMIT_DEFAULT as FILE_ROWS_LIMIT_DEFAULT
 
 Lang = Literal["en", "fr"]
 
@@ -78,7 +80,10 @@ async def arcgis_hub_search_datasets(
     conservation authority or federal agency portal: see
     arcgis_hub_list_portals for the full list (Ottawa, Toronto Police,
     Parks Canada, Yellowknife, Manitoba, Halifax, Surrey, Burnaby,
-    Kelowna and more). Offset plus limit stops at 10,000.
+    Kelowna and more). Ottawa searches the full public catalogue, including
+    maps, apps and pages in the count. Use item_type="Microsoft Excel",
+    "CSV" or "CSV Collection" (ZIP bundles) to narrow the search. Offset
+    plus limit stops at 10,000.
     Keywords: ArcGIS Hub, open data, dataset search, catalogue,
     municipal, city, region, province, GIS, geospatial, zoning, trails,
     building permits, development applications, rezoning applications.
@@ -101,7 +106,8 @@ async def arcgis_hub_get_dataset(portal: PortalKey, item_id: str, lang: Lang = "
     Halifax, Manitoba, PEI, and every other arcgis_hub portal. Download
     links depend on the item: export links in the formats the service
     allows, one stored-file link for a file item, none for an Image
-    Service. Keywords: ArcGIS Hub, dataset detail, FeatureServer,
+    Service. Read stored tables with arcgis_hub_query_file.
+    Keywords: ArcGIS Hub, dataset detail, FeatureServer,
     MapServer, metadata, licence, download, CSV, shapefile, GeoJSON, KML.
     Mots-clés : fiche d'un jeu de données, description d'une couche,
     métadonnées, URL du service FeatureServer, MapServer, licence
@@ -109,6 +115,53 @@ async def arcgis_hub_get_dataset(portal: PortalKey, item_id: str, lang: Lang = "
     GeoJSON, KML.
     """
     return await client.get_dataset(portal, item_id, lang)
+
+
+@tool
+async def arcgis_hub_query_file(
+    portal: PortalKey,
+    item_id: str,
+    member: str | None = None,
+    sheet: str | None = None,
+    header_row: int | None = None,
+    header_rows: int = 1,
+    columns: list[str] | None = None,
+    filters: dict[str, str] | None = None,
+    contains: str | None = None,
+    limit: int = FILE_ROWS_LIMIT_DEFAULT,
+    offset: int = 0,
+    lang: Lang = "en",
+) -> FileTableResult:
+    """Query a stored CSV, Excel workbook, or a table in a ZIP from ArcGIS Hub.
+
+    Use for: reading table rows from a file item found with
+    arcgis_hub_search_datasets, for example an Ottawa Excel or budget
+    bundle. If several files or worksheets are available, first get
+    their names, then pass the exact `member` path and/or a `sheet` name.
+    Rows are objects keyed by column name with text values. Select
+    columns, use case-insensitive exact matches in `filters`, or search
+    across cells with `contains`. Use `next_offset` for the next page.
+    Set `header_row` (1-based) and `header_rows` to override the header guess.
+    Limit 1–100 rows per call. Use call_tool with detail="full" for JSON row objects.
+    Keywords: CSV, Excel, XLSX, XLS, spreadsheet, worksheet, ZIP, archive,
+    tabular data, records, filters, pagination, ArcGIS Hub.
+    Mots-clés : CSV, Excel, XLSX, XLS, tableur, feuille, ZIP, archive,
+    données tabulaires, lignes, filtres, pagination, ArcGIS Hub.
+    """
+    return await files.query_file(
+        portal,
+        item_id,
+        member=member,
+        sheet=sheet,
+        header_row=header_row,
+        header_rows=header_rows,
+        columns=columns,
+        filters=filters,
+        contains=contains,
+        limit=limit,
+        offset=offset,
+        lang=lang,
+    )
 
 
 @tool

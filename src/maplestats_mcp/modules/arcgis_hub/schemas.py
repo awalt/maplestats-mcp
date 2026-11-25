@@ -175,3 +175,24 @@ class FeatureQueryResult(BaseModel):
     where: str
     exceeded_transfer_limit: bool = False
     provenance: Provenance
+
+
+class FileTableResult(BaseModel):
+    portal: str
+    item_id: str
+    title: str
+    landing_page_url: str
+    format: Literal["zip", "csv", "xls", "xlsx"]
+    members: list[str] = Field(default_factory=list)
+    member: str | None = None
+    sheets: list[str] = Field(default_factory=list)
+    sheet: str | None = None
+    selection_required: Literal["member", "sheet"] | None = None
+    header_row: int | None = None
+    columns: list[str] = Field(default_factory=list)
+    rows: list[dict[str, str]] = Field(default_factory=list)
+    total_rows: int | None = None
+    offset: int = 0
+    next_offset: int | None = None
+    scan_capped: bool = False
+    provenance: Provenance

@@ -82,6 +82,7 @@ HYBRID_GIS_TOOLS: frozenset[str] = frozenset(
         "arcgis_hub_get_dataset",
         "arcgis_hub_list_portals",
         "arcgis_hub_query_feature_layer",
+        "arcgis_hub_query_file",
         "arcgis_hub_search_datasets",
         # Tabular records on ArcGIS REST and Open511.
         "eps_get_last_load_date",
