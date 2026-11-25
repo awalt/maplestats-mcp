@@ -631,6 +631,11 @@ FR: dict[str, str] = {
         "flux d'information sur l'énergie du CCIE (efficacité, approvisionnement) : query=<sujet>"
     ),
     "energy use by sector and province": "consommation d'énergie par secteur et par province",
+    "pump prices by city, with taxes and margins: product='regular' or 'diesel', "
+    "locations=['Canada', <city>], latest_n=1": (
+        "prix à la pompe par ville, avec les taxes et les marges : product='regular' ou "
+        "'diesel', locations=['Canada', <ville>], latest_n=1"
+    ),
     "StatCan energy supply and disposition tables": (
         "tableaux de l'offre et de l'utilisation de l'énergie de Statistique Canada"
     ),

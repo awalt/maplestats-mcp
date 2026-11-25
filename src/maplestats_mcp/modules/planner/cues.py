@@ -157,6 +157,9 @@ SIDE_TRIPS: dict[str, tuple[str, ...]] = {
     # The IMF is a separate publisher: its steps stay out of a plan unless the question names
     # the IMF or the World Economic Outlook (the steps' own terms).
     "imf_": (),
+    # NRCan's pump prices by city: only for a question about gasoline, diesel or fuel
+    # prices (the step's terms), not for every inflation question.
+    "nrcan_fuel_prices_": (),
     "boc_get_group_observations": (),
     # An occupation, wage or classification lookup, a Toronto building-score or short-term
     # rental table: each names its cue words as the step's terms.
