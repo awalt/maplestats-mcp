@@ -11,12 +11,22 @@ name: Website
 # no path filter, so every green push to main rebuilds the site: a change to
 # scripts/site_charts.py, pyproject.toml or uv.lock is published as surely as
 # one to site/. workflow_dispatch rebuilds the current main by hand.
+#
+# The Pulse page (site/pulse.html) shows the latest economic figures, so the
+# site is also rebuilt every weekday after The Daily's 8:30 ET releases, and
+# each build first re-records site/_data/cases/pulse.json through the
+# server's own tools. If a source does not answer (StatCan sometimes blocks
+# scripts), the step keeps the committed file and the page shows its date.
 
 on:
   workflow_run:
     workflows: [CI]
     types: [completed]
     branches: [main]
+  schedule:
+    # 13:47 and 21:47 UTC on weekdays: after The Daily (8:30 ET) and after the
+    # Bank of Canada's daily rates (about 16:30 ET); off-the-hour minutes.
+    - cron: "47 13,21 * * 1-5"
   workflow_dispatch:
 
 permissions:
@@ -32,6 +42,7 @@ jobs:
     # workflow_run too; only CI runs for pushes to this repository count.
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
@@ -45,6 +56,8 @@ jobs:
           python-version: "3.12"
           version: "0.11.7" # same uv as both Dockerfiles; bump all three together
       - run: uv sync --locked
+      - name: Refresh the Pulse page's data
+        run: uv run python scripts/capture_cases.py pulse || git checkout -- site/_data/cases/pulse.json
       - run: uv run python scripts/build_site.py --out build/site
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5

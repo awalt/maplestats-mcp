@@ -266,7 +266,15 @@ def test_case_captures_are_complete():
     french = [path.stem for path in site.CASES_DIR.glob("*_fr.json")]
     # A French capture stands in for a case on the French pages, so it needs its case.
     assert {key.removesuffix("_fr") for key in french} <= set(site.CASE_KEYS)
-    for key in (*site.CASE_KEYS, *french, "counts", "statcan", "toronto", site.POLICY_RATE):
+    for key in (
+        *site.CASE_KEYS,
+        *french,
+        "counts",
+        "statcan",
+        "toronto",
+        "pulse",
+        site.POLICY_RATE,
+    ):
         case = json.loads((site.CASES_DIR / f"{key}.json").read_text(encoding="utf-8"))
         assert case["captured"] and case["calls"], key
         for call in case["calls"]:

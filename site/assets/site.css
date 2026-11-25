@@ -5104,3 +5104,176 @@ details.how > summary,
 .env-ref[open] > summary {
   margin-bottom: 10px;
 }
+
+/* The Pulse page (pulse.html): a strip of indicator tiles and four question
+   cards. Tiles share 2px rules like the rest of the grid. */
+.pulse-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(50%, 11.5rem), 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 2px solid var(--ink);
+  border-left: 1px solid var(--rule);
+}
+
+.pulse-tile {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 14px 16px 16px;
+  border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+.pulse-tile-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.pulse-tile-value {
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 1.3rem + 0.8vw, 2.1rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.pulse-tile-period,
+.pulse-tile-note {
+  font-size: 0.875rem;
+  line-height: 1.35;
+  color: var(--ink-3);
+}
+
+.pulse-tile-note {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.pulse-chart-title {
+  margin-bottom: 8px;
+  font-family: var(--font-display);
+  font-size: 1.1875rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+@media (max-width: 560px) {
+  .pulse-tile {
+    padding: 12px;
+  }
+
+  .pulse-tile-value {
+    font-size: 1.375rem;
+  }
+}
+
+.pulse-fine {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+.pulse-questions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+  gap: clamp(20px, 2.4vw, 32px);
+}
+
+.pulse-q {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 2px solid var(--ink);
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.pulse-q h3 {
+  font-family: var(--font-display);
+  font-size: 1.3125rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.pulse-q dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.pulse-q dl > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.pulse-q dt {
+  color: var(--ink-2);
+}
+
+.pulse-q dd {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--accent);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.pulse-q dd small {
+  display: block;
+  font-family: var(--font-text);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.pulse-q p {
+  color: var(--ink-2);
+}
+
+.pulse-q > a {
+  margin-top: auto;
+  font-weight: 600;
+}
+
+.pulse-upcoming {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 2px solid var(--ink);
+}
+
+.pulse-upcoming li {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.pulse-upcoming time {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--ink-3);
+}
+
+@media (max-width: 560px) {
+  .pulse-upcoming li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
