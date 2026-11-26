@@ -1,11 +1,12 @@
 {
-  "checked_at": "2026-11-22T01:40+00:00",
+  "checked_at": "2026-11-25T22:45+00:00",
   "status": {
     "wds_metadata": "answers",
     "wds_vectors": "answers",
     "full_table_csv": "answers",
     "sdmx": "answers",
     "cimt": "answers",
+    "cimt_codes": "blocked",
     "daily_rss": "answers",
     "daily_archive": "answers",
     "indicators": "answers",
