@@ -42,6 +42,7 @@ from maplestats_mcp.shared.executor import run_in_pool
 from maplestats_mcp.shared.limits import join_limits
 from maplestats_mcp.shared.rate_limiter import get_limiter
 from maplestats_mcp.shared.remote_zip import RangeRefused, list_members
+from maplestats_mcp.shared.transform import period_end
 from maplestats_mcp.shared.zip_stream import MemberStream, OnePassMember, ScanLimitExceeded
 
 # Zipped size past which a table is not read: its download alone would take minutes.
@@ -93,6 +94,7 @@ class _KeptSlice:
     source: str
     url: str
     stored: float
+    spans: bool = False
 
 
 _SLICES: OrderedDict[tuple[Any, ...], _KeptSlice] = OrderedDict()
@@ -133,6 +135,17 @@ def dimension_column(name: str, taken: set[str]) -> str:
 
 
 def _ref_period(text: str) -> date | None:
+    """REF_DATE as a date: 2020, 2020-01, 2020-01-15, or a period with two ends.
+
+    The CSV writes a fiscal year or a span with both ends, "2019/2020", "2019-04/2020-03"
+    or "2019-04-01/2020-03-31" (reproduce/wds_table.py's wds_ref_date, from WDS's refPer
+    and refPer2): it is dated by its first side, so "2019/2020" is 1 January 2019, since
+    that text holds no month. _from_wds dates the WDS route the same way, so both routes
+    give one ref_period. None for anything else.
+    """
+    first, slash, rest = text.partition("/")
+    if slash:
+        return _ref_period(first) if first and "/" not in rest else None
     parts = text.split("-")
     try:
         if len(parts) == 1:
@@ -161,6 +174,8 @@ class _Slice:
         self.title = str(cube.get("cubeTitleEn") or "")
         self.rows: list[tuple[Any, ...]] = []
         self.seen = 0
+        # Whether a REF_DATE with two ends (2019/2020) was dated: the result says how.
+        self.spans = False
         # One object per distinct text or period: a series repeats its member names,
         # title, unit and coordinate on every row, so a kept slice (SLICE_CACHE_ROWS)
         # holds each once instead of once per row.
@@ -173,6 +188,8 @@ class _Slice:
         key = ("period", text)
         if key not in self._shared:
             self._shared[key] = _ref_period(text)
+            if "/" in text and self._shared[key] is not None:
+                self.spans = True
         return self._shared[key]
 
     def add(self, record: Mapping[str, str], pid: int, table_id: str) -> None:
@@ -220,6 +237,13 @@ class _Blocked(Exception):
 
 def _check_periods(start_period: str | None, end_period: str | None, lang: str) -> None:
     for name, value in (("start_period", start_period), ("end_period", end_period)):
+        if value is not None and _PERIOD.match(value) and _ref_period(value) is None:
+            raise InvalidInput(
+                client._m(
+                    f"{name} {value!r} is not a valid date (like 2020-13 or 2020-02-30).",
+                    f"{name} {value!r} n'est pas une date valide (comme 2020-13 ou 2020-02-30).",
+                )
+            )
         if value is not None and not _PERIOD.match(value):
             raise InvalidInput(
                 client._m(
@@ -231,8 +255,22 @@ def _check_periods(start_period: str | None, end_period: str | None, lang: str) 
             )
 
 
-def _in_window(ref: str, start: str | None, end: str | None) -> bool:
-    return (start is None or ref >= start) and (end is None or ref[: len(end)] <= end)
+def _bounds(start: str | None, end: str | None) -> tuple[date | None, date | None]:
+    """start_period's first day and end_period's last (end_period=2020 keeps December)."""
+    first = _ref_period(start) if start else None
+    last = _ref_period(end) if end else None
+    if end and last is not None and end.count("-") < 2:
+        # A year or a month: through its last day.
+        last = period_end(last, 1 if end.count("-") == 0 else 12)
+    return first, last
+
+
+def _in_window(day: date | None, first: date | None, last: date | None) -> bool:
+    """Compared as dates: as text, "2019/2020" sorted after "2019-06" ('/' > '-').
+    A REF_DATE that is not a date is kept, with a NULL ref_period and a warning."""
+    if day is None:
+        return True
+    return (first is None or day >= first) and (last is None or day <= last)
 
 
 class _ParseState:
@@ -248,7 +286,8 @@ class _ParseState:
         pid: int,
         url: str,
     ) -> None:
-        self.dims, self.keep, self.start, self.end = dims, keep, start, end
+        self.dims, self.keep = dims, keep
+        self.first, self.last = _bounds(start, end)
         self.rows, self.pid, self.url = rows, pid, url
         self.table_id = context.table_number(pid)
         self.header: list[str] | None = None
@@ -272,7 +311,7 @@ class _ParseState:
                     ) from exc
                 continue
             self.rows.seen += 1
-            if not _in_window(record[0], self.start, self.end):
+            if not _in_window(self.rows._period(record[0]), self.first, self.last):
                 continue
             if any(
                 allowed is not None and record[p] not in allowed
@@ -429,6 +468,10 @@ async def _from_wds(
         return context._code_text(dict(codes), key, field, stem, code, "en") or ""
 
     table_id = context.table_number(pid)
+    first, last = _bounds(start, end)
+    # Annual and longer periods as the CSV writes them, a year: WDS dates a fiscal year
+    # by its first day (refPer 1991-04-01 for 1991/1992), the CSV only by its years.
+    yearly = 12 <= int(cube.get("frequencyCode") or 0) <= 18
     for at in range(0, len(coordinates), _WDS_BATCH):
         batch = coordinates[at : at + _WDS_BATCH]
         data = await client.get_data_from_cube_pid_coords_and_latest_n_periods(pid, batch, latest_n)
@@ -437,8 +480,8 @@ async def _from_wds(
             parts = series.coordinate.split(".")
             labels = [names[p].get(parts[p], "") for p in range(len(kept))]
             for o in series.observations:
-                ref = o.ref_period.isoformat()
-                if not _in_window(ref, start, end):
+                ref = str(o.ref_period.year) if yearly else o.ref_period.isoformat()
+                if not _in_window(rows._period(ref), first, last):
                     continue
                 rows.add(
                     {
@@ -548,7 +591,7 @@ async def query_table(
     hit = _kept(slice_key)
     try:
         if hit is not None:
-            rows.rows, rows.seen = list(hit.rows), hit.seen
+            rows.rows, rows.seen, rows.spans = list(hit.rows), hit.seen, hit.spans
             source, source_url = hit.source, hit.url
         else:
             try:
@@ -593,7 +636,10 @@ async def query_table(
     rows.rows.sort(key=lambda r: (r[0], r[3], r[4] or date.min))
     if hit is None:
         _keep(
-            slice_key, _KeptSlice(list(rows.rows), rows.seen, source, source_url, time.monotonic())
+            slice_key,
+            _KeptSlice(
+                list(rows.rows), rows.seen, source, source_url, time.monotonic(), rows.spans
+            ),
         )
     columns = [(name, kind) for name, kind, _ in query.OBS_COLUMNS]
     columns += [(c, "VARCHAR") for c in dim_columns]
@@ -612,6 +658,48 @@ async def query_table(
         )
     except duck_sandbox.SandboxError as exc:
         raise query._sandbox_error(exc, seconds_sql) from exc
+    if undated := sum(1 for r in rows.rows if r[4] is None):
+        # Such a row cannot be placed in time: a date filter or ORDER BY ref_period
+        # would drop or misplace it without saying so.
+        count_fr = f"{undated:,}".replace(",", " ")  # as the coverage line writes counts
+        findings.warn(
+            client._m(
+                (
+                    "undated_rows: 1 row of obs has a REF_DATE this tool could not read as a "
+                    "date, so its ref_period is NULL: a filter on ref_period leaves it out, and "
+                    "ORDER BY ref_period puts it last."
+                    if undated == 1
+                    else f"undated_rows: {undated:,} rows of obs have a REF_DATE this tool "
+                    "could not read as a date, so their ref_period is NULL: a filter on "
+                    "ref_period leaves them out, and ORDER BY ref_period puts them last."
+                ),
+                (
+                    "undated_rows : 1 ligne de obs a une REF_DATE que cet outil n'a pas pu lire "
+                    "comme une date ; sa ref_period est NULL : un filtre sur ref_period l'écarte, "
+                    "et ORDER BY ref_period la place en dernier."
+                    if undated == 1
+                    else f"undated_rows : {count_fr} lignes de obs ont une REF_DATE que cet "
+                    "outil n'a pas pu lire comme une date ; leur ref_period est NULL : un filtre "
+                    "sur ref_period les écarte, et ORDER BY ref_period les place en dernier."
+                ),
+            )
+        )
+    if rows.spans:
+        # The vector and coordinate tools give WDS's refPer, a fiscal year's first day;
+        # the CSV's 2019/2020 holds no month, so the two can differ by months.
+        findings.warn(
+            client._m(
+                "span_periods: periods written with two ends, like 2019/2020, are dated by "
+                "the first day of their first side (2019/2020 is 1 January 2019), whereas "
+                "the vector and coordinate tools date a fiscal year by its first day (e.g. "
+                "2019-04-01): year(ref_period) is the first year of the span.",
+                "span_periods : les périodes écrites avec deux bornes, comme 2019/2020, sont "
+                "datées du premier jour de leur première borne (2019/2020 est le 1er janvier "
+                "2019), alors que les outils par vecteur et par coordonnée datent un exercice "
+                "de son premier jour (p. ex. 2019-04-01) : year(ref_period) est la première "
+                "année de la période.",
+            )
+        )
     release = str(cube.get("releaseTime") or "")[:10]
     citation = client._m(
         f"Statistics Canada. Table {context.table_number(pid)}, {rows.title}. Released {release}.",

@@ -349,3 +349,126 @@ def test_dimension_columns_never_shadow_an_obs_column():
     assert table_query.dimension_column("Geography", taken) == "geography_member"
     assert table_query.dimension_column("Age group", taken) == "age_group"
     assert table_query.dimension_column("2021 boundaries", taken) == "d_2021_boundaries"
+
+
+# A fiscal-year table: the CSV writes its periods "2019/2020" (35-10-0044, as
+# reproduce/wds_table.py's wds_ref_date documents), and WDS dates the same period by
+# its first day, refPer 2019-04-01. "2021-Q3" is not a form StatCan writes: it stands
+# for any REF_DATE the tool cannot read.
+FISCAL = ["2018/2019", "2019/2020", "2020/2021", "2021-Q3"]
+
+
+def _fiscal_csv() -> bytes:
+    lines = [HEADER]
+    for n, period in enumerate(FISCAL):
+        lines.append(
+            f'"{period}","Canada","2021A00011","Employment","Seasonally adjusted",'
+            f'"Persons in thousands","0","thousands","3","v2062811","1.3.1","{100.0 + n}",'
+            '"","","","1"'
+        )
+    return "\n".join(lines).encode("utf-8")
+
+
+@pytest.fixture
+def fiscal_table(table, monkeypatch):
+    async def cube(pid):
+        return {**_cube(), "frequencyCode": 12}, False
+
+    class FiscalStream(_FakeStream):
+        def __init__(self, url, member, **kwargs) -> None:
+            self.lines = _fiscal_csv().split(b"\n")
+
+    monkeypatch.setattr(client, "cube_metadata_raw", cube)
+    monkeypatch.setattr(table_query, "MemberStream", FiscalStream)
+
+
+def test_ref_date_with_two_ends_is_dated_by_its_first_year():
+    assert table_query._ref_period("2019/2020") == date(2019, 1, 1)
+    assert table_query._ref_period("1994/1998") == date(1994, 1, 1)
+    # Any span is dated by its first side (wds_ref_date's other forms too).
+    assert table_query._ref_period("2019-04/2020-03") == date(2019, 4, 1)
+    assert table_query._ref_period("2019-04-01/2020-03-31") == date(2019, 4, 1)
+    assert table_query._ref_period("2019/20") == date(2019, 1, 1)
+    assert table_query._ref_period("x/2020") is None
+    assert table_query._ref_period("2019") == date(2019, 1, 1)
+    # As text "2019/2020" sorted after "2019-06" ('/' > '-') and was kept.
+    first, last = table_query._bounds("2019-06", "2020")
+    assert (first, last) == (date(2019, 6, 1), date(2020, 12, 31))
+    assert not table_query._in_window(date(2019, 1, 1), first, last)
+    assert table_query._in_window(date(2020, 1, 1), first, last)
+
+
+async def test_a_fiscal_year_table_has_dated_rows_and_warns_about_the_rest(fiscal_table):
+    result = await _query(
+        "SELECT ref_period, value FROM obs WHERE ref_period >= DATE '2019-01-01' "
+        "ORDER BY ref_period DESC",
+        start_period="2019",
+    )
+    assert result.rows == [["2020-01-01", 102.0], ["2019-01-01", 101.0]]
+    # 2018/2019 is outside the window; the unreadable row is kept, undated, and named.
+    assert result.input_rows == 3
+    undated = [w for w in result.warnings if w.startswith("undated_rows")]
+    expected = (
+        "undated_rows: 1 row of obs has a REF_DATE this tool could not read as a date, so "
+        "its ref_period is NULL: a filter on ref_period leaves it out, and ORDER BY "
+        "ref_period puts it last."
+    )
+    assert undated == [expected]
+    spans = [w for w in result.warnings if w.startswith("span_periods")]
+    assert len(spans) == 1 and "1 January 2019" in spans[0] and "2019-04-01" in spans[0]
+    # A follow-up query on the kept slice says the same.
+    again = await _query("SELECT count(*) FROM obs", start_period="2019")
+    assert again.provenance.cached and any(w.startswith("span_periods") for w in again.warnings)
+    french = await _query("SELECT count(*) FROM obs", start_period="2019", lang="fr")
+    assert any("1er janvier 2019" in w for w in french.warnings)
+    assert any(w.startswith("undated_rows") and "1 ligne de obs a" in w for w in french.warnings)
+
+
+async def test_a_table_without_spans_gets_no_span_warning(table):
+    result = await _query("SELECT count(*) FROM obs")
+    assert not any(w.startswith(("span_periods", "undated_rows")) for w in result.warnings)
+
+
+async def test_an_impossible_period_is_named_as_not_a_date(table):
+    with pytest.raises(InvalidInput, match=r"not a valid date \(like 2020-13 or 2020-02-30\)"):
+        await _query("SELECT 1 FROM obs", start_period="2020-13")
+
+
+async def test_both_routes_date_a_fiscal_year_alike(fiscal_table, monkeypatch):
+    async def blocked(url):
+        return "blocked"
+
+    async def coords(pid, coordinates, latest_n):
+        rows = [
+            ObservationRow(
+                ref_period=date(year, 4, 1),
+                value=100.0 + n,
+                decimals=1,
+                scalar_factor_code=3,
+                scale_multiplier=1000,
+                symbol_code=0,
+                status_code=0,
+                security_level_code=0,
+            )
+            for n, year in enumerate((2018, 2019, 2020))
+        ]
+        return VectorData(
+            product_id=pid,
+            coordinate=coordinates[0],
+            vector_id=2062811,
+            observations=rows,
+            provenance=make_provenance(
+                source="statcan-wds", url="https://x", cached=False, schema_name="s"
+            ),
+        )
+
+    sql = "SELECT ref_period, value FROM obs ORDER BY ref_period"
+    members = {"Geography": ["Canada"], "Labour force characteristics": ["Employment"]}
+    from_file = await _query(sql, members=members, start_period="2019")
+    monkeypatch.setattr(client, "check_file", blocked)
+    monkeypatch.setattr(client, "get_data_from_cube_pid_coords_and_latest_n_periods", coords)
+    table_query.clear_slice_cache()
+    from_wds = await _query(sql, members=members, start_period="2019")
+    assert from_wds.source == "WDS by coordinate"
+    assert from_wds.rows == [["2019-01-01", 101.0], ["2020-01-01", 102.0]]
+    assert [r for r in from_file.rows if r[0] is not None] == from_wds.rows

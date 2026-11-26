@@ -657,6 +657,188 @@ async def test_a_year_cited_for_a_monthly_series_is_the_year():
     assert "2026-09 (170)" in result.problems[0].problem
 
 
+def _months(year: int, values: list[float]) -> list[ObservationRow]:
+    return [
+        ObservationRow(
+            ref_period=date(year, month, 1),
+            value=value,
+            decimals=1,
+            scalar_factor_code=0,
+            symbol_code=0,
+            status_code=0,
+            security_level_code=0,
+        )
+        for month, value in enumerate(values, start=1)
+    ]
+
+
+def _coarse(cited, rows, label, frequency=6, lang="en", **kwargs):
+    return client._coarse_value(
+        0, CitedFigure(value=cited), rows, label, frequency, None, lang, **kwargs
+    )
+
+
+@pytest.fixture
+def april_2026(monkeypatch):
+    """Today is 2026-04-20: a series published to 2026-03 is still running."""
+    monkeypatch.setattr(client, "_today", lambda: date(2026, 4, 20))
+
+
+@pytest.mark.parametrize("cited", [162.0, 486])
+def test_a_year_not_fully_published_is_not_compared_as_the_year(cited, april_2026):
+    # Only January to March 2026, the latest months of the series: 162.0 is their
+    # average and 486 their total, but neither is the 2026 figure.
+    rows = _months(2026, [161.0, 162.0, 163.0])
+    latest = date(2026, 3, 1)
+    problems = _coarse(cited, rows, "2026", latest_day=latest)
+    assert [p.check for p in problems] == ["period"]
+    assert problems[0].problem == (
+        "The published data cover only 3 of the 12 months of 2026 (to 2026-03): their "
+        "average or total is a year-to-date figure, not the 2026 value."
+    )
+    assert "latest complete year" in problems[0].fix
+    french = _coarse(cited, rows, "2026", lang="fr", latest_day=latest)
+    assert "3 des 12 mois de 2026" in french[0].problem
+    assert "la dernière année complète" in french[0].fix
+    # A quarter of a monthly series needs its three months.
+    quarter = _coarse(161.5, rows[:2], "2026-Q1", latest_day=date(2026, 2, 1))
+    assert "2 of the 3 months of 2026-Q1" in quarter[0].problem
+    assert "quarter-to-date" in quarter[0].problem
+    # A complete year is compared as before.
+    year = _months(2025, [float(v) for v in range(150, 162)])
+    assert _coarse(155.5, year, "2025", latest_day=latest) == []
+    # Daily data have no fixed count of periods: not checked for completeness.
+    assert _coarse(162.0, rows, "2026", frequency=1, latest_day=latest) == []
+
+
+def test_one_months_value_cited_for_a_partial_year_is_named_as_that_month(april_2026):
+    rows = _months(2026, [161.0, 162.0, 163.0])
+    problems = _coarse(163.0, rows, "2026", latest_day=date(2026, 3, 1))
+    assert [p.check for p in problems] == ["period", "period"]
+    assert "year-to-date" in problems[0].problem
+    assert problems[1].problem == "163 is the value for 2026-03, not for 2026."
+    assert problems[1].fix == "Cite it as 2026-03."
+    french = _coarse(163.0, rows, "2026", lang="fr", latest_day=date(2026, 3, 1))
+    assert french[1].problem == "163 est la valeur de 2026-03, pas de 2026."
+
+
+def test_a_series_that_stopped_long_ago_is_not_year_to_date():
+    # Monthly, ends 2015-06, cited for 2015: its last year is not running.
+    rows = _months(2015, [1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    problems = _coarse(3.5, rows, "2015", latest_day=date(2015, 6, 1))
+    assert "6 of the 12 months of 2015 (2015-01 to 2015-06)" in problems[0].problem
+    assert "year-to-date" not in problems[0].problem
+
+
+async def test_not_available_months_are_not_published(monkeypatch):
+    # 2025: January to August published, September to December ".." (status 1). The
+    # January-August average is not the 2025 figure.
+    points = [(date(2025, m, 1), 100.0 + m, 0, 0) for m in range(1, 9)]
+    points += [(date(2025, m, 1), None, 1, 0) for m in range(9, 13)]
+    monkeypatch.setitem(SERIES, 13, (18100004, "2.2", 0, "2002=100", points))
+    problems, result = await _check(
+        "CPI in 2025?", {"value": 104.5, "period": "2025", "vector_id": 13}
+    )
+    assert problems == [(0, "period")]
+    assert "8 of the 12 months of 2025" in result.problems[0].problem
+
+
+async def test_one_month_of_a_monthly_bank_of_canada_series_is_a_partial_year(monkeypatch):
+    days = [date(2026, 1, 1)]
+    rates = [2.5]
+
+    async def observations(names, start_date=None, end_date=None, recent=None, lang="en"):
+        rows = [
+            SimpleNamespace(ref_date=d, values={"MSERIES": v})
+            for d, v in zip(days, rates, strict=True)
+        ]
+        if start_date:
+            rows = [r for r in rows if start_date <= r.ref_date.isoformat() <= str(end_date)]
+        # Valet's metadata.frequency, returned with the observations.
+        series = {"MSERIES": SimpleNamespace(frequency="Monthly")}
+        return SimpleNamespace(observations=rows[-recent:] if recent else rows, series=series)
+
+    monkeypatch.setattr(client.boc, "get_observations", observations)
+    question = "What was the 2026 average?"
+    problems, result = await _check(
+        question, {"value": 2.5, "period": "2026", "boc_series": "MSERIES"}
+    )
+    assert problems == [(0, "period")]
+    assert "1 of the 12 months of 2026" in result.problems[0].problem
+    # January and April only: counted in months (the metadata), not read as quarterly.
+    days.append(date(2026, 4, 1))
+    rates.append(2.7)
+    problems, result = await _check(
+        question, {"value": 2.6, "period": "2026", "boc_series": "MSERIES"}
+    )
+    assert "2 of the 12 months of 2026" in result.problems[0].problem
+
+
+def test_a_wrong_value_for_a_partial_year_is_reported_too(april_2026):
+    rows = _months(2026, [160.0, 160.0, 160.0])
+    problems = _coarse(999, rows, "2026", latest_day=date(2026, 3, 1))
+    assert [p.check for p in problems] == ["period", "value"]
+    assert "year-to-date" in problems[0].problem and "999" in problems[1].problem
+
+
+def test_a_complete_year_with_a_suppressed_month_is_not_year_to_date():
+    # Twelve rows, May without a value (suppressed): the year is published; the flag
+    # check reports May, not a year-to-date problem.
+    year = _months(2025, [float(v) for v in range(150, 162)])
+    published = [r.ref_period for r in year]
+    with_values = [r for r in year if r.ref_period != date(2025, 5, 1)]
+    # (1866 - 154) / 11 = 155.6, the average of the eleven published values.
+    assert _coarse(155.6, with_values, "2025", published=published) == []
+
+
+def test_a_series_that_starts_or_stops_inside_the_year_is_not_year_to_date():
+    # Starts in October 2026 and is still published: not "to date" from January.
+    started = [
+        r for r in _months(2026, [float(v) for v in range(1, 13)]) if r.ref_period.month >= 10
+    ]
+    problems = _coarse(11.0, started, "2026", latest_day=date(2026, 12, 1))
+    assert problems[0].problem == (
+        "The published data cover only 3 of the 12 months of 2026 (2026-10 to 2026-12): "
+        "their average or total is not the 2026 value."
+    )
+    assert "fully published" in problems[0].fix and "complete year" not in problems[0].fix
+    # Terminated in March 2020: its last year is not running.
+    stopped = _months(2020, [5.0, 6.0, 7.0])
+    problems = _coarse(6.0, stopped, "2020", latest_day=date(2026, 9, 1))
+    assert "2020-01 to 2020-03" in problems[0].problem
+    assert "year-to-date" not in problems[0].problem
+    french = _coarse(6.0, stopped, "2020", lang="fr", latest_day=date(2026, 9, 1))
+    assert "(2020-01 à 2020-03)" in french[0].problem
+    assert "entièrement publiée" in french[0].fix
+
+
+async def test_a_quarterly_bank_of_canada_year_is_not_counted_in_months(monkeypatch):
+    days = [date(2024, 1, 1), date(2024, 4, 1), date(2024, 7, 1), date(2024, 10, 1)]
+    rates = [2.0, 3.0, 4.0, 5.0]
+
+    async def observations(names, start_date=None, end_date=None, recent=None, lang="en"):
+        rows = [
+            SimpleNamespace(ref_date=d, values={"QSERIES": v})
+            for d, v in zip(days, rates, strict=True)
+        ]
+        if start_date:
+            rows = [r for r in rows if start_date <= r.ref_date.isoformat() <= str(end_date)]
+        return SimpleNamespace(observations=rows[-recent:] if recent else rows)
+
+    monkeypatch.setattr(client.boc, "get_observations", observations)
+    question = "What was the 2024 average?"
+    problems, _ = await _check(question, {"value": 3.5, "period": "2024", "boc_series": "QSERIES"})
+    assert problems == []
+    # Three quarters only would be a partial year, counted in quarters.
+    days.pop()
+    rates.pop()
+    problems, result = await _check(
+        question, {"value": 3.0, "period": "2024", "boc_series": "QSERIES"}
+    )
+    assert problems == [(0, "period")]
+    assert "3 of the 4 quarters of 2024" in result.problems[0].problem
+
+
 async def test_flags_are_read_for_every_month_of_a_cited_year():
     problems, result = await _check(
         "Unemployment rate in 2024", {"value": 6.0, "period": "2024", "vector_id": 12}
