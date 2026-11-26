@@ -130,6 +130,24 @@ def test_csv_with_bom_semicolons_and_cp1252():
     assert list(tables._csv_rows(legacy))[1] == ["José", "Québec"]
 
 
+def test_ottawa_311_csv_keeps_pipes_in_bilingual_column_names():
+    body = (
+        "﻿Service Request ID | Numéro de demande,Status | État,Type | Type\r\n"
+        '001,Closed,"Snow, ice and snowbanks"\r\n'
+        "002,Open,Road maintenance\r\n"
+    ).encode()
+    assert list(tables._csv_rows(body)) == [
+        ["Service Request ID | Numéro de demande", "Status | État", "Type | Type"],
+        ["001", "Closed", "Snow, ice and snowbanks"],
+        ["002", "Open", "Road maintenance"],
+    ]
+
+
+def test_csv_chooses_legacy_encoding_when_invalid_utf8_is_late():
+    body = b"name,city\n" + b"John,Ottawa\n" * 7000 + b"Jos\xe9,Qu\xe9bec\n"
+    assert list(tables._csv_rows(body))[-1] == ["José", "Québec"]
+
+
 def test_format_is_detected_from_bytes_not_from_the_portal_label():
     xlsx = _xlsx({"A": [["a", "b", "c"], [1, 2, 3]]})
     assert tables.detect_format(xlsx, "XLS") == "xlsx"

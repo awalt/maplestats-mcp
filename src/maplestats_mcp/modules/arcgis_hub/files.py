@@ -22,7 +22,8 @@ from maplestats_mcp.shared.rate_limiter import get_limiter
 
 _TABULAR_ITEMS = {"CSV", "CSV Collection", "Microsoft Excel", "ZIP", "ZIP Archive"}
 _TABULAR_SUFFIXES = {".csv", ".xlsx", ".xls"}
-_MAX_BYTES = 40 * 1024 * 1024
+# Covers Ottawa's annual 311 CSVs and the inflated 2022 archive member.
+_MAX_BYTES = 64 * 1024 * 1024
 _MAX_ZIP_ENTRIES = 2000
 _MAX_PAGE_CELLS = 10_000
 ROWS_LIMIT_MAX = 100

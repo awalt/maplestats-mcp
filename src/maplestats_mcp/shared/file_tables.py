@@ -15,6 +15,7 @@ missing), so the real format is read from the file's first bytes.
 
 from __future__ import annotations
 
+import codecs
 import csv
 import io
 import zipfile
@@ -60,6 +61,8 @@ _UTF8_BOM = b"\xef\xbb\xbf"
 # Leading bytes read to tell HTML, XML and JSON apart: room for a BOM and some whitespace.
 _SNIFF_BYTES = 4096
 _DELIMITERS = (",", ";", "\t", "|")
+_CSV_SAMPLE_CHARS = 20_000
+_ENCODING_CHUNK_BYTES = 64 * 1024
 
 csv.field_size_limit(CSV_FIELD_LIMIT)
 
@@ -332,14 +335,47 @@ def scan_rows(
     )
 
 
+def _csv_encoding(body: bytes) -> str:
+    if body.startswith(_UTF16_BOMS):
+        return "utf-16"
+    # Validate in chunks so a late non-UTF-8 byte still selects the legacy
+    # fallback without allocating a second copy of the whole file as text.
+    for encoding in ("utf-8-sig", "cp1252"):
+        decoder = codecs.getincrementaldecoder(encoding)()
+        try:
+            for start in range(0, len(body), _ENCODING_CHUNK_BYTES):
+                check_deadline()
+                decoder.decode(body[start : start + _ENCODING_CHUNK_BYTES])
+            decoder.decode(b"", final=True)
+        except UnicodeDecodeError:
+            continue
+        return encoding
+    return "latin-1"
+
+
+def _csv_delimiter(sample: str) -> str:
+    try:
+        # Ottawa's bilingual 311 headers contain more pipes than commas,
+        # but only the commas are consistent across the data records.
+        return csv.Sniffer().sniff(sample, delimiters="".join(_DELIMITERS)).delimiter
+    except csv.Error:
+        first = next((line for line in sample.splitlines()[:20] if line.strip()), "")
+        return max(_DELIMITERS, key=first.count) if first else ","
+
+
 def _csv_rows(body: bytes) -> Iterator[list[str]]:
-    text = decode(body)
-    first = next((line for line in text[:20000].splitlines()[:20] if line.strip()), "")
-    delimiter = max(_DELIMITERS, key=first.count) if first else ","
-    for index, row in enumerate(csv.reader(io.StringIO(text), delimiter=delimiter)):
-        if index % _DEADLINE_EVERY == 0:
-            check_deadline()
-        yield [cell.strip() for cell in row]
+    with io.TextIOWrapper(io.BytesIO(body), encoding=_csv_encoding(body), newline="") as text:
+        sample = text.read(_CSV_SAMPLE_CHARS)
+        if len(sample) == _CSV_SAMPLE_CHARS:
+            last_break = max(sample.rfind("\n"), sample.rfind("\r"))
+            if last_break >= 0:
+                sample = sample[:last_break]
+        delimiter = _csv_delimiter(sample)
+        text.seek(0)
+        for index, row in enumerate(csv.reader(text, delimiter=delimiter)):
+            if index % _DEADLINE_EVERY == 0:
+                check_deadline()
+            yield [cell.strip() for cell in row]
 
 
 def cell_text(value: Any) -> str:

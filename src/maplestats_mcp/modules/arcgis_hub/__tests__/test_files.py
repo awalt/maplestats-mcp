@@ -130,6 +130,20 @@ async def test_archive_selection_is_exact_and_inflation_is_bounded(httpx_mock, m
         await files.query_file("ottawa", ITEM_ID)
 
 
+async def test_reads_311_sized_archive_member(httpx_mock):
+    row = b"2," + b"x" * 440 + b"\n"
+    row_count = 100_000  # About 42 MiB uncompressed, above the old 40 MiB cap.
+    name = "Annual_Service_Requests.csv"
+    _mock_file(httpx_mock, "CSV Collection", _archive({name: b"WARD,TYPE\n" + row * row_count}))
+
+    result = await files.query_file(
+        "ottawa", ITEM_ID, filters={"WARD": "2"}, columns=["WARD"], limit=1
+    )
+    assert result.member == name
+    assert result.rows == [{"WARD": "2"}]
+    assert result.total_rows == row_count and not result.scan_capped
+
+
 async def test_arcgis_redirect_stays_on_trusted_host(httpx_mock):
     httpx_mock.add_response(url=f"{HUB_SEARCH}/{ITEM_ID}", json=_item("CSV"))
     httpx_mock.add_response(
