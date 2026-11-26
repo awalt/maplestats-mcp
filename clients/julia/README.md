@@ -53,7 +53,7 @@ keep their JSON types, so dates stay text. The metadata keys are `"citation"`,
 and `"arguments"`, all with style `:note`.
 
 Errors throw `MapleStatsError` with the server's message, which says how to fix
-the call. When the hosted server's limit of 60 requests a minute is hit,
+the call. When the hosted server's limit of 120 requests a minute is hit,
 `retry_after` holds the seconds to wait.
 
 ## Settings

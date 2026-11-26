@@ -705,8 +705,10 @@ async def search(
             where.append("starts_with(digits, ?)")
             params.append(word.replace(".", ""))
         else:
-            where.append("strip_accents(lower(description)) LIKE ?")
-            params.append(f"%{word}%")
+            # % and _ in a word are LIKE wildcards: escaped so they match themselves
+            # (DuckDB takes ESCAPE, checked locally), not any text.
+            where.append("strip_accents(lower(description)) LIKE ? ESCAPE '\\'")
+            params.append("%" + re.sub(r"([\\%_])", r"\\\1", word) + "%")
     rows = await run_in_pool(
         _query,
         path,

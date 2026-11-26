@@ -63,7 +63,7 @@ most dplyr verbs drop them, so read them before transforming.
 
 Errors are conditions of class `maplestats_error` with the server's message,
 which says how to fix the call. A `maplestats_rate_limited` error (the hosted
-server allows 60 requests a minute) carries `retry_after`.
+server allows 120 requests a minute) carries `retry_after`.
 
 ## Settings
 

@@ -36,7 +36,7 @@ from maplestats_mcp.modules.socrata.schemas import (
 )
 from maplestats_mcp.shared.cache import cached_fetch
 from maplestats_mcp.shared.envelope import make_provenance, raise_localized
-from maplestats_mcp.shared.errors import InvalidInput
+from maplestats_mcp.shared.errors import InvalidInput, UpstreamError
 from maplestats_mcp.shared.http import api_get
 from maplestats_mcp.shared.i18n import pick
 from maplestats_mcp.shared.json_utils import get_or, list_or_empty
@@ -390,7 +390,17 @@ async def _fetch_rows(
         _raise_for_status_error(exc, context, lang)
     except httpx.HTTPError as exc:
         raise network_error(context, exc, lang) from exc
-    return data if isinstance(data, list) else []
+    # An object here (an error document served with HTTP 200, a gateway page) is not "0 rows".
+    if not isinstance(data, list):
+        raise_localized(
+            UpstreamError,
+            f"{context} returned {type(data).__name__}, not the list of rows SODA answers "
+            "with; no rows can be read from it.",
+            f"{context} a renvoyé {type(data).__name__} et non la liste de lignes que SODA "
+            "renvoie ; aucune ligne ne peut en être lue.",
+            lang,
+        )
+    return data
 
 
 async def query_dataset_rows(
@@ -435,6 +445,21 @@ async def query_dataset_rows(
     }
     params: dict[str, Any] = {"$limit": limit, "$offset": offset}
     params.update({key: value for key, value in clauses.items() if value})
+    # Without $order SODA gives no fixed row order. A later page with no order is sorted by
+    # :id, the system row id every dataset has; the first page is sent as it always was, so
+    # the caller's own `order` on every page is what makes paging stable. An aggregate has no
+    # row id to order by, and SoQL is likely to refuse an ORDER BY outside a DISTINCT select
+    # list, so grouped, function-selected and distinct queries keep no default order.
+    default_order = (
+        offset > 0
+        and not order
+        and not group
+        and not having
+        and "(" not in (select or "")
+        and not re.search(r"\bdistinct\b", select or "", re.IGNORECASE)
+    )
+    if default_order:
+        params["$order"] = ":id"
 
     async def fetch() -> list[dict[str, Any]]:
         return await _fetch_rows(config, dataset_id, params, lang)
@@ -467,9 +492,22 @@ async def query_dataset_rows(
             schema_name="socrata.RowQueryResult",
             limits=pick(
                 lang,
-                f"rows capped at {constants.ROWS_LIMIT_MAX} per request{grouped_en}",
+                f"rows capped at {constants.ROWS_LIMIT_MAX} per request{grouped_en}"
+                + (
+                    "; no order was given, so this later page is ordered by :id (the first "
+                    "page has no fixed order: pass `order` on every page for stable paging)"
+                    if default_order
+                    else ""
+                ),
                 f"lignes plafonnées à {constants.ROWS_LIMIT_MAX} par requête ; noms de "
-                f"colonnes et valeurs tels que publiés par le portail{grouped_fr}",
+                f"colonnes et valeurs tels que publiés par le portail{grouped_fr}"
+                + (
+                    " ; aucun tri n'a été donné, cette page suivante est donc triée par :id "
+                    "(la première page n'a pas d'ordre fixe : indiquez `order` à chaque page "
+                    "pour une pagination stable)"
+                    if default_order
+                    else ""
+                ),
             ),
             lang=lang,
         ),

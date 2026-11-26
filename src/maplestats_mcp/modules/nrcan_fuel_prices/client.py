@@ -118,7 +118,16 @@ async def _locations(lang: str) -> tuple[list[FuelLocation], bool]:
     return found, cached
 
 
-def _provenance(url: str, cached: bool, schema: str, lang: str, as_of: datetime | None = None):
+def _provenance(
+    url: str,
+    cached: bool,
+    schema: str,
+    lang: str,
+    as_of: datetime | None = None,
+    fetched: list[tuple[int, str]] | None = None,
+):
+    # A result built from two yearly pages names both, so the earlier one is not hidden.
+    pages = "; ".join(f"{year}: {page_url}" for year, page_url in fetched or [])
     return make_provenance(
         source=constants.RATE_LIMIT_SOURCE,
         url=url,
@@ -128,10 +137,12 @@ def _provenance(url: str, cached: bool, schema: str, lang: str, as_of: datetime 
         coverage=fr_or_en(
             lang,
             "71 cities and Canada. Daily: the last 43 business days. Weekly (weeks ending "
-            "Tuesday) and monthly averages: 2016 onward (monthly from July 2016).",
+            "Tuesday) and monthly averages: 2016 onward (monthly from July 2016)."
+            + (f" Pages read: {pages}." if len(fetched or []) > 1 else ""),
             "71 villes et le Canada. Quotidien : les 43 derniers jours ouvrables. Moyennes "
             "hebdomadaires (semaines se terminant le mardi) et mensuelles : depuis 2016 "
-            "(mensuelles depuis juillet 2016).",
+            "(mensuelles depuis juillet 2016)."
+            + (f" Pages lues : {pages}." if len(fetched or []) > 1 else ""),
         ),
         limits=fr_or_en(
             lang,
@@ -331,22 +342,55 @@ async def get_prices(
     code = constants.FREQUENCIES[frequency][0]
     # Daily prices are always the last 43 business days; the year does not change them.
     asked_year = None if frequency == "daily" else (year or this_year)
-    params = [("productID", str(pid))]
-    params += [("locationID", loc.location) for loc in chosen]
-    params += [("frequency", code), ("priceYear", str(asked_year or this_year))]
-    current = asked_year is None or asked_year == this_year
-    ttl = constants.CACHE_TTL_CURRENT_SECONDS if current else constants.CACHE_TTL_PAST_SECONDS
-    html, cached = await _html(_page(lang), params, ttl, lang)
-    caption, names, parsed = parse_prices(html)
-    url = str(httpx.URL(_page(lang), params=params))
+    first_year = asked_year or this_year
+    base = [("productID", str(pid))]
+    base += [("locationID", loc.location) for loc in chosen]
+
+    async def read_year(price_year: int, *, still_changing: bool = False):
+        params = [*base, ("frequency", code), ("priceYear", str(price_year))]
+        current = still_changing or price_year == this_year
+        ttl = constants.CACHE_TTL_CURRENT_SECONDS if current else constants.CACHE_TTL_PAST_SECONDS
+        html, hit = await _html(_page(lang), params, ttl, lang)
+        return (str(httpx.URL(_page(lang), params=params)), hit, *parse_prices(html))
+
+    url, cached, caption, names, parsed = await read_year(first_year)
+    fetched = [(first_year, url)]
+    # The year the latest rows come from: the one asked for, or last year when this
+    # year's page is still empty and the reach-back below supplies every row.
+    rows_year = asked_year
+    # The year in progress holds few periods early on (none until the first Tuesday of
+    # January), so the latest periods of a call with no year also come from the year
+    # before. One extra year only: a longer reach needs `year`.
+    reaches_back = latest_n is not None and year is None and frequency != "daily"
+    if (
+        latest_n is not None
+        and reaches_back
+        and first_year > constants.FIRST_YEAR
+        and len({row["period"] for row in parsed}) < latest_n
+    ):
+        # Last year's page is still changing in early January (December's monthly average
+        # and its last weeks are posted then), so it gets the short, current-year cache time.
+        before_url, before_cached, before_caption, before_names, before_parsed = await read_year(
+            first_year - 1, still_changing=True
+        )
+        fetched.append((first_year - 1, before_url))
+        cached = cached and before_cached
+        caption = caption if parsed else before_caption
+        names = names or before_names
+        if not parsed:
+            rows_year = first_year - 1
+        # A period listed on both pages is kept once, from this year's page.
+        listed = {row["period"] for row in parsed}
+        parsed = [row for row in before_parsed if row["period"] not in listed] + parsed
     if not parsed:
+        scope = f"{first_year} or {first_year - 1}" if len(fetched) > 1 else str(asked_year)
         raise lang_error(
             NotFound,
             lang,
             f"nrcan_fuel_prices: NRCan publishes no {frequency} prices for these locations "
-            f"in {asked_year or 'the last 43 business days'} ({url}).",
+            f"in {asked_year and scope or 'the last 43 business days'} ({url}).",
             f"nrcan_fuel_prices : RNCan ne publie aucun prix ({frequency}) pour ces lieux "
-            f"en {asked_year or 'les 43 derniers jours ouvrables'} ({url}).",
+            f"en {asked_year and scope or 'les 43 derniers jours ouvrables'} ({url}).",
         )
     rows: list[FuelPrice] = []
     for row in parsed:
@@ -372,21 +416,39 @@ async def get_prices(
     # NRCan answers some products at another frequency than asked (auto propane asked
     # monthly comes back weekly, checked 2026-11-24): the caption says which it is.
     served = _caption_frequency(caption) or frequency
-    note = None
+    notes: list[str] = []
     if served != frequency:
-        note = fr_or_en(
-            lang,
-            f"NRCan publishes {en.lower()} {served}, not {frequency}: these are its "
-            f"{served} figures.",
-            f"RNCan publie {fr.lower()} en fréquence {served}, pas {frequency} : ce sont ses "
-            f"chiffres {served}.",
+        notes.append(
+            fr_or_en(
+                lang,
+                f"NRCan publishes {en.lower()} {served}, not {frequency}: these are its "
+                f"{served} figures.",
+                f"RNCan publie {fr.lower()} en fréquence {served}, pas {frequency} : ce sont "
+                f"ses chiffres {served}.",
+            )
+        )
+    if latest_n is not None and len(periods) < latest_n:
+        years = " and ".join(str(y) for y, _u in fetched)
+        years_fr = " et ".join(str(y) for y, _u in fetched)
+        scope = years if asked_year else "the last 43 business days"
+        scope_fr = years_fr if asked_year else "les 43 derniers jours ouvrables"
+        notes.append(
+            fr_or_en(
+                lang,
+                f"Only {len(periods)} {served} periods are published in {scope} "
+                f"({latest_n} asked)."
+                + (" Pass `year` to read an earlier year." if len(fetched) > 1 else ""),
+                f"Seulement {len(periods)} périodes ({served}) sont publiées en {scope_fr} "
+                f"({latest_n} demandées)."
+                + (" Passez `year` pour lire une année antérieure." if len(fetched) > 1 else ""),
+            )
         )
     return FuelPrices(
         product=str(pid),
         product_name=fr if lang == "fr" else en,
         frequency=served,
-        note=note,
-        year=None if served == "daily" else asked_year,
+        note=" ".join(notes) or None,
+        year=None if served == "daily" else rows_year,
         unit=fr_or_en(lang, "cents per litre", "cents le litre"),
         locations=names,
         rows=rows,
@@ -394,6 +456,6 @@ async def get_prices(
         title=caption,
         source_url=url,
         provenance=_provenance(
-            url, cached, "nrcan_fuel_prices.FuelPrices", lang, _as_of(periods[-1])
+            url, cached, "nrcan_fuel_prices.FuelPrices", lang, _as_of(periods[-1]), fetched
         ),
     )

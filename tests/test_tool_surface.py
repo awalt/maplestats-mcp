@@ -235,6 +235,153 @@ def test_nullable_output_field_is_breaking():
     ]
 
 
+def test_output_field_no_longer_required_is_breaking_and_now_required_additive():
+    def optional(tool):
+        row = tool["output_schema"]["$defs"]["Row"]
+        row["required"] = ["ref_date"]
+
+    assert _changes(optional) == [
+        ("breaking", "output field `rows[].value`: no longer marked required")
+    ]
+
+    # A field that was optional and becomes required only adds to the contract.
+    reverse = copy.deepcopy(_BASE)
+    reverse["demo_get"]["output_schema"]["$defs"]["Row"]["required"] = ["ref_date"]
+    changes = surface.diff_surfaces(reverse, _BASE)
+    assert [(c.kind, c.detail) for c in changes] == [
+        ("additive", "output field `rows[].value`: now marked required")
+    ]
+
+
+def test_output_field_that_gains_a_default_is_other_not_breaking():
+    # `cached: bool` to `cached: bool = False`: Provenance does this, and it is in every tool.
+    def edit(tool):
+        row = tool["output_schema"]["$defs"]["Row"]
+        row["properties"]["value"] = {"type": "number", "default": 0}
+        row["required"] = ["ref_date"]
+
+    assert _changes(edit) == [
+        ("other", "output field `rows[].value`: no longer marked required (it now has a default)"),
+        ("other", "output field `rows[].value`: default changed from none to 0"),
+    ]
+
+    # A property that names a definition keeps its default beside the $ref.
+    base = copy.deepcopy(_BASE)
+    output = base["demo_get"]["output_schema"]
+    output["$defs"]["Amount"] = {"type": "number"}
+    output["$defs"]["Row"]["properties"]["value"] = {"$ref": "#/$defs/Amount"}
+    new = copy.deepcopy(base)
+    row = new["demo_get"]["output_schema"]["$defs"]["Row"]
+    row["properties"]["value"] = {"$ref": "#/$defs/Amount", "default": 0}
+    row["required"] = ["ref_date"]
+    kinds = {c.kind for c in surface.diff_surfaces(base, new)}
+    assert kinds == {"other"}
+
+
+# A tool whose output field is one of two models, the shape of a Pydantic `A | B` return field.
+_UNION = {
+    "demo_get": {
+        "title": "Demo get",
+        "annotations": {"readOnlyHint": True},
+        "input_schema": {"type": "object", "properties": {}},
+        "output_schema": {
+            "$defs": {
+                "Row": {
+                    "type": "object",
+                    "properties": {"ref_date": {"type": "string"}, "value": {"type": "number"}},
+                    "required": ["ref_date", "value"],
+                },
+                "Total": {
+                    "type": "object",
+                    "properties": {"total": {"type": "number"}},
+                    "required": ["total"],
+                },
+            },
+            "type": "object",
+            "properties": {
+                "result": {"anyOf": [{"$ref": "#/$defs/Row"}, {"$ref": "#/$defs/Total"}]}
+            },
+            "required": ["result"],
+        },
+    }
+}
+
+
+def _union_changes(edit) -> list[tuple[str, str]]:
+    new = copy.deepcopy(_UNION)
+    edit(new["demo_get"]["output_schema"])
+    return [(c.kind, c.detail) for c in surface.diff_surfaces(_UNION, new)]
+
+
+def test_field_removed_from_one_member_of_a_union_is_breaking():
+    def edit(output):
+        del output["$defs"]["Row"]["properties"]["value"]
+        output["$defs"]["Row"]["required"] = ["ref_date"]
+
+    assert _union_changes(edit) == [("breaking", "output field `result.value`: removed")]
+
+
+def test_field_added_to_one_member_of_a_union_is_additive():
+    def edit(output):
+        output["$defs"]["Total"]["properties"]["currency"] = {"type": "string"}
+
+    assert _union_changes(edit) == [("additive", "output field `result.currency`: added")]
+
+
+def test_a_union_member_not_in_both_schemas_by_ref_falls_back_to_other():
+    # Inline members carry no $ref to pair them by, so the removed field is not seen
+    # and the difference is reported as one this check cannot name.
+    def inline(surface_):
+        output = surface_["demo_get"]["output_schema"]
+        row = output["$defs"].pop("Row")
+        total = output["$defs"].pop("Total")
+        output["properties"]["result"] = {"anyOf": [row, total]}
+        return surface_
+
+    old = inline(copy.deepcopy(_UNION))
+    new = copy.deepcopy(old)
+    del new["demo_get"]["output_schema"]["properties"]["result"]["anyOf"][0]["properties"]["value"]
+    assert [(c.kind, c.detail) for c in surface.diff_surfaces(old, new)] == [
+        ("other", "output field `result`: schema changed in a way this check does not name")
+    ]
+
+
+def test_union_members_are_compared_when_only_one_side_is_a_union():
+    # The field was one model and is now that model or another: the model it kept is compared.
+    old = copy.deepcopy(_UNION)
+    old["demo_get"]["output_schema"]["properties"]["result"] = {"$ref": "#/$defs/Row"}
+    new = copy.deepcopy(_UNION)
+    del new["demo_get"]["output_schema"]["$defs"]["Row"]["properties"]["value"]
+    changes = [(c.kind, c.detail) for c in surface.diff_surfaces(old, new)]
+    assert ("breaking", "output field `result.value`: removed") in changes
+
+
+def test_recursive_union_members_do_not_loop():
+    node = {
+        "type": "object",
+        "properties": {
+            "child": {"anyOf": [{"$ref": "#/$defs/Node"}, {"$ref": "#/$defs/Leaf"}]},
+        },
+    }
+    leaf = {"type": "object", "properties": {"name": {"type": "string"}}}
+    base = {
+        "demo_get": {
+            "title": "Demo get",
+            "annotations": {},
+            "input_schema": {"type": "object", "properties": {}},
+            "output_schema": {
+                "$defs": {"Node": node, "Leaf": leaf},
+                "type": "object",
+                "properties": {"tree": {"$ref": "#/$defs/Node"}},
+            },
+        }
+    }
+    new = copy.deepcopy(base)
+    del new["demo_get"]["output_schema"]["$defs"]["Leaf"]["properties"]["name"]
+    changes = [(c.kind, c.detail) for c in surface.diff_surfaces(base, new)]
+    assert ("breaking", "output field `tree.child.name`: removed") in changes
+
+
 def test_title_annotation_and_default_changes_are_other():
     def edit(tool):
         tool["title"] = "Demo fetch"

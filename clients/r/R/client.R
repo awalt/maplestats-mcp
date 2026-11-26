@@ -87,7 +87,7 @@ post_message <- function(client, body) {
   response <- httr2::req_perform(request)
   status <- httr2::resp_status(response)
 
-  # The hosted server allows 60 requests a minute per client.
+  # The hosted server allows 120 requests a minute per client.
   if (status == 429) {
     retry <- httr2::resp_header(response, "retry-after")
     maplestats_abort(

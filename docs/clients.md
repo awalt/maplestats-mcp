@@ -46,7 +46,7 @@ Transport rules the clients follow:
 - Protocol version `2025-06-18`, sent as `mcp-protocol-version` after
   `initialize`.
 - Request timeout 240 s: the hosted server lets a tool call run 230 s.
-- HTTP 429 (60 requests a minute per client) raises an error that carries
+- HTTP 429 (120 requests a minute per client) raises an error that carries
   `Retry-After`; the client does not sleep and retry on its own.
 - A `User-Agent` of `maplestats-<language>/<version>`. No token: the hosted
   endpoint is public. `MAPLESTATS_URL` (and a `url` argument) point a client
@@ -113,7 +113,7 @@ use a default one and take an optional client.
 
 Deliberately left out: one wrapper function per tool (about 500 tools that
 change every week; `search_tools` is the index), caching (the server caches
-upstream), async (one call at a time is the right pace against a 60 a minute
+upstream), async (one call at a time is the right pace against a 120 a minute
 limit), and value typing.
 
 ## Names and where they live

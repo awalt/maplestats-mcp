@@ -50,13 +50,17 @@ def fragment_files(folder: Path = FRAGMENTS) -> list[Path]:
 def parse_sections(text: str, where: str) -> tuple[str, dict[str, list[str]]]:
     """Text before the first `###` heading, and each section's entries.
 
-    An entry is a `- ` line with the indented lines under it. Raises
+    An entry is a `- ` line with the indented lines under it, and a blank line
+    between two of those lines keeps the entry's paragraphs apart. Raises
     ValueError, naming `where`, for an unknown section, an empty one, or a
     line that belongs to no entry.
     """
     intro: list[str] = []
     sections: dict[str, list[str]] = {}
     current: list[str] | None = None
+    # A blank line inside an entry (between its paragraphs) is kept, but only when an
+    # indented line of the same entry follows it; before a new entry or heading it is dropped.
+    blank_before = False
     for number, line in enumerate(text.splitlines(), start=1):
         heading = re.fullmatch(r"###\s+(.+?)\s*", line)
         if heading:
@@ -66,13 +70,18 @@ def parse_sections(text: str, where: str) -> tuple[str, dict[str, list[str]]]:
                     f"{where}:{number}: unknown section {name!r}, use one of {SECTIONS}"
                 )
             current = sections.setdefault(name, [])
+            blank_before = False
         elif current is None:
             intro.append(line)
         elif line.startswith("- "):
             current.append(line)
-        elif line.startswith("  ") and current:
-            current[-1] += "\n" + line
-        elif line.strip():
+            blank_before = False
+        elif line.startswith("  ") and current and line.strip():
+            current[-1] += ("\n\n" if blank_before else "\n") + line
+            blank_before = False
+        elif not line.strip():
+            blank_before = bool(current)
+        else:
             raise ValueError(
                 f"{where}:{number}: entries start with '- ', continuations with 2 spaces"
             )

@@ -202,8 +202,7 @@ def build_where(
     if end:
         clauses.append(f"Reported_Date < DATE '{(end + timedelta(days=1)).isoformat()}'")
     if intersection_contains and intersection_contains.strip():
-        pattern = intersection_contains.strip().upper().replace("'", "''")
-        clauses.append(f"UPPER(Intersection) LIKE '%{pattern}%'")
+        clauses.append(arcgis.like_contains("Intersection", intersection_contains))
     return " AND ".join(clauses) or "1=1"
 
 

@@ -29,7 +29,7 @@ class MapleStatsError(Exception):
 
 
 class RateLimited(MapleStatsError):
-    """HTTP 429: the hosted server allows 60 requests a minute per client."""
+    """HTTP 429: the hosted server allows 120 requests a minute per client."""
 
     def __init__(self, message: str, retry_after: float | None) -> None:
         super().__init__(message)

@@ -12,7 +12,7 @@ const DIRECT_TOOLS = ("search_tools", "plan_query", "call_tool")
     MapleStatsError(message, retry_after)
 
 A tool error, a JSON-RPC error or an HTTP failure, with the server's message.
-`retry_after` is set (seconds) when the hosted server's limit of 60 requests a
+`retry_after` is set (seconds) when the hosted server's limit of 120 requests a
 minute was hit, and `nothing` otherwise.
 """
 struct MapleStatsError <: Exception

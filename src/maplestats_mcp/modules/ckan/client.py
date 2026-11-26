@@ -90,6 +90,13 @@ def excluded_dataset(portal: str, dataset_id: str | None) -> bool:
     return (dataset_id or "") in constants.EXCLUDED_DATASETS.get(portal, frozenset())
 
 
+def excluded_resource(portal: str, resource: dict[str, Any]) -> bool:
+    """True for a resource on an excluded host or inside an excluded dataset."""
+    return excluded_host(_text(resource.get("url"))) or excluded_dataset(
+        portal, resource.get("package_id")
+    )
+
+
 def refuse_excluded(lang: str) -> NoReturn:
     """Raise the one InvalidInput every CKAN tool gives for excluded CanadaBuys data."""
     raise_localized(InvalidInput, constants.EXCLUDED_REASON, constants.EXCLUDED_REASON_FR, lang)
@@ -782,7 +789,7 @@ async def get_resource(portal: str, resource_id: str, lang: str = "en") -> Resou
         resource_id,
         lang,
     )
-    if excluded_host(_text(obj.get("url"))) or excluded_dataset(portal, obj.get("package_id")):
+    if excluded_resource(portal, obj):
         refuse_excluded(lang)
     return ResourceDetail(
         portal=portal,
@@ -1012,8 +1019,13 @@ async def datastore_search(
     limit: int = constants.DATASTORE_ROWS_DEFAULT,
     offset: int = 0,
     lang: str = "en",
+    resource_checked: bool = False,
 ) -> DatastoreSearchResult:
-    """Rows from one DataStore-active resource (check `datastore_active` first)."""
+    """Rows from one DataStore-active resource (check `datastore_active` first).
+
+    `resource_checked` is for a caller that already resolved the resource and refused an
+    excluded one (files.read_resource); every other caller gets that check here.
+    """
     info = _portal(portal, lang)
     if not info.has_datastore:
         raise_localized(
@@ -1044,6 +1056,30 @@ async def datastore_search(
             f"offset doit être positif ou nul (reçu : {offset}).",
             lang,
         )
+
+    if not resource_checked:
+        # datastore_search takes a bare id, so the resource's package and URL are read the
+        # way get_resource reads them (same cache entry) to leave CanadaBuys out here too.
+        shown, _ = await _call(
+            portal,
+            "resource_show",
+            {"id": resource_id},
+            constants.CACHE_TTL_RESOURCE_SECONDS,
+            resource_id,
+            lang,
+        )
+        # A reply that is not a resource record cannot be checked, so no rows are read.
+        if not isinstance(shown, dict):
+            raise_localized(
+                UpstreamError,
+                f"resource_show for {resource_id!r} returned no resource record, so its "
+                "dataset cannot be checked before reading rows.",
+                f"resource_show n'a renvoyé aucune fiche pour {resource_id!r} : son jeu de "
+                "données ne peut pas être vérifié avant la lecture des lignes.",
+                lang,
+            )
+        if excluded_resource(portal, shown):
+            refuse_excluded(lang)
 
     params: dict[str, Any] = {"resource_id": resource_id, "limit": limit, "offset": offset}
     if filters:

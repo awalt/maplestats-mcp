@@ -68,6 +68,13 @@ order it shows the steps; `anywhere` ignores order; `routed` leaves out the gene
 steps; `coverage` is the share of `plan_expected` present; `topic` and `portal` are the shares
 that named an expected topic or portal; `abstain` is a plan with no topic and no place.
 
+**In-sample after 2026-11-20.** The tables in this section are the 2026-10-27 record, taken
+before the tool descriptions were reworded. The figures from the 2026-11-20 re-recordings on
+(in "Description rules" below and in `baseline.json`) are in-sample: the descriptions were
+reworded by measuring ranks on these same 129 questions, and no held-out set was kept. Read
+the gain since 2026-10-27 as measured on the questions that shaped it, not as what new
+questions would show.
+
 ### What moved the numbers: registry or answer key
 
 The same benchmark run three ways. "2026-10-19" is the first baseline. "Old key" is the
@@ -321,6 +328,14 @@ needing the tool in the top three) passed throughout. Two changes to the index i
 were measured and dropped: indexing only a description's summary, "Use for" sentence
 and keywords (MRR 0.645, 23 English cases lost) and English stop words (MRR 0.704, five
 cases lost); a lower BM25 `b` moved MRR by less than 0.005.
+
+The figures in the table and in the paragraphs after it are in-sample. The rewording was
+decided by reading which tools ranked above the expected answer on these 129 questions, and
+the same 129 questions then scored it; there is no held-out set. Each rule was applied to
+every tool it covers, not to one question, and the English and French discovery tests
+outside this benchmark kept passing, but they check that a tool is in the top three and
+give no second score for these metrics. A set of questions written after the rewording
+would show how much of the gain carries over.
 
 Floors raised with this record: overall R@1 0.60, R@5 0.86, R@10 0.91, MRR 0.71; French
 R@5 0.87; `boc` R@5 0.90; `ambiguity` R@5 0.65.

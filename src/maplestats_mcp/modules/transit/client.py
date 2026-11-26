@@ -365,8 +365,9 @@ async def _trips(
     return await _with_fresh_directory(key, once)
 
 
-async def _frequency_trips(key: str, lang: str = "en") -> frozenset[str]:
-    """Trips described by frequencies.txt, which this module leaves out.
+async def _frequency_trips(key: str, lang: str = "en") -> dict[str, int]:
+    """Trips described by frequencies.txt, which this module leaves out, with the end of
+    the latest of their frequency windows in seconds past midnight (0 when it is blank).
 
     Their stop_times are a template (Salaberry-de-Valleyfield's Communobus
     trips, checked 2026-10-03, start at 00:10:00 and repeat every 30 or 60
@@ -374,7 +375,13 @@ async def _frequency_trips(key: str, lang: str = "en") -> frozenset[str]:
     wrong times. Most feeds ship the file empty or not at all.
     """
     rows, _ = await _table(key, "frequencies.txt", required=False, lang=lang)
-    return frozenset(r["trip_id"] for r in rows if r.get("trip_id"))
+    ends: dict[str, int] = {}
+    for r in rows:
+        if r.get("trip_id"):
+            ends[r["trip_id"]] = max(
+                ends.get(r["trip_id"], 0), gtfs.to_seconds(r.get("end_time")) or 0
+            )
+    return ends
 
 
 # -- provenance --------------------------------------------------------
@@ -1032,7 +1039,7 @@ async def get_stop_departures(
     zone = await _timezone(agency_key, lang)
     day = _service_day(zone, service_date, lang)
     if start_time:
-        from_seconds = gtfs.parse_start_time(start_time)
+        from_seconds = gtfs.parse_start_time(start_time, lang=lang)
     elif day == datetime.now(ZoneInfo(zone)).date():
         now = datetime.now(ZoneInfo(zone))
         from_seconds = now.hour * 3600 + now.minute * 60
@@ -1070,6 +1077,7 @@ async def get_stop_departures(
         fetch,
     )
     templated = await _frequency_trips(agency_key, lang)
+    scanned_calls = calls
     if templated:
         calls = [c for c in calls if c.trip.trip_id not in templated]
     calendar, _ = await _table(agency_key, "calendar.txt", required=False, lang=lang)
@@ -1078,6 +1086,37 @@ async def get_stop_departures(
     yesterday = gtfs.active_services(calendar, calendar_dates, gtfs.previous_day(day))
     routes, _ = await _table(agency_key, "routes.txt", lang=lang)
     route_by_id = {r["route_id"]: r for r in routes if not _is_excluded(agency, r)}
+    # Trips defined in frequencies.txt are not listed (their stop times are a template),
+    # so a stop only they serve would read as "no service": say how many were left out.
+    frequency_left_out = len(
+        {
+            c.trip.trip_id
+            for c in scanned_calls
+            if c.trip.trip_id in templated
+            and c.trip.route_id in route_by_id
+            and (route_record is None or c.trip.route_id == route_record.route_id)
+            and (
+                c.trip.service_id in today
+                # Yesterday's service only reaches today if its window runs to 24:00 or later.
+                or (c.trip.service_id in yesterday and templated[c.trip.trip_id] >= 86400)
+            )
+        }
+    )
+    frequency_note = (
+        pick(
+            lang,
+            "Trips defined by frequencies.txt are not listed "
+            f"({frequency_left_out} at this stop on this date): their stop times are "
+            "templates and this module does not expand headways, so a stop served only by "
+            "such trips shows no departures here.",
+            "Les voyages définis par frequencies.txt ne sont pas listés "
+            f"({frequency_left_out} à cet arrêt à cette date) : leurs heures sont des "
+            "gabarits et ce module ne déroule pas les intervalles ; un arrêt desservi "
+            "uniquement par de tels voyages n'affiche donc aucun départ ici.",
+        )
+        if frequency_left_out
+        else None
+    )
 
     entries: list[tuple[int, bool, StopCall]] = []
     for call in calls:
@@ -1134,7 +1173,7 @@ async def get_stop_departures(
             dir_cached and scan_cached,
             "transit.StopDepartures",
             lang,
-            extra_limits=family_cut,
+            extra_limits=" ".join(part for part in (family_cut, frequency_note) if part) or None,
         ),
     )
 
@@ -1156,16 +1195,37 @@ async def get_route_summary(
     directory, dir_cached = await _directory(agency_key, lang)
     record = await _resolve_route(agency_key, route, lang)
     templated = await _frequency_trips(agency_key, lang)
-    all_trips = [
-        t
-        for t in await _trips(agency_key, route_id=record.route_id, lang=lang)
-        if t.trip_id not in templated
-    ]
+    route_trips = await _trips(agency_key, route_id=record.route_id, lang=lang)
+    all_trips = [t for t in route_trips if t.trip_id not in templated]
     calendar, _ = await _table(agency_key, "calendar.txt", required=False, lang=lang)
     calendar_dates, _ = await _table(agency_key, "calendar_dates.txt", required=False, lang=lang)
     services = gtfs.active_services(calendar, calendar_dates, day)
     trips = [t for t in all_trips if t.service_id in services]
     trip_ids = frozenset(t.trip_id for t in trips)
+    # Frequency-based trips are left out of every count below (their stop times are a
+    # template); say how many, so a route made only of them does not read as "no service".
+    frequency_in_feed = len(route_trips) - len(all_trips)
+    frequency_on_date = sum(
+        1 for t in route_trips if t.trip_id in templated and t.service_id in services
+    )
+    frequency_note = (
+        pick(
+            lang,
+            f"{frequency_in_feed} of this route's {len(route_trips)} trips in the feed are "
+            f"frequency-based (frequencies.txt), {frequency_on_date} of them running on this "
+            "date: their stop times are templates and this module does not expand headways, "
+            "so they are left out of trips_in_feed, trips_on_date, the directions and the "
+            "hourly frequencies. A route made only of such trips shows no trips here.",
+            f"{frequency_in_feed} des {len(route_trips)} voyages de cette ligne dans le "
+            f"fichier sont définis par fréquence (frequencies.txt), dont {frequency_on_date} "
+            "circulent à cette date : leurs heures sont des gabarits et ce module ne déroule "
+            "pas les intervalles ; ils sont donc exclus de trips_in_feed, de trips_on_date, "
+            "des directions et des fréquences horaires. Une ligne composée uniquement de "
+            "tels voyages n'affiche aucun voyage ici.",
+        )
+        if frequency_in_feed
+        else None
+    )
 
     async def fetch() -> list[gtfs.StopTimeRow]:
         if not trip_ids:
@@ -1244,6 +1304,11 @@ async def get_route_summary(
             )
         ],
         provenance=await _provenance(
-            agency_key, directory, dir_cached and scan_cached, "transit.RouteSummary", lang
+            agency_key,
+            directory,
+            dir_cached and scan_cached,
+            "transit.RouteSummary",
+            lang,
+            extra_limits=frequency_note,
         ),
     )

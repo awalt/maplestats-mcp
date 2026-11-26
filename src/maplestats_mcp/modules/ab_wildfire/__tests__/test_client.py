@@ -121,6 +121,21 @@ def test_where_quotes_and_case_folds_text_filters():
     assert "FIRE_TYPE = 'Mutual Aid'" in where
 
 
+def test_where_wildcards_in_text_match_only_themselves():
+    # % and _ are LIKE wildcards: "%" used to match every row and "A_B" matched "AXB".
+    where = client.build_fire_where(FireFilters(forest_area="100%"))
+    assert "UPPER(RESP_AREA) LIKE '%100$%%' ESCAPE '$'" in where
+    where = client.build_fire_where(FireFilters(forest_area="a_b $5"))
+    assert "UPPER(RESP_AREA) LIKE '%A$_B $$5%' ESCAPE '$'" in where
+    # Text without a wildcard is sent exactly as before, with no ESCAPE clause.
+    assert "ESCAPE" not in client.build_fire_where(FireFilters(forest_area="O'Brien $5"))
+    perimeter = client.build_perimeter_where(
+        fire_number="WWF_01", cause=None, size_class=None, forest_area="%", min_area_ha=None
+    )
+    assert "UPPER(FireNumber) LIKE '%WWF$_01%' ESCAPE '$'" in perimeter
+    assert "UPPER(RESP_AREA) LIKE '%$%%' ESCAPE '$'" in perimeter
+
+
 def test_where_dates_are_inclusive_for_both_bases():
     assessed = client.build_fire_where(FireFilters(start_date="2026-07-01", end_date="2026-07-31"))
     # A UTC epoch field: the bounds are Alberta midnights (MDT, UTC-6) in UTC.
@@ -694,6 +709,14 @@ async def test_orders_filter_by_type_and_name(server):
     assert "UPPER(name) LIKE '%O''BRIEN%'" in where
     assert "UPPER(jurisdictions) LIKE '%O''BRIEN%'" in where
     assert result.orders  # the fake does not filter; the where clause is what matters
+
+
+async def test_orders_name_filter_matches_wildcards_literally(server):
+    _orders_server(server)
+    await client.get_fire_control_orders(alert_type="fire advisory", name_contains="%")
+    where = server.queries[0][1]["where"]
+    assert "UPPER(name) LIKE '%$%%' ESCAPE '$'" in where
+    assert "UPPER(jurisdictions) LIKE '%$%%' ESCAPE '$'" in where
 
 
 async def test_ohv_restrictions_use_their_own_fields(server):

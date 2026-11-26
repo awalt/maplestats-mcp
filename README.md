@@ -151,7 +151,7 @@ The default is the hosted server: nothing to install, no account, no key.
      turns on Developer mode (Workspace Settings → Permissions & Roles →
      Connected Data), creates the app, and publishes it (Workspace settings →
      Apps → Drafts → Publish). The hosted server is shared and limits each
-     client to 60 requests a minute, so a large organization should run its own
+     client to 120 requests a minute, so a large organization should run its own
      copy.
    - **VS Code:** the same entry under a `servers` key, with `"type": "http"`,
      in `.vscode/mcp.json`.
@@ -172,7 +172,7 @@ The default is the hosted server: nothing to install, no account, no key.
    (needs [uv](https://docs.astral.sh/uv/)), or the equivalent `uvx
    maplestats-mcp` entry for other clients (see [Install](#install)).
 
-Each client gets 60 requests a minute. Your agent's tool calls (a search phrase, a table number)
+Each client gets 120 requests a minute. Your agent's tool calls (a search phrase, a table number)
 reach the server and its host, Microsoft Azure (Canada Central). The code keeps
 no log of them, but its in-memory cache can hold a search phrase or filter in a
 key or a response until the entry expires or the server restarts. Check

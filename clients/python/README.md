@@ -52,7 +52,7 @@ convert types: dates stay text.
 
 Errors from the server raise `maplestats.MapleStatsError` with its message,
 which says how to fix the call. `maplestats.RateLimited` (a subclass) means the
-hosted server's limit of 60 requests a minute; it carries `retry_after`.
+hosted server's limit of 120 requests a minute; it carries `retry_after`.
 
 ## Settings
 

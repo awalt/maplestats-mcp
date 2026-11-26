@@ -41,6 +41,27 @@ function Invoke-Checked($label, [string]$exe, [string[]]$exeArgs) {
     }
 }
 
+# Runs one live smoke script through scripts/_run_smoke.py, as smoke.yml does. Exit code
+# 75 (_smoke_common.SKIPPED_EXIT) means a source was unavailable: reported as skipped,
+# which is not a pass and not a failure of this check.
+$skippedExit = 75
+$skipped = @()
+
+function Invoke-Smoke($smokeName) {
+    $label = "live smoke test: $smokeName"
+    Write-Step $label
+    & uv run python scripts/_run_smoke.py $smokeName
+    if ($LASTEXITCODE -eq 0) {
+        Write-Ok $label
+    } elseif ($LASTEXITCODE -eq $skippedExit) {
+        Write-Host "SKIPPED: $label (a source was unavailable; not a pass)" -ForegroundColor Yellow
+        $script:skipped += $smokeName
+    } else {
+        Write-Fail "$label (exit code $LASTEXITCODE)"
+        $script:failures += $label
+    }
+}
+
 # 1. Install dependencies
 $null = Invoke-Checked "uv sync" "uv" @("sync", "--locked")
 
@@ -59,9 +80,9 @@ $null = Invoke-Checked "pytest" "uv" @("run", "pytest")
 # test is never silently left out of the release gate.
 $liveSmokeScripts = Get-ChildItem -Path "scripts" -Filter "smoke_test*.py" |
     Sort-Object Name |
-    ForEach-Object { "scripts/$($_.Name)" }
+    ForEach-Object { $_.BaseName }
 foreach ($smokeScript in $liveSmokeScripts) {
-    $null = Invoke-Checked "live smoke test: $smokeScript" "uv" @("run", "python", $smokeScript)
+    Invoke-Smoke $smokeScript
 }
 
 # 5 & 6. Docker build + compose up + health check (optional - skipped if
@@ -117,8 +138,15 @@ if ($dockerAvailable) {
 
 # Summary
 Write-Step "SUMMARY"
+if ($skipped.Count -gt 0) {
+    Write-Host "Skipped, a source was unavailable (not a pass; read the SKIP lines and rerun): $($skipped -join ', ')" -ForegroundColor Yellow
+}
 if ($failures.Count -eq 0) {
-    Write-Host "All checks passed." -ForegroundColor Green
+    if ($skipped.Count -gt 0) {
+        Write-Host "No check failed; $($skipped.Count) live smoke script(s) skipped." -ForegroundColor Yellow
+    } else {
+        Write-Host "All checks passed." -ForegroundColor Green
+    }
     exit 0
 } else {
     Write-Host "Failed: $($failures -join ', ')" -ForegroundColor Red

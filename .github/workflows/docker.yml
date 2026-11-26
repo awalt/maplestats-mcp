@@ -12,6 +12,19 @@ name: Docker images
 # Before 2026-11, this ran on push alongside CI, so a commit that failed the
 # tests still became :latest and the public server. Pull requests and manual
 # runs build and check the image without pushing it.
+#
+# Every green push to main starts its own run of this workflow, and nothing orders
+# the runs: the one for an older commit can reach its push or its rollout after the
+# newer commit's, which would leave the older image as :latest and in production.
+# So a run always pushes its commit's own tag (:<7 characters>), but moves :latest only
+# when its commit (head_sha) is still the tip of main, and rolls out to Azure unless
+# the app already runs a later commit (a descendant of head_sha). A commit whose
+# successor failed CI is therefore still deployed, where a tip-only rule would leave
+# production on the commit before it.
+#
+# Known gap: GitHub keeps one pending run per concurrency group, by the order runs
+# queue, so while a rollout is running, a newer commit's pending deploy can still be
+# cancelled by an older commit's run that queues after it. The next green push deploys.
 
 on:
   workflow_run:
@@ -78,8 +91,15 @@ jobs:
           echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           short_sha="${HEAD_SHA::7}"
           docker tag maplestats-mcp "$IMAGE:$short_sha"
-          docker tag maplestats-mcp "$IMAGE:latest"
           docker push "$IMAGE:$short_sha"
+          # Only :latest moves, and only to the tip of main; the commit's own tag is
+          # always pushed, so its image exists for a rollout or a manual redeploy.
+          tip=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          if [ "$tip" != "$HEAD_SHA" ]; then
+            echo "main is at ${tip::7}, not ${HEAD_SHA::7}: pushed :$short_sha only, :latest stays where it is."
+            exit 0
+          fi
+          docker tag maplestats-mcp "$IMAGE:latest"
           docker push "$IMAGE:latest"
 
   chat:
@@ -124,8 +144,14 @@ jobs:
           echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           short_sha="${HEAD_SHA::7}"
           docker tag maplestats-chat "$IMAGE:$short_sha"
-          docker tag maplestats-chat "$IMAGE:latest"
           docker push "$IMAGE:$short_sha"
+          # Only :latest moves, and only to the tip of main (see the server job above).
+          tip=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          if [ "$tip" != "$HEAD_SHA" ]; then
+            echo "main is at ${tip::7}, not ${HEAD_SHA::7}: pushed :$short_sha only, :latest stays where it is."
+            exit 0
+          fi
+          docker tag maplestats-chat "$IMAGE:latest"
           docker push "$IMAGE:latest"
 
   # Rolls the image pushed above out to the Azure Container Apps instance. It
@@ -146,6 +172,8 @@ jobs:
     concurrency:
       group: deploy-azure
       cancel-in-progress: false
+    outputs:
+      deployed: ${{ steps.guard.outputs.deploy }}
     env:
       AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
@@ -155,6 +183,13 @@ jobs:
       APP: maplestats-mcp
       IMAGE: ghcr.io/${{ github.repository }}
     steps:
+      # Full history, for the step after the sign-in: it asks git whether the commit the
+      # app runs is a descendant of this one.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
       - name: Sign in to Azure with GitHub's OIDC token
         run: |
           token=$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
@@ -163,6 +198,38 @@ jobs:
             --federated-token "$token" --output none
           az account set --subscription "$AZURE_SUBSCRIPTION_ID"
           az config set extension.use_dynamic_install=yes_without_prompt --only-show-errors
+      # A rollout must not move production back to an older commit. Every green push to
+      # main has its own run, and nothing orders the runs, so a run for an older commit
+      # can get here after a newer commit's rollout. It skips only then: the image the app
+      # runs is tagged with its commit's first 7 characters (the Deploy step below), and
+      # the rollout is skipped when that commit is a descendant of this run's commit and
+      # not the same. An older commit whose newer successor failed CI is still deployed.
+      # If the running image cannot be read, has no such tag or names a commit git does
+      # not know, the rollout goes ahead, as it did before this check.
+      - name: Do not move production back to an older commit
+        id: guard
+        run: |
+          image=$(az containerapp show -g "$RESOURCE_GROUP" -n "$APP" \
+            --query "properties.template.containers[0].image" -o tsv --only-show-errors) || image=""
+          tag="${image##*:}"
+          if ! [[ "$tag" =~ ^[0-9a-f]{7}$ ]]; then
+            echo "Cannot tell which commit the app runs (image '$image' has no 7-character commit tag): deploying as usual."
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          deployed=$(git rev-parse --verify --quiet "$tag^{commit}") || deployed=""
+          if [ -z "$deployed" ]; then
+            echo "The app runs $tag, which git does not know (or the tag is ambiguous): deploying as usual."
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$deployed" != "$HEAD_SHA" ] && git merge-base --is-ancestor "$HEAD_SHA" "$deployed"; then
+            echo "The app already runs $tag, a later commit than ${HEAD_SHA::7}: skipping this rollout."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "The app runs $tag; rolling out ${HEAD_SHA::7}."
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
       # The image requires a token by default; the public endpoint opts out,
       # as render.yaml does. The /stats counts are kept on the app's Azure Files
       # share at /data, so a deploy no longer starts them from zero, and so are the
@@ -194,6 +261,7 @@ jobs:
       # MAPLE_RATE_LIMIT_REQUESTS is stated here because the app had 60 set by hand
       # (found 2026-11-23), and --set-env-vars keeps any value it does not name.
       - name: Deploy the image
+        if: steps.guard.outputs.deploy == 'true'
         run: |
           az containerapp update --resource-group "$RESOURCE_GROUP" --name "$APP" \
             --image "$IMAGE:${HEAD_SHA::7}" \
@@ -208,6 +276,7 @@ jobs:
       # The app keeps serving the previous revision until the new one passes
       # its probes, so a bad image fails this step without taking the server down.
       - name: The new revision is healthy and answers MCP
+        if: steps.guard.outputs.deploy == 'true'
         run: |
           revision=$(az containerapp show -g "$RESOURCE_GROUP" -n "$APP" \
             --query properties.latestRevisionName -o tsv --only-show-errors)
@@ -236,6 +305,8 @@ jobs:
   # does not roll the deploy back; it says the new revision needs a look.
   check-azure-live:
     needs: deploy-azure
+    # Not after a rollout that was skipped: the live server runs another commit.
+    if: needs.deploy-azure.outputs.deployed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -289,6 +360,12 @@ jobs:
       SERVER_APP: maplestats-mcp
       IMAGE: ghcr.io/${{ github.repository_owner }}/maplestats-chat
     steps:
+      # Full history, for the step after the sign-in (see deploy-azure).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
       - name: Sign in to Azure with GitHub's OIDC token
         run: |
           token=$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
@@ -297,6 +374,32 @@ jobs:
             --federated-token "$token" --output none
           az account set --subscription "$AZURE_SUBSCRIPTION_ID"
           az config set extension.use_dynamic_install=yes_without_prompt --only-show-errors
+      # Not back to an older commit, as for the server above: the chat app's image is
+      # tagged with the same 7 characters.
+      - name: Do not move production back to an older commit
+        id: guard
+        run: |
+          image=$(az containerapp show -g "$RESOURCE_GROUP" -n "$APP" \
+            --query "properties.template.containers[0].image" -o tsv --only-show-errors) || image=""
+          tag="${image##*:}"
+          if ! [[ "$tag" =~ ^[0-9a-f]{7}$ ]]; then
+            echo "Cannot tell which commit the app runs (image '$image' has no 7-character commit tag): deploying as usual."
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          deployed=$(git rev-parse --verify --quiet "$tag^{commit}") || deployed=""
+          if [ -z "$deployed" ]; then
+            echo "The app runs $tag, which git does not know (or the tag is ambiguous): deploying as usual."
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$deployed" != "$HEAD_SHA" ] && git merge-base --is-ancestor "$HEAD_SHA" "$deployed"; then
+            echo "The app already runs $tag, a later commit than ${HEAD_SHA::7}: skipping this rollout."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "The app runs $tag; rolling out ${HEAD_SHA::7}."
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
       # The chat's /stats counts (chat/usage.py) are kept on the Azure Files
       # storage the server already mounts at /data, so a deploy does not reset
       # them. The chat mounts only the share's chat/ folder (subPath), at
@@ -308,6 +411,7 @@ jobs:
       # memory, as before.
       - name: Mount the shared file storage for the usage counts
         id: storage
+        if: steps.guard.outputs.deploy == 'true'
         continue-on-error: true
         run: |
           storage=$(az containerapp show -g "$RESOURCE_GROUP" -n "$SERVER_APP" --only-show-errors \
@@ -348,20 +452,31 @@ jobs:
           echo "mounted=yes" >> "$GITHUB_OUTPUT"
       # The app was created with a placeholder image on port 80; the chat image
       # listens on 10000. Setting the port again is a no-op after the first run.
+      #
+      # The chat's per-address limits (chat/app.py client_address) read X-Forwarded-For
+      # only when CHAT_TRUST_PROXY_HEADERS is on, and it defaults on only where RENDER is
+      # set, so on Azure every visitor shared the ingress's one bucket. With it on, the app
+      # takes the rightmost entry, the one the server's deploy above trusts
+      # (MAPLE_TRUSTED_PROXY_HOPS=1): the caller's address, which Container Apps' ingress
+      # appends. Were that entry a shared internal hop, the buckets would stay shared, as
+      # they were before.
       - name: Deploy the image
+        if: steps.guard.outputs.deploy == 'true'
         env:
           MOUNTED: ${{ steps.storage.outputs.mounted }}
         run: |
           az containerapp ingress update --resource-group "$RESOURCE_GROUP" --name "$APP" \
             --target-port 10000 --only-show-errors --output none
-          extra=()
+          settings=(CHAT_TRUST_PROXY_HEADERS=1)
           if [ "$MOUNTED" = yes ]; then
-            extra=(--set-env-vars CHAT_USAGE_STATS_FILE=/data/chat/stats.json)
+            settings+=(CHAT_USAGE_STATS_FILE=/data/chat/stats.json)
           fi
           az containerapp update --resource-group "$RESOURCE_GROUP" --name "$APP" \
-            --image "$IMAGE:${HEAD_SHA::7}" "${extra[@]}" --only-show-errors --output none
+            --image "$IMAGE:${HEAD_SHA::7}" --set-env-vars "${settings[@]}" \
+            --only-show-errors --output none
       # The previous revision keeps serving until the new one passes its probes.
       - name: The new revision is healthy and serves the page
+        if: steps.guard.outputs.deploy == 'true'
         run: |
           revision=$(az containerapp show -g "$RESOURCE_GROUP" -n "$APP" \
             --query properties.latestRevisionName -o tsv --only-show-errors)

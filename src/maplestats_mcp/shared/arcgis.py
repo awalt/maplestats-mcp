@@ -684,6 +684,23 @@ def parse_epoch_millis(value: object) -> datetime | None:
     return datetime.fromtimestamp(value / 1000, tz=UTC)
 
 
+def like_contains(column: str, text: str) -> str:
+    """`UPPER(column) LIKE '%TEXT%'` for a where clause, matching `text` as typed.
+
+    % and _ are LIKE wildcards, so unescaped a "%" found every row and "A_B" found "AXB".
+    Text that holds one gets the ArcGIS SQL dialect's `ESCAPE` clause (Esri's SQL
+    reference: `x LIKE y ESCAPE 'escape-character'`, with `$` as its example character);
+    any other text gives the same clause as before, so ordinary requests are unchanged.
+    Esri does not say whether hosted layers take ESCAPE; a layer that refuses it answers
+    with an embedded error, never with every row.
+    """
+    wanted = text.strip().upper().replace("'", "''")
+    if "%" in wanted or "_" in wanted:
+        escaped = wanted.replace("$", "$$").replace("%", "$%").replace("_", "$_")
+        return f"UPPER({column}) LIKE '%{escaped}%' ESCAPE '$'"
+    return f"UPPER({column}) LIKE '%{wanted}%'"
+
+
 def excerpt(text: str, max_length: int) -> str:
     text = text.strip()
     if max_length <= 0:

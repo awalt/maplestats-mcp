@@ -26,6 +26,9 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read  # the CI check below reads CI's run for this commit
     steps:
       # Full history, so the next step can tell whether the commit is on main.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -42,9 +45,47 @@ jobs:
       # (a tag on a feature branch would otherwise publish untested-on-main code).
       - name: The commit is on main
         run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      # The reruns below are one leg of CI. A v* tag on a commit whose other jobs failed
+      # (Python 3.13, 3.14 or 3.15, R and Julia, OCR, the chat, the clients) would still
+      # publish, so require CI's own push run on main for this commit to have succeeded.
+      # A release started right after the merge finds that run still going, so wait for it
+      # (up to 45 minutes; this job keeps GitHub's default 6-hour timeout, which fits).
+      # CI's run may not exist yet in the first minutes after the push: keep looking for
+      # 5 minutes before saying there is none. On a run by hand GITHUB_SHA is main's tip.
+      - name: CI succeeded on the commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          query="repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&event=push&branch=main&per_page=1"
+          start=$SECONDS
+          while true; do
+            # "<status> <conclusion>" of the newest run; "none none" when there is no run.
+            # An API error counts as "error" and is retried like a run still going.
+            if run=$(gh api "$query" --jq '(.workflow_runs[0] // {}) | "\(.status // "none") \(.conclusion // "none")"'); then
+              read -r status conclusion <<< "$run"
+            else
+              status=error
+              conclusion=none
+            fi
+            [ "$status" = completed ] && break
+            if [ "$status" = none ] && [ $((SECONDS - start)) -ge 300 ]; then
+              echo "::error::No CI run found for commit $GITHUB_SHA (a push to main) after 5 minutes; release a commit that CI has run on."
+              exit 1
+            fi
+            if [ $((SECONDS - start)) -ge 2700 ]; then
+              echo "::error::CI did not finish within 45 minutes for commit $GITHUB_SHA (last status '$status')."
+              exit 1
+            fi
+            echo "CI for ${GITHUB_SHA::7} is '$status'; checking again in 30 seconds."
+            sleep 30
+          done
+          if [ "$conclusion" != success ]; then
+            echo "::error::CI ended as '$conclusion' for commit $GITHUB_SHA, not 'success'; release a commit whose CI run on main passed."
+            exit 1
+          fi
       - run: uv sync --locked
-      # The Python 3.12 leg of ci.yml's gate, rerun here because nothing checks the
-      # commit's CI status. The 3.13, 3.14, R and Julia legs run in ci.yml only.
+      # The Python 3.12 leg of ci.yml's gate, rerun here on the commit itself. The
+      # other jobs run in ci.yml only, and the step above requires them to have passed.
       - run: uv run ruff check src tests scripts
       - run: uv run ruff format --check src tests scripts
       - run: uv run pyright

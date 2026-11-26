@@ -692,6 +692,22 @@ def test_parse_value_cell_french_comma_is_the_decimal_mark():
     assert client._parse_value_cell("3,4", "a", "fr").flag == "a"
 
 
+def test_parse_value_cell_french_rows_as_the_live_export_writes_them():
+    # HMIP's French average-rent export, live 2026-11-26 (Edmonton, octobre 2025): thousands
+    # grouped by a space, rents without decimals; the recorded vacancy export has "0,8".
+    text = (
+        '" - Loyer moyen, selon le nombre de chambres par zone"\n'
+        "octobre 2025 En rang\u00e9e / Appartements\n"
+        ",Studio,,1 chambre,,Total,\n"
+        "Centre-ville,1\u00a0181,a ,1\u00a0350,a ,1\u00a0484,a ,\n"
+        "Millwoods,**,,1\u00a0434,a ,941,a ,\n"
+    )
+    columns, rows, _ = client._parse_csv_export(text, "fr")
+    assert columns == ["Studio", "1 chambre", "Total"]
+    assert [rows[0].values[c].value for c in columns] == [1181.0, 1350.0, 1484.0]
+    assert rows[1].values["Studio"].value is None and rows[1].values["Total"].value == 941.0
+
+
 def test_parse_value_cell_english_comma_is_a_thousands_separator():
     assert client._parse_value_cell("1,234", "").value == 1234.0
     assert client._parse_value_cell("1,234", "", "en").value == 1234.0

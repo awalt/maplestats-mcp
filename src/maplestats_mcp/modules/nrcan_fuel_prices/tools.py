@@ -46,8 +46,9 @@ async def nrcan_fuel_prices_get_prices(
     `locations`: 1 to 10 city names or ids (nrcan_fuel_prices_list_locations), e.g.
     ["Canada", "Calgary"]. `frequency`: "daily" gives the last 43 business days (the
     year does not apply); "weekly" (weeks ending Tuesday) and "monthly" give one year,
-    2016 onward (this year when `year` is omitted). For the latest figures, pass
-    latest_n=1 (or a few) rather than guessing dates. Prices include taxes. For the
+    2016 onward (this year when `year` is omitted; with `latest_n` the latest periods
+    may come from the year before). For the latest figures, pass latest_n=1 (or a few)
+    rather than guessing dates. Prices include taxes. For the
     monthly Statistics Canada average retail prices, use table 18-10-0001-01.
     Keywords: gas prices, gasoline price, pump price, diesel price, fuel price by city,
     weekly gas price, daily gas price, fuel taxes, refining margin, NRCan.

@@ -10,6 +10,11 @@ DETAIL_DATA+TOTAL_DATA vs SUMMARY_DATA).
 
 from __future__ import annotations
 
+import asyncio
+import re
+from urllib.parse import parse_qs
+
+import httpx
 import pytest
 
 from maplestats_mcp.modules.elections_financial_returns import client, constants
@@ -27,6 +32,9 @@ from maplestats_mcp.shared.errors import (
 def _reset_state():
     cache_module._caches.clear()
     client._warmed.clear()
+    # A lock binds to the first event loop that contends for it, and each test runs in its
+    # own loop, so every test gets a fresh one.
+    client._SESSION_LOCK = asyncio.Lock()
     yield
 
 
@@ -364,6 +372,100 @@ async def test_get_financial_return_part_lost_session_recovers(httpx_mock):
     httpx_mock.add_response(url=download_url, text=_DECLARATION_JSON)
     result = await client.get_financial_return_part("56932", "1", election_id="62")
     assert result.sections["DETAIL_DATA"][0]["Candidate_last_name"] == "Aylward"
+
+
+def _portal_session(httpx_mock, log: list[tuple[str, str]], wrong_client: str | None = None):
+    """The portal for two candidates, logging each session step as (step, client id).
+
+    Every answer yields to the loop first, so two calls that were not serialized would
+    interleave their steps. `wrong_client` makes every download carry that client's id.
+    """
+    query_ids = {"56932": "a1", "58701": "b2"}
+
+    async def search(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.01)
+        if request.method == "GET":
+            log.append(("warm", ""))
+            return httpx.Response(200, html="<html></html>")
+        form = request.content.decode()
+        if "SearchSelected" not in form:
+            return httpx.Response(200, html=_CANDIDATES_HTML)
+        client_id = parse_qs(form)["SelectedClientIds"][0]
+        log.append(("select", client_id))
+        location = (
+            "/WPAPPS/WPF/EN/CC/DetailedReport?act=C76&selectedEvent=62&returnStatus=1"
+            f"&selectedReportType=8&reportOption=2&queryId={query_ids[client_id]}&selectedPart=1"
+        )
+        return httpx.Response(302, headers={"location": location})
+
+    async def detail(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.01)
+        return httpx.Response(200, html="<html></html>")
+
+    async def download(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.01)
+        asked = request.url.params["selectedClientId"]
+        log.append(("download", asked))
+        row = {"Client_id": wrong_client or asked, "Candidate_last_name": "X"}
+        return httpx.Response(
+            200, json={"EXPORT_HEADER": [{"TITLE": "Part 1"}], "DETAIL_DATA": [row]}
+        )
+
+    _mock_events(httpx_mock)
+    httpx_mock.add_callback(search, url=_SEARCH_URL, is_reusable=True)
+    httpx_mock.add_callback(detail, url=re.compile(r".*/DetailedReport\?.*"), is_reusable=True)
+    httpx_mock.add_callback(download, url=re.compile(r".*/Download\?.*"), is_reusable=True)
+
+
+async def test_concurrent_reports_take_turns_on_the_one_portal_session(httpx_mock):
+    # One cookie jar serves every call: a second call's selection between the first's
+    # selection and download would leave the first with the wrong candidate's report.
+    log: list[tuple[str, str]] = []
+    _portal_session(httpx_mock, log)
+    first, second = await asyncio.gather(
+        client.get_financial_return_part("56932", "1", election_id="62"),
+        client.get_financial_return_part("58701", "1", election_id="62"),
+    )
+    assert first.sections["DETAIL_DATA"][0]["Client_id"] == "56932"
+    assert second.sections["DETAIL_DATA"][0]["Client_id"] == "58701"
+    steps = [(step, who) for step, who in log if step in ("select", "download")]
+    assert steps in (
+        [("select", "56932"), ("download", "56932"), ("select", "58701"), ("download", "58701")],
+        [("select", "58701"), ("download", "58701"), ("select", "56932"), ("download", "56932")],
+    )
+
+
+async def test_an_export_for_another_candidate_is_an_upstream_error(httpx_mock):
+    log: list[tuple[str, str]] = []
+    _portal_session(httpx_mock, log, wrong_client="58701")
+    with pytest.raises(UpstreamError, match="client 58701, not the '56932' asked for"):
+        await client.get_financial_return_part("56932", "1", election_id="62")
+    # Nothing was cached: the next call asks the portal again.
+    assert _SEARCH_URL not in client._warmed
+    with pytest.raises(UpstreamError, match="mixed two requests"):
+        await client.get_financial_return_part("56932", "1", election_id="62")
+    assert [step for step, _ in log].count("download") == 2
+
+
+async def test_the_election_list_waits_for_a_report_chain_holding_the_session(httpx_mock):
+    # RefreshEventList is a GET on the same cookie jar: it must not land between the steps
+    # of a report chain, so it takes the lock too.
+    _mock_events(httpx_mock)
+    async with client._SESSION_LOCK:
+        listing = asyncio.create_task(client.list_elections())
+        await asyncio.sleep(0.05)
+        assert not listing.done()
+        assert not httpx_mock.get_requests()
+    result = await listing
+    assert result.elections[0].id == "62"
+
+
+async def test_the_session_lock_is_free_after_a_failed_call(httpx_mock):
+    log: list[tuple[str, str]] = []
+    _portal_session(httpx_mock, log, wrong_client="58701")
+    with pytest.raises(UpstreamError):
+        await client.get_financial_return_part("56932", "1", election_id="62")
+    assert not client._SESSION_LOCK.locked()
 
 
 async def test_french_download_header_key(httpx_mock):

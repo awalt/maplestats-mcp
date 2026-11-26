@@ -13,7 +13,10 @@ import ast
 import importlib.util
 import re
 import sys
+from collections.abc import Iterator
 from pathlib import Path
+
+from maplestats_mcp.catalogue import read_catalogue
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = ROOT / "src" / "maplestats_mcp" / "modules"
@@ -98,6 +101,22 @@ LOCAL_TOOLS = frozenset(
 )
 
 
+def _module_level_functions(
+    body: list[ast.stmt],
+) -> Iterator[ast.AsyncFunctionDef | ast.FunctionDef]:
+    """Functions defined at module level, including inside an `if` block there.
+
+    A tool a setting switches on (`if config.get_query_series_enabled():`) is
+    defined under an `if`; scanning only `tree.body` never saw those five.
+    """
+    for node in body:
+        if isinstance(node, ast.If):
+            yield from _module_level_functions(node.body)
+            yield from _module_level_functions(node.orelse)
+        elif isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef):
+            yield node
+
+
 def _tool_calls(tools_py: Path) -> dict[str, set[str]]:
     """Each @tool function in a tools.py and the imported functions it calls.
 
@@ -112,9 +131,7 @@ def _tool_calls(tools_py: Path) -> dict[str, set[str]]:
         for alias in node.names
     }
     tools: dict[str, set[str]] = {}
-    for node in tree.body:
-        if not isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef):
-            continue
+    for node in _module_level_functions(tree.body):
         decorators = [d.func if isinstance(d, ast.Call) else d for d in node.decorator_list]
         if not any(isinstance(d, ast.Name) and d.id == "tool" for d in decorators):
             continue
@@ -163,6 +180,28 @@ def test_every_tool_has_a_live_step():
                 missing.append(tool)
     assert checked > 250, f"found only {checked} tools; the tools.py scan is broken"
     assert not missing, f"Tools without a live smoke step: {missing}"
+
+
+def test_the_scan_finds_every_tool_in_the_catalogue():
+    """The tools.py scan and tool_catalogue.json name the same tools.
+
+    A tool the scan cannot see is never checked for a live step. The catalogue
+    is the registry's own listing, so a tool defined in a way the scan misses
+    (an `if` block, a decorator it does not read) fails here, not silently.
+    """
+    catalogue = read_catalogue()
+    assert catalogue, "tool_catalogue.json is missing"
+    listed = {tool["name"] for module in catalogue.values() for tool in module["tools"]}
+    scanned = set()
+    for tools_py in sorted(MODULES.glob("*/**/tools.py")):
+        parts = tools_py.relative_to(MODULES).parts
+        if parts[0].startswith(("_", ".")) or "__tests__" in parts:
+            continue
+        scanned |= set(_tool_calls(tools_py))
+    assert scanned == listed, (
+        f"in the catalogue but not found by the scan: {sorted(listed - scanned)}; "
+        f"found by the scan but not in the catalogue: {sorted(scanned - listed)}"
+    )
 
 
 def test_local_tools_exist():
