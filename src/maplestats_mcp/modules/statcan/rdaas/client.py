@@ -44,7 +44,7 @@ from maplestats_mcp.shared.errors import (
     UpstreamError,
     UpstreamUnavailable,
 )
-from maplestats_mcp.shared.http import api_get
+from maplestats_mcp.shared.http import NotJsonResponse, api_get
 from maplestats_mcp.shared.json_utils import list_or_empty
 from maplestats_mcp.shared.rate_limiter import get_limiter
 
@@ -62,7 +62,11 @@ def _say(lang: str, en: str, fr: str) -> str:
 
 
 class _NotJson(UpstreamError):
-    """A 200 whose body is not JSON; the empty-body callers below catch it."""
+    """A 200 whose body is not JSON (an outage or maintenance page): always an error."""
+
+
+class _EmptyBody(_NotJson):
+    """A 200 with a blank body: the one non-JSON answer `_get_or_empty` reads as "no data"."""
 
 
 async def _get(
@@ -102,9 +106,19 @@ async def _get(
             _say(lang, f"RDaaS answered HTTP {status}.", f"RDaaS a répondu HTTP {status}.")
         ) from exc
     except httpx.DecodingError as exc:
-        # A 200 that is not JSON (an HTML maintenance page): shared/http.py
-        # raises its NotJsonResponse, a DecodingError, which must not reach
-        # the caller untyped.
+        # A 200 that is not JSON: shared/http.py raises its NotJsonResponse, a
+        # DecodingError, which must not reach the caller untyped. A blank body is
+        # told apart from a page with content (an HTML maintenance page) because
+        # only the first is the live NAICS quirk `_get_or_empty` reads as "no data";
+        # a page must stay an error, or it would be cached as "no categories".
+        if isinstance(exc, NotJsonResponse) and not exc.body_start.strip():
+            raise _EmptyBody(
+                _say(
+                    lang,
+                    "RDaaS answered with an empty body. Try again shortly.",
+                    "RDaaS a répondu par un corps vide. Réessayez sous peu.",
+                )
+            ) from exc
         raise _NotJson(
             _say(
                 lang,
@@ -325,10 +339,14 @@ async def _get_or_empty(
     empty body raises a JSON decode error, so this wrapper treats
     that specific failure as "empty" rather than letting it propagate
     as an unrelated parsing exception.
+
+    Only a blank body counts as empty. A 200 carrying anything else that is
+    not JSON (an HTML outage or maintenance page) is an upstream fault: it
+    raises, so the caller never caches it for 24 hours as "no categories".
     """
     try:
         return await _get(path, params=params, lang=lang)
-    except _NotJson:
+    except _EmptyBody:
         return {}
 
 

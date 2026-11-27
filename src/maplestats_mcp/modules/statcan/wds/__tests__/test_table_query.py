@@ -10,13 +10,14 @@ quoting, with a two-province, two-characteristic table and its real member ids.
 from __future__ import annotations
 
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 
 from maplestats_mcp.modules.statcan.wds import client, table_query, tools
 from maplestats_mcp.modules.statcan.wds.schemas import ObservationRow, VectorData, VectorSeries
 from maplestats_mcp.shared.envelope import make_provenance
-from maplestats_mcp.shared.errors import InvalidInput, NotFound
+from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamUnavailable
 from maplestats_mcp.shared.remote_zip import RangeRefused, ZipMember
 
 PID = 14100287
@@ -472,3 +473,248 @@ async def test_both_routes_date_a_fiscal_year_alike(fiscal_table, monkeypatch):
     assert from_wds.source == "WDS by coordinate"
     assert from_wds.rows == [["2019-01-01", 101.0], ["2020-01-01", 102.0]]
     assert [r for r in from_file.rows if r[0] is not None] == from_wds.rows
+
+
+# The WDS rebuild (the route when the file is blocked). Its helper refuses a call of more
+# than INLINE_MAX_OBSERVATIONS observations (coordinates x latest_n), so the rebuild has to
+# size its batches by the periods it asks for, as the script from
+# wds_get_full_table_download does, and not by a fixed 300 coordinates.
+def _wds_series(pid, coordinate, vector, value=1.0, when=date(2026, 1, 1)):
+    return VectorSeries(
+        product_id=pid,
+        coordinate=coordinate,
+        vector_id=vector,
+        observations=[
+            ObservationRow(
+                ref_period=when,
+                value=value,
+                decimals=1,
+                scalar_factor_code=0,
+                scale_multiplier=1,
+                symbol_code=0,
+                status_code=0,
+                security_level_code=0,
+            )
+        ],
+    )
+
+
+def _wds_data(pid, series):
+    return VectorData(
+        product_id=pid,
+        coordinate=series[0].coordinate,
+        vector_id=0,
+        observations=[],
+        series=series,
+        provenance=make_provenance(
+            source="statcan-wds", url="https://x", cached=False, schema_name="s"
+        ),
+    )
+
+
+@pytest.fixture
+def blocked_table(table, monkeypatch):
+    async def blocked(url):
+        return "blocked"
+
+    monkeypatch.setattr(client, "check_file", blocked)
+
+
+def _places_cube(count: int, start: str, frequency: int = 6) -> dict:
+    """The test table with `count` places (one measure), a history from `start`."""
+    base = _cube()
+    return {
+        **base,
+        "cubeStartDate": start,
+        "frequencyCode": frequency,
+        "dimension": [
+            {
+                **base["dimension"][0],
+                "member": [
+                    {
+                        "memberId": n,
+                        "memberNameEn": f"Place {n}",
+                        "parentMemberId": None,
+                        "memberUomCode": None,
+                    }
+                    for n in range(1, count + 1)
+                ],
+            },
+            {**base["dimension"][1], "member": base["dimension"][1]["member"][:1]},
+            base["dimension"][2],
+        ],
+    }
+
+
+async def test_a_long_history_is_rebuilt_in_batches_the_inline_limit_accepts(
+    blocked_table, monkeypatch
+):
+    # 150 places x one measure: 150 coordinates, far under WDS_MAX_COORDINATES, but a
+    # monthly history from 1990 asks 434 periods each, so one call of 150 would carry
+    # 65,100 observations, over the 60,000 the helper accepts.
+    cube = _places_cube(150, "1990-01-01")
+
+    async def cube_metadata(pid):
+        return cube, False
+
+    batches: list[int] = []
+
+    async def coords(pid, coordinates, latest_n):
+        # The helper's own limit, which the rebuild used to trip.
+        client.check_coordinates(coordinates, latest_n)
+        batches.append(len(coordinates) * latest_n)
+        return _wds_data(
+            pid,
+            [_wds_series(pid, c, 1000 + int(c.split(".")[0])) for c in coordinates],
+        )
+
+    monkeypatch.setattr(client, "cube_metadata_raw", cube_metadata)
+    monkeypatch.setattr(client, "get_data_from_cube_pid_coords_and_latest_n_periods", coords)
+
+    result = await _query("SELECT count(DISTINCT vector_id) FROM obs")
+
+    assert result.source == "WDS by coordinate"
+    assert result.rows == [[150]]
+    assert len(batches) > 1 and max(batches) <= client.constants.INLINE_MAX_OBSERVATIONS
+
+
+async def test_a_batch_of_unpublished_combinations_does_not_sink_the_rebuild(
+    blocked_table, monkeypatch
+):
+    # Canada x Unemployment rate is not a series of this table. A call whose coordinates
+    # are all unpublished raises NotFound (a lone one included); the rebuild keeps what the
+    # other calls return instead of failing the whole query.
+    monkeypatch.setattr(table_query, "_WDS_BATCH", 1)
+
+    async def coords(pid, coordinates, latest_n):
+        published = [c for c in coordinates if c == "1.3.1.0.0.0.0.0.0.0"]
+        if not published:
+            raise NotFound("Statistics Canada does not publish a series for this combination")
+        return _wds_data(pid, [_wds_series(pid, c, 2062811, 21000.0) for c in published])
+
+    monkeypatch.setattr(client, "get_data_from_cube_pid_coords_and_latest_n_periods", coords)
+
+    result = await _query("SELECT value FROM obs", members={"Geography": ["Canada"]})
+
+    assert result.source == "WDS by coordinate"
+    assert result.rows == [[21000.0]]
+
+
+async def test_a_slice_with_no_published_series_still_says_so(blocked_table, monkeypatch):
+    async def coords(pid, coordinates, latest_n):
+        raise NotFound("Statistics Canada does not publish a series for this combination")
+
+    monkeypatch.setattr(client, "get_data_from_cube_pid_coords_and_latest_n_periods", coords)
+
+    with pytest.raises(NotFound, match="does not publish"):
+        await _query(
+            "SELECT value FROM obs",
+            members={
+                "Geography": ["Canada"],
+                "Labour force characteristics": ["Unemployment rate"],
+            },
+        )
+
+
+# A daily table from 2000 asks 9,600 periods per series: past QUERY_MAX_LATEST_N, so the
+# rebuild reads one series per call, each with thousands of observations. A slice whose
+# series x periods cannot fit under MAX_ROWS is refused before any call, as the file route
+# refuses it, and a rebuild that runs past the time budget stops with the same "took too
+# long" error the file route gives, not at the tool timeout.
+async def test_a_daily_history_over_the_row_cap_is_refused_before_any_call(
+    blocked_table, monkeypatch
+):
+    cube = _places_cube(100, "2000-01-01", frequency=1)
+
+    async def cube_metadata(pid):
+        return cube, False
+
+    asked: list[int] = []
+
+    async def coords(pid, coordinates, latest_n):
+        asked.append(len(coordinates))
+        return _wds_data(pid, [_wds_series(pid, c, 1) for c in coordinates])
+
+    monkeypatch.setattr(client, "cube_metadata_raw", cube_metadata)
+    monkeypatch.setattr(client, "get_data_from_cube_pid_coords_and_latest_n_periods", coords)
+
+    # 100 series x about 9,600 days is over the 300,000 rows a slice may hold.
+    with pytest.raises(InvalidInput, match="more than 300,000 rows"):
+        await _query("SELECT count(*) FROM obs")
+    assert asked == []
+
+
+async def test_an_end_period_keeps_a_long_history_under_the_row_cap(blocked_table, monkeypatch):
+    # 1,000 series x 434 monthly periods since 1990 is 434,000, but end_period 1991 leaves
+    # 24 of those periods in the window: the check counts what can be kept.
+    cube = _places_cube(1000, "1990-01-01")
+
+    async def cube_metadata(pid):
+        return cube, False
+
+    async def coords(pid, coordinates, latest_n):
+        return _wds_data(
+            pid,
+            [
+                _wds_series(pid, c, 1000 + int(c.split(".")[0]), when=date(1991, 1, 1))
+                for c in coordinates
+            ],
+        )
+
+    monkeypatch.setattr(client, "cube_metadata_raw", cube_metadata)
+    monkeypatch.setattr(client, "get_data_from_cube_pid_coords_and_latest_n_periods", coords)
+
+    result = await _query("SELECT count(*) FROM obs", start_period="1990-01", end_period="1991-12")
+
+    assert result.source == "WDS by coordinate"
+    assert result.rows == [[1000]]
+
+
+async def test_a_series_count_the_table_does_not_have_is_not_counted(blocked_table, monkeypatch):
+    # The table has 150 series in all (nbSeriesCube), so 1,000 combinations of members
+    # cannot be 1,000 series: 150 x 434 periods fits under the row cap.
+    cube = {**_places_cube(1000, "1990-01-01"), "nbSeriesCube": 150}
+
+    async def cube_metadata(pid):
+        return cube, False
+
+    async def coords(pid, coordinates, latest_n):
+        published = [c for c in coordinates if int(c.split(".")[0]) <= 150]
+        if not published:
+            raise NotFound("Statistics Canada does not publish a series for this combination")
+        return _wds_data(pid, [_wds_series(pid, c, 1000 + int(c.split(".")[0])) for c in published])
+
+    monkeypatch.setattr(client, "cube_metadata_raw", cube_metadata)
+    monkeypatch.setattr(client, "get_data_from_cube_pid_coords_and_latest_n_periods", coords)
+
+    result = await _query("SELECT count(*) FROM obs")
+
+    assert result.rows == [[150]]
+
+
+async def test_a_rebuild_past_the_time_budget_stops_with_the_took_too_long_error(
+    blocked_table, monkeypatch
+):
+    cube = _places_cube(150, "1990-01-01")
+
+    async def cube_metadata(pid):
+        return cube, False
+
+    # One series per call, each call "taking" 30 s of a clock the test moves by hand: the
+    # budget (the tool timeout less 40 s, 80 s by default) is gone after three calls.
+    monkeypatch.setattr(table_query, "_WDS_BATCH", 1)
+    now = [1000.0]
+    monkeypatch.setattr(table_query, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    calls: list[int] = []
+
+    async def coords(pid, coordinates, latest_n):
+        calls.append(len(coordinates))
+        now[0] += 30.0
+        return _wds_data(pid, [_wds_series(pid, c, 1) for c in coordinates])
+
+    monkeypatch.setattr(client, "cube_metadata_raw", cube_metadata)
+    monkeypatch.setattr(client, "get_data_from_cube_pid_coords_and_latest_n_periods", coords)
+
+    with pytest.raises(UpstreamUnavailable, match="took longer than this tool's 80 s"):
+        await _query("SELECT count(*) FROM obs")
+    assert len(calls) == 3

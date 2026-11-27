@@ -566,6 +566,10 @@ class _LevelData(NamedTuple):
     from_upstream: bool
     from_store: int
     stored: int
+    # (geography, characteristic) pairs asked for that neither the answer nor the store held.
+    omitted: list[tuple[str, str]]
+    # Values the answer carried under a code other than the one asked (they are kept).
+    recoded: int
 
 
 async def _get_level(
@@ -611,7 +615,7 @@ async def _get_level(
     if not missing:
         rows = [held[(g, c)] for g in geography_codes for c in characteristic_codes]
         return _LevelData(
-            level, rows, url_for(geography_codes, characteristic_codes), False, len(rows), 0
+            level, rows, url_for(geography_codes, characteristic_codes), False, len(rows), 0, [], 0
         )
 
     # The key is a cross product, and a request costs the same whatever its size, so ask
@@ -642,8 +646,67 @@ async def _get_level(
                 rows.append(row)
                 used.add(pair)
     # A value the response carried under a code that is not exactly as asked is kept.
-    rows.extend(r for pair, r in by_pair.items() if pair not in used)
-    return _LevelData(level, rows, url, not was_cached, len(held), stored)
+    extras = [r for pair, r in by_pair.items() if pair not in used]
+    rows.extend(extras)
+    # The profile has no series for some combinations (a place with no such characteristic),
+    # and the answer then simply lacks them: without a word, "not published" read like
+    # "never asked". Every pair with no row is reported, and the values that came back under
+    # other codes are counted beside them: some may be the same values re-coded, and
+    # which ones cannot be told, so the note says so rather than guessing.
+    gaps = [
+        (geography, characteristic)
+        for geography in geography_codes
+        for characteristic in characteristic_codes
+        if (geography, characteristic) not in used
+    ]
+    return _LevelData(level, rows, url, not was_cached, len(held), stored, gaps, len(extras))
+
+
+# Pairs named in the omitted-values note; the count says how many more there are.
+_OMITTED_SHOWN = 10
+
+
+def _omitted_note(
+    omitted: list[tuple[str, str]], recoded: int, asked: int, lang: str
+) -> str | None:
+    """Which (geography, characteristic) pairs asked for came back with no value.
+
+    `recoded` counts values that came back under another code than the one asked: they
+    may be some of these pairs, which cannot be told, so the note says that when there
+    are any. With none, the pairs are missing for certain.
+    """
+    if not omitted:
+        return None
+    shown = ", ".join(f"{g} / {c}" for g, c in omitted[:_OMITTED_SHOWN])
+    more = len(omitted) - _OMITTED_SHOWN
+    if recoded:
+        return say(
+            f"{len(omitted)} of the {asked} geography and characteristic pairs asked for came "
+            f"back with no value under the code asked: {shown}"
+            f"{f' and {more} more' if more > 0 else ''} (geography code / characteristic code). "
+            f"{recoded} {'value' if recoded == 1 else 'values'} came back under other codes "
+            "and may be some of them; any they are not are missing, not zero.",
+            f"{len(omitted)} des {asked} paires géographie et caractéristique demandées sont "
+            f"revenues sans valeur sous le code demandé : {shown}"
+            f"{f' et {more} autres' if more > 0 else ''} (code de géographie / code de "
+            f"caractéristique). {recoded} "
+            f"{'valeur est revenue' if recoded == 1 else 'valeurs sont revenues'} sous d'autres "
+            "codes et peuvent en être certaines ; celles qui ne le sont pas sont absentes, "
+            "pas nulles.",
+            lang,
+        )
+    return say(
+        f"No value came back for {len(omitted)} of the {asked} geography and characteristic "
+        f"pairs asked for: {shown}{f' and {more} more' if more > 0 else ''} (geography code / "
+        "characteristic code). The answer carried no series for them (the profile does not "
+        "publish every combination): they are missing, not zero.",
+        f"Aucune valeur n'est revenue pour {len(omitted)} des {asked} paires géographie et "
+        f"caractéristique demandées : {shown}{f' et {more} autres' if more > 0 else ''} (code "
+        "de géographie / code de caractéristique). La réponse ne contenait pas de série pour "
+        "elles (le profil ne publie pas toutes les combinaisons) : ces valeurs sont absentes, "
+        "pas nulles.",
+        lang,
+    )
 
 
 async def get_data(
@@ -749,6 +812,9 @@ async def get_data(
 
     rows = [row for o in levels for row in o.rows]
     from_store = sum(o.from_store for o in levels)
+    omitted = [pair for o in levels for pair in o.omitted]
+    recoded = sum(o.recoded for o in levels)
+    asked = len(characteristics) * sum(len(codes) for codes in groups.values())
     return CensusProfileDataResult(
         level=levels[0].level if len(levels) == 1 else "mixed",
         levels=[o.level for o in levels],
@@ -772,6 +838,7 @@ async def get_data(
                 if from_store
                 else None
             ),
+            coverage=_omitted_note(omitted, recoded, asked, lang),
             schema_name="statcan_census_profile.CensusProfileDataResult",
             lang=lang,
         ),

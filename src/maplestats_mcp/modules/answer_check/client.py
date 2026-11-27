@@ -1115,7 +1115,7 @@ async def _resolve(ctxs: list[_Ctx], lang: str, notes: list[str]) -> list[Answer
                     figure.product_id, figure.coordinate
                 )
             except _OUTAGE:
-                notes.append(_not_reread(ctx.index, "Statistics Canada WDS", lang))
+                notes.append(_not_reread(ctx.index, _WDS_SOURCE, lang))
                 continue
             except _SOFT as exc:
                 problems.append(
@@ -1229,17 +1229,28 @@ async def _percent_change(
         else pick(lang, "a level", "un niveau")
     )
     shown_unit = f" ({unit})" if unit else ""
-    if ppy is None and len(current) == 1 and ctx.cube is not None:
-        # A day cited for a monthly or quarterly series ("2026-09-01") is its period.
-        ppy = {6: 12, 9: 4, 12: 1}.get(int(ctx.cube.get("frequencyCode") or 0))
-    if ppy not in (1, 2, 4, 12):
+    series_ppy = FREQUENCY_PPY.get(int((ctx.cube or {}).get("frequencyCode") or 0))
+    if ppy is None and len(current) == 1:
+        # A day cited for a monthly, bi-monthly, quarterly, semi-annual or annual series
+        # ("2026-09-01") is its period.
+        ppy = series_ppy
+    elif ppy is not None and series_ppy is not None and series_ppy < ppy:
+        # A label finer than the series ("2026-01" for a semi-annual one, or the month
+        # a latest period is written with) does not make the series' period shorter:
+        # "one period back" is its own, six months for a semi-annual series. Read from
+        # the label, the semi-annual change was never offered and a right figure was
+        # called wrong.
+        ppy = series_ppy
+    if ppy not in (1, 2, 4, 6, 12):
         notes.append(
             pick(
                 lang,
                 f"Figure {ctx.index} not checked: it is a percent and the series is {what}; "
-                f"its change is computed for monthly, quarterly or annual periods only.",
+                "its change is computed for monthly, bi-monthly, quarterly, semi-annual or "
+                "annual periods only.",
                 f"Chiffre {ctx.index} non vérifié : c'est un pourcentage et la série est "
-                f"{what} ; sa variation n'est calculée que pour des mois, trimestres ou années.",
+                f"{what} ; sa variation n'est calculée que pour des périodes mensuelles, "
+                "bimestrielles, trimestrielles, semestrielles ou annuelles.",
             )
         )
         return []
@@ -1253,7 +1264,7 @@ async def _percent_change(
         )
         earlier = [o for s in history.series for o in s.observations if o.value is not None]
     except _OUTAGE:
-        notes.append(_not_reread(ctx.index, "Statistics Canada WDS", lang))
+        notes.append(_not_reread(ctx.index, _WDS_SOURCE, lang))
         return []
     except _SOFT:
         earlier = []
@@ -1356,7 +1367,7 @@ async def _check_statcan(
         # period can only be compared with the latest value, so it gets a note.
         for c in live:
             if c.figure.period is None and c.figure.value is not None:
-                notes.append(_not_reread(c.index, "Statistics Canada WDS", lang))
+                notes.append(_not_reread(c.index, _WDS_SOURCE, lang))
     described, _ = await context.describe_vectors(ids, set())
     for ctx in live:
         assert ctx.vector_id is not None
@@ -1441,7 +1452,7 @@ async def _check_statcan(
             rows = [o for s in window.series for o in s.observations]
         except _OUTAGE:
             # An outage is not "no value is published".
-            notes.append(_not_reread(ctx.index, "Statistics Canada WDS", lang))
+            notes.append(_not_reread(ctx.index, _WDS_SOURCE, lang))
             continue
         except _SOFT:
             rows = []
@@ -1628,11 +1639,18 @@ def _check_combinations(ctxs: Sequence[_Ctx], summed: bool, lang: str) -> list[A
     return problems
 
 
-def _not_reread(index: int, source: str, lang: str) -> str:
+# The source of a not-re-read note, as the note names it in English and in French (a
+# French note used to carry "Statistics Canada WDS").
+_WDS_SOURCE = ("Statistics Canada WDS", "le SDW de Statistique Canada")
+_VALET_SOURCE = ("Bank of Canada Valet", "l'API Valet de la Banque du Canada")
+
+
+def _not_reread(index: int, source: tuple[str, str], lang: str) -> str:
     return pick(
         lang,
-        f"Figure {index} not re-read: {source} did not answer, so its value is unchecked.",
-        f"Chiffre {index} non relu : {source} n'a pas répondu, sa valeur n'est donc pas vérifiée.",
+        f"Figure {index} not re-read: {source[0]} did not answer, so its value is unchecked.",
+        f"Chiffre {index} non relu : {source[1]} n'a pas répondu, sa valeur n'est donc pas "
+        "vérifiée.",
     )
 
 
@@ -1694,7 +1712,7 @@ async def _check_boc(
         # No period cited: the answer presents the value as current, so it is
         # compared with the latest observation, as the StatCan path does.
         if latest is None or latest[1] is None:
-            notes.append(_not_reread(index, "Bank of Canada Valet", lang))
+            notes.append(_not_reread(index, _VALET_SOURCE, lang))
             return []
         return _value_problems(index, figure, latest[1], 1, None, latest[0], None, lang)
     try:
@@ -1719,7 +1737,7 @@ async def _check_boc(
             [name], start_date=start.isoformat(), end_date=end.isoformat(), lang=lang
         )
     except _SOFT:
-        notes.append(_not_reread(index, "Bank of Canada Valet", lang))
+        notes.append(_not_reread(index, _VALET_SOURCE, lang))
         return []
     published = [(o.ref_date, o.values.get(name)) for o in window.observations]
     values = [v for _, v in published if v is not None]

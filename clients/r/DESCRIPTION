@@ -21,7 +21,7 @@ Imports:
     purrr (>= 1.0.0),
     rlang,
     stats,
-    stringr,
+    stringr (>= 1.5.0),
     tibble,
     utils
 Suggests:

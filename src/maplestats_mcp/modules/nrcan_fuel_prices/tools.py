@@ -21,6 +21,7 @@ async def nrcan_fuel_prices_list_locations(lang: Lang = "en") -> FuelCatalogue:
     71 cities (Vancouver, Calgary, Edmonton, Regina, Winnipeg, Toronto, Ottawa,
     Montréal, Halifax, St. John's, Whitehorse, Yellowknife, ...) and Canada. Fuels:
     regular, mid-grade and premium gasoline, diesel, auto propane, furnace oil.
+    NRCan's terms apply (non-commercial reproduction only): see provenance.licence.
     Keywords: gas prices, gasoline price, pump price, fuel prices by city, diesel price,
     retail fuel, NRCan, cents per litre, propane, heating oil.
     Mots-clés : prix de l'essence, prix à la pompe, prix des carburants par ville, prix
@@ -50,6 +51,8 @@ async def nrcan_fuel_prices_get_prices(
     may come from the year before). For the latest figures, pass latest_n=1 (or a few)
     rather than guessing dates. Prices include taxes. For the
     monthly Statistics Canada average retail prices, use table 18-10-0001-01.
+    NRCan's terms apply (non-commercial reproduction only; its prices rely on
+    third-party data): see provenance.licence.
     Keywords: gas prices, gasoline price, pump price, diesel price, fuel price by city,
     weekly gas price, daily gas price, fuel taxes, refining margin, NRCan.
     Mots-clés : prix de l'essence, prix à la pompe, prix du diesel, prix des carburants

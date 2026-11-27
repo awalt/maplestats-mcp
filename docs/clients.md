@@ -46,6 +46,24 @@ Transport rules the clients follow:
 - Protocol version `2025-06-18`, sent as `mcp-protocol-version` after
   `initialize`.
 - Request timeout 240 s: the hosted server lets a tool call run 230 s.
+- Full results. Since 0.6.0 (2026-11-18) `call_tool` answers in a brief form by
+  default: a list of six or more rows is one `{"format": "csv", "rows": n,
+  "csv": "..."}` block instead of objects, the provenance keeps only what a
+  citation needs, and per-row codes are left out. The tidy rule below reads
+  lists of objects, so the clients send `detail: "full"` as a top-level argument
+  of `call_tool`, beside `name` and `arguments` (not inside `arguments`), on
+  every call that goes through it. `search_tools` has its own `detail` (see
+  Search) and `plan_query` takes none. Only the raw call lets a user choose
+  `"brief"`; `get_data` always asks for `"full"`. The 2026-11-07 check above
+  predates the brief default, which is why the first recordings (all under six
+  rows) hid the difference. A server older than 0.6.0 does not know the
+  argument and rejects it ("detail is not a parameter of this tool"): the client
+  then repeats the call once without it, and the older server answers in full.
+  `search_tools` uses the same test for its own `detail`. The refusal must say
+  the argument is unknown, so a tool's own error that happens to mention
+  "detail" is raised, not repeated. On the raw call, a `detail` the user gives
+  for `search_tools` or `plan_query` goes inside that tool's arguments, where it
+  is read (`plan_query` takes none, and the server's error says so).
 - HTTP 429 (120 requests a minute per client) raises an error that carries
   `Retry-After`; the client does not sleep and retry on its own.
 - A `User-Agent` of `maplestats-<language>/<version>`. No token: the hosted
@@ -79,7 +97,8 @@ use a default one and take an optional client.
   `input_schema` null. Against a server older than the compact search
   (before 2026-11-09), which rejects `detail`, the clients repeat the search
   without it and read the full form.
-- **Raw result** is the decoded `structuredContent` (a dict, list or `Dict`).
+- **Raw result** is the decoded `structuredContent` (a dict, list or `Dict`),
+  in its full form unless the caller passes `detail="brief"`.
 - **Tidy rows** apply the rule `reproduce_workbook` already uses
   (`modules/reproduce/workbook.py::rows_and_left_out`), ported line for line:
   the result's largest list of objects (searched four levels deep, provenance
@@ -89,7 +108,18 @@ use a default one and take an optional client.
   and scalar lists become `"; "`-joined text. Names are then cleaned to
   snake_case as `clean_names` does. No value conversion beyond JSON's own
   types: dates stay text, so the client never guesses a type the server did
-  not state.
+  not state. A full result carries every field the tool returns, so the frame
+  has a column for each (a StatCan observation's status codes, a series'
+  `context_*` fields); nothing is dropped as empty, so a column that is null on
+  every row (`non_numeric`) is still a column. A result with no observations
+  comes back as series metadata rows, not an empty frame. Before the rows are
+  taken, a note the server states once for several items (a top-level
+  `shared_notes` list, with "shared_notes[i]" in each item, as
+  `shared/brief.py::share_repeated_notes` writes it in brief and full results
+  alike) is written back wherever the reference stands as a whole value or list
+  item, and `shared_notes` is not reported as left out. This step is the
+  clients' own: `rows_and_left_out` itself stays the port, and the raw result
+  keeps `shared_notes` as the server sent it.
 - **Citations travel with the frame.**
   - R: attributes on the tibble, `attr(x, "provenance")` (the list),
     `attr(x, "citation")` (character, one per distinct citation, from
@@ -155,7 +185,20 @@ using Pkg; Pkg.add(url="https://github.com/dsanchezp18/maplestats-mcp", subdir="
 Each client's tests run without network access against recorded responses:
 the SSE bodies of `initialize`, `search_tools` (full and brief), a Bank of
 Canada call, a WDS vector call and a tool error, saved under each client's test fixtures by
-`clients/record_fixtures.py`. One live test per client, skipped unless
+`clients/record_fixtures.py`. The data calls are full-detail results, and the
+Bank of Canada and WDS calls are recorded again with 12 rows (`boc_long`,
+`wds_long`), each with a `_brief` twin: the answer the server gives when
+`detail` is left out. `wds_two` holds two series that share a note, as the
+server's `shape()` writes it (`shared_notes`). The test servers answer a `call_tool` without
+`detail="full"` with the twin, so a client that stops asking for full fails its
+12-row tests; a result under six rows keeps its rows as objects either way,
+which is how the first recordings missed the problem. The 12-row recordings and the rebuilt
+`boc` and `wds` were first written on 2026-11-26 without network access, by
+running the server's own `call_tool` and shaping code over hand-filled models
+(values past the originally recorded ones are illustrative); `wds_two` was
+shaped by `shape()` alone over hand-filled models, and its two series, values
+and notes are illustrative. Running `record_fixtures.py` replaces them all with
+live recordings. One live test per client, skipped unless
 `MAPLESTATS_LIVE=1`, runs search, a small Bank of Canada call and the tidy
 conversion against the hosted server.
 

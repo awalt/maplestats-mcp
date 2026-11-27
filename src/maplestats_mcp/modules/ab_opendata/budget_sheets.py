@@ -176,8 +176,24 @@ def _label_column(grid: list[list[Value | None]]) -> int:
     return min(counts, key=lambda i: (-counts[i], i)) if counts else 0
 
 
-def _header_like(values: list[Value | None]) -> bool:
-    """No figures, or only years in increasing order (a year row over the columns)."""
+def _header_like(
+    values: list[Value | None],
+    *,
+    labelled: bool,
+    seen_data: bool,
+    header_line_below: bool,
+) -> bool:
+    """No figures, or a row of years (a year row over the columns).
+
+    Whole numbers between 1900 and 2100 are also what a line item in $ millions
+    looks like (1950, 1980, 2020, 2075), so a row of them is a header only on
+    evidence that it is one. A row with no line-item label, or with a line of
+    header text (Actual, Budget, Forecast) right under it, is a header whatever
+    the gaps between its years (2017, 2019, 2025 once hidden columns are shown;
+    2025, 2030, 2035). A labelled row with no header line under it must have the
+    years one after another and come before the first data row. Anything else is
+    data and keeps its label and values.
+    """
     filled = [v for v in values if v is not None]
     # A forecaster with no figure for any year ("n/a" in every column, Benchmark
     # sheets) is a data row, not a new header.
@@ -188,12 +204,18 @@ def _header_like(values: list[Value | None]) -> bool:
         return True
     if not all(_is_year(v) for v in numbers):
         return False
+    # A label-less row, or one with a header line under it, is the header of a table
+    # (a second one too: Key Assumptions has calendar years under the fiscal years).
+    evidence = not labelled or header_line_below
     # Years typed as numbers beside years typed as text ('2025', 2026, '2027' on
-    # the capital assets schedule), or several years in increasing order.
+    # the capital assets schedule).
     if any(isinstance(v, str) and _YEARISH.match(v) for v in filled):
-        return True
+        return evidence or not seen_data
     years = [v for v in numbers if isinstance(v, int)]
-    return len(years) >= 2 and all(a < b for a, b in itertools.pairwise(years))
+    if len(years) < 2 or not all(a < b for a, b in itertools.pairwise(years)):
+        return False
+    consecutive = all(b - a == 1 for a, b in itertools.pairwise(years))
+    return evidence or (consecutive and not seen_data)
 
 
 def _numbering(values: list[Value | None]) -> bool:
@@ -211,6 +233,17 @@ def _first_cell(row: list[Value | None]) -> int | None:
         # revenue', ...) does not move the label column.
         return texts[0]
     return filled[0] if filled else None
+
+
+def _header_line_below(grid: list[list[Value | None]], index: int, label_col: int) -> bool:
+    """Whether the next non-blank row is a line of header text: no label, no figures."""
+    for row in itertools.islice(grid, index + 1, None):
+        if all(v is None for v in row):
+            continue
+        beside = list(row[label_col + 1 :])
+        no_label = label_col >= len(row) or row[label_col] is None
+        return no_label and any(v is not None for v in beside) and not any(map(_is_number, row))
+    return False
 
 
 def _column_names(block: list[list[Value | None]], width: int) -> list[str]:
@@ -266,7 +299,7 @@ def parse_sheet(body: bytes, name: str) -> ParsedSheet:
             columns = _column_names(block, value_width)
             block = []
 
-    for raw in grid:
+    for index, raw in enumerate(grid):
         # Line numbers left of the label column are dropped.
         lead = raw[:label_col]
         if all(v is None or isinstance(v, int) for v in lead):
@@ -291,7 +324,13 @@ def parse_sheet(body: bytes, name: str) -> ParsedSheet:
                 close_block()
                 texts_after.append(text)
             continue
-        if _header_like(values):
+        is_header = _header_like(
+            values,
+            labelled=label is not None,
+            seen_data=seen_data,
+            header_line_below=label is not None and _header_line_below(grid, index, label_col),
+        )
+        if is_header:
             if seen_data and not block:
                 # A second table on the same sheet (Key Assumptions: fiscal years,
                 # then calendar years): its label cell names the block.

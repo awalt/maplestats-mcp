@@ -12,7 +12,13 @@ import httpx
 import polars as pl
 
 from maplestats._version import __version__
-from maplestats.tidy import citations, clean_names, provenance, rows_and_left_out
+from maplestats.tidy import (
+    citations,
+    clean_names,
+    provenance,
+    resolve_shared_notes,
+    rows_and_left_out,
+)
 
 DEFAULT_URL = "https://mcp.maplestats.danielstats.io/mcp"
 PROTOCOL_VERSION = "2025-06-18"
@@ -34,6 +40,31 @@ class RateLimited(MapleStatsError):
     def __init__(self, message: str, retry_after: float | None) -> None:
         super().__init__(message)
         self.retry_after = retry_after
+
+
+# What a server says of an argument it does not know, in English and French
+# ("detail is not a parameter of this tool; parameters: name, arguments").
+_UNKNOWN_ARGUMENT = (
+    "not a parameter",
+    "n'est pas un paramètre",
+    "unexpected",
+    "additional propert",
+    "unrecognized",
+    "unknown",
+)
+
+
+def _rejects_detail(error: MapleStatsError) -> bool:
+    """Whether the server refused `detail` as an argument it does not know.
+
+    A server older than the compact search (before 2026-11-09) does this to
+    search_tools, and one older than 0.6.0 (2026-11-18) to call_tool. Both
+    answer in full anyway, so the call is repeated once without it. The error
+    must also say the argument is unknown: any other error that mentions
+    "detail" is the tool's own, and repeating the call would only hide it.
+    """
+    text = str(error).lower()
+    return "detail" in text and any(marker in text for marker in _UNKNOWN_ARGUMENT)
 
 
 @dataclass
@@ -193,14 +224,23 @@ class Client:
             raise MapleStatsError(message["error"].get("message", f"{method} failed"))
         return message["result"]
 
-    def _tool(self, name: str, arguments: dict[str, Any]) -> Any:
+    def _tool(self, name: str, arguments: dict[str, Any], detail: str = "full") -> Any:
         if name in _DIRECT_TOOLS:
-            params = {"name": name, "arguments": arguments}
-        else:
-            params = {
-                "name": "call_tool",
-                "arguments": {"name": name, "arguments": arguments},
-            }
+            return _decode(
+                self._request("tools/call", {"name": name, "arguments": arguments})
+            )
+        # `detail` is call_tool's own argument, beside `name` and `arguments`.
+        # The server's default, "brief", writes a list of six or more rows as
+        # CSV text and cuts the provenance; "full" keeps the rows as objects.
+        inner: dict[str, Any] = {"name": name, "arguments": arguments, "detail": detail}
+        params = {"name": "call_tool", "arguments": inner}
+        try:
+            return _decode(self._request("tools/call", params))
+        except MapleStatsError as error:
+            if not _rejects_detail(error):
+                raise
+        # A server that does not know `detail` answers in full without it.
+        del inner["detail"]
         return _decode(self._request("tools/call", params))
 
     # Public API --------------------------------------------------------------
@@ -216,9 +256,7 @@ class Client:
         try:
             found = self._tool("search_tools", {"query": query, "detail": detail})
         except MapleStatsError as error:
-            # A server older than the compact search (before PR #214) has no
-            # `detail` and rejects it; its answer is the full form anyway.
-            if "detail" not in str(error):
+            if not _rejects_detail(error):
                 raise
             found = self._tool("search_tools", {"query": query})
         tools = found if isinstance(found, list) else []
@@ -244,14 +282,33 @@ class Client:
         """The tools to call, in order, for a question that may span sources."""
         return self._tool("plan_query", {"question": question, "lang": lang})
 
-    def call_tool(self, tool: str, /, **arguments: Any) -> Any:
-        """Run a tool and return its result as decoded JSON (provenance included)."""
-        return self._tool(tool, arguments)
+    def call_tool(
+        self, tool: str, /, *, detail: str | None = None, **arguments: Any
+    ) -> Any:
+        """Run a tool and return its result as decoded JSON (provenance included).
+
+        detail="full" (the default) returns every field, the whole provenance
+        and each list of rows as objects. detail="brief" returns the server's
+        compact answer: a list of six or more rows is one CSV text block
+        ({"format": "csv", "rows": n, "csv": ...}) and the provenance is cut
+        to what a citation needs. A server older than 0.6.0 answers in full
+        either way. For the server's own tools (search_tools, plan_query) a
+        `detail` you pass goes to the tool as one of its arguments.
+        """
+        if tool in _DIRECT_TOOLS and detail is not None:
+            arguments = {**arguments, "detail": detail}
+        return self._tool(tool, arguments, detail or "full")
 
     def get_data(self, tool: str, /, **arguments: Any) -> Result:
-        """Run a tool and return its rows as a polars frame, with citation and provenance."""
-        raw = self._tool(tool, arguments)
-        rows, left_out = rows_and_left_out(raw)
+        """Run a tool and return its rows as a polars frame, with citation and provenance.
+
+        Always asks the server for detail="full": a brief result writes six or
+        more rows as CSV text, which cannot be read as rows.
+        """
+        raw = self._tool(tool, arguments, "full")
+        # Notes the server states once for several items are written back in.
+        payload = resolve_shared_notes(raw)
+        rows, left_out = rows_and_left_out(payload)
         columns = list(dict.fromkeys(name for row in rows for name in row))
         names = clean_names(columns)
         data = pl.DataFrame(
@@ -263,8 +320,8 @@ class Client:
         )
         return Result(
             data=data,
-            citation=citations(raw),
-            provenance=provenance(raw),
+            citation=citations(payload),
+            provenance=provenance(payload),
             left_out=left_out,
             tool=tool,
             arguments=arguments,

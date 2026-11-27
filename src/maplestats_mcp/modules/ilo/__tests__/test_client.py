@@ -6,6 +6,8 @@ ten codes) and SDMX-CSV data in English (annual, four areas) and French
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import re
 from pathlib import Path
@@ -137,6 +139,68 @@ async def test_get_data_parses_rows_units_sources_and_status(httpx_mock):
     usa = [r for r in result.rows if r.ref_area == "USA"]
     assert any(r.status == "Break in series" for r in usa)
     assert any("harmonises national survey figures" in n for n in result.notes)
+
+
+def _une_with_gaps() -> str:
+    """The annual answer with values missing the way SDMX-CSV writes them (an empty
+    OBS_VALUE and an OBS_STATUS): Canada 2024, and all of the United Kingdom."""
+    rows = list(csv.reader(io.StringIO(_text("data_une_en.csv"))))
+    header, body = rows[0], rows[1:]
+    area, period = (
+        header.index("REF_AREA: Reference area"),
+        header.index("TIME_PERIOD: Time period"),
+    )
+    value, status = header.index("OBS_VALUE"), header.index("OBS_STATUS: Observation status")
+    for row in body:
+        if row[area].startswith("GBR") or (row[area].startswith("CAN") and row[period] == "2024"):
+            row[value], row[status] = "", "M: Missing value"
+    out = io.StringIO()
+    csv.writer(out, lineterminator="\n").writerows(rows)
+    return out.getvalue()
+
+
+async def test_get_data_says_how_many_values_were_left_out_and_why(httpx_mock):
+    _mock(httpx_mock, csv_name=None)
+    httpx_mock.add_response(url=DATA, text=_une_with_gaps())
+    result = await client.get_data(
+        "DF_UNE_DEAP_SEX_AGE_RT", "can+usa+gbr+x01.a.une_deap_rt.sex_t.age_ythadult_yge15", last_n=3
+    )
+    # The rows are as before: no 2024 for Canada, and no United Kingdom series.
+    assert [r.period for r in result.rows if r.ref_area == "CAN"] == ["2023", "2025"]
+    assert "GBR" not in {s.ref_area for s in result.series}
+    sentence = next(n for n in result.notes if "no numeric value" in n)
+    assert "4 observations had no numeric value" in sentence and "4 Missing value" in sentence
+    assert "1 series had no numeric value at all" in sentence
+    assert sentence in (result.provenance.limits or "")
+
+
+async def test_get_data_says_it_in_french_too(httpx_mock):
+    _mock(httpx_mock, csv_name=None, lang="fr")
+    httpx_mock.add_response(url=DATA, text=_une_with_gaps())
+    result = await client.get_data(
+        "DF_UNE_DEAP_SEX_AGE_RT",
+        "can+usa+gbr+x01.a.une_deap_rt.sex_t.age_ythadult_yge15",
+        last_n=3,
+        lang="fr",
+    )
+    sentence = next(n for n in result.notes if "sans valeur numérique" in n)
+    assert "4 Missing value" in sentence and "aucune valeur numérique" in sentence
+    assert sentence in (result.provenance.limits or "")
+
+
+async def test_get_data_without_gaps_has_no_such_note(httpx_mock):
+    _mock(httpx_mock)
+    result = await client.get_data(
+        "DF_UNE_DEAP_SEX_AGE_RT", "can+usa+gbr+x01.a.une_deap_rt.sex_t.age_ythadult_yge15", last_n=3
+    )
+    assert not any("no numeric value" in n for n in result.notes)
+
+
+async def test_compare_says_how_many_values_were_left_out_and_why(httpx_mock):
+    _mock(httpx_mock, csv_name=None)
+    httpx_mock.add_response(url=DATA, text=_une_with_gaps())
+    result = await client.compare_countries("unemployment_rate", compare_with=["US", "uk", "world"])
+    assert any("4 observations had no numeric value" in n for n in result.notes)
 
 
 async def test_get_data_in_french_reads_monthly_periods(httpx_mock):
@@ -350,6 +414,38 @@ async def test_get_data_reads_a_preset_dataset_from_rplumber(httpx_mock):
     assert result.dataset_name == "Unemployment rate by sex and age (%)"
     assert any("rplumber" in n for n in result.notes)
     assert result.csv_url.startswith("https://rplumber.ilo.org/")
+
+
+async def test_rplumber_counts_last_n_back_from_a_past_end_period(httpx_mock):
+    # last_n=10 with end_period=2015 asked rplumber for timefrom = this year - 13,
+    # so the window held 2013 to 2015 and the call returned three years, not ten.
+    _sdmx_denied(httpx_mock)
+    header, *_ = _text("rplumber_une_a.csv").splitlines()
+    canada = _text("rplumber_une_a.csv").splitlines()[3]
+    rows = [
+        canada.replace('"2025",6.819', f'"{year}",{year - 2000}.5') for year in range(2002, 2016)
+    ]
+    httpx_mock.add_response(url=RPLUMBER, text="\n".join([header, *rows]))
+    result = await client.get_data(
+        "DF_UNE_DEAP_SEX_AGE_RT",
+        "can.a.une_deap_rt.sex_t.age_ythadult_yge15",
+        end_period="2015",
+        last_n=10,
+    )
+    query = _rplumber_requests(httpx_mock)[0].url.query.decode()
+    assert "timefrom=2002" in query and "timeto=2015" in query
+    assert [r.period for r in result.rows] == [str(year) for year in range(2006, 2016)]
+
+
+def test_rplumber_from_year_counts_back_from_the_end_period():
+    from maplestats_mcp.modules.ilo import rplumber
+
+    assert rplumber.from_year(None, 10, "A", 2026, "2015") == 2002
+    assert rplumber.from_year(None, 24, "M", 2026, "2015-M06") == 2010
+    # An end period in the future cannot hold data: count back from this year.
+    assert rplumber.from_year(None, 10, "A", 2026, "2030") == 2013
+    # A start period still wins.
+    assert rplumber.from_year("2008", 10, "A", 2026, "2015") == 2008
 
 
 async def test_get_data_rplumber_checks_the_key_before_a_request(httpx_mock):

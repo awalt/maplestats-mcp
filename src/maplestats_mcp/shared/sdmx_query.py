@@ -65,7 +65,11 @@ OBS_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("scale", "VARCHAR", "unit multiplier, e.g. 'Millions'"),
     ("frequency", "VARCHAR", "e.g. 'Annual', 'Quarterly'"),
     ("geography", "VARCHAR", "the geography's label"),
-    ("adjustment", "VARCHAR", "'seasonally adjusted', 'unadjusted' or 'trend-cycle', when known"),
+    (
+        "adjustment",
+        "VARCHAR",
+        "'seasonally adjusted', 'calendar adjusted', 'unadjusted' or 'trend-cycle', when known",
+    ),
     ("quality", "VARCHAR", "'E' (low reliability) or 'x' (confidential)"),
 )
 OBS_COLUMN_NAMES = ", ".join(name for name, _, _ in OBS_COLUMNS)
@@ -75,10 +79,18 @@ _TEXT_COLUMNS = frozenset(
 )
 
 # Seasonal adjustment by code: Eurostat's s_adj, the OECD's ADJUSTMENT (checked live
-# 2026-11-20). Calendar adjustment alone is not seasonal adjustment.
+# 2026-11-20). Calendar adjustment alone is not seasonal adjustment, and its values are
+# not the unadjusted ones either. Eurostat's s_adj (ESTAT:S_ADJ 1.12, in the namq_10_gdp
+# structure fixture) names NSA "Unadjusted data (i.e. neither seasonally adjusted nor
+# calendar adjusted data)", CA "Calendar adjusted data, not seasonally adjusted data" and
+# SCA "Seasonally and calendar adjusted data". CA has a label of its own because a
+# distinct value is what lets query_checks refuse an average or a sum of CA and NSA
+# values together (mixed_adjustment). OECD K stays "unadjusted" as it was: the OECD's
+# CL_ADJUSTMENT labels it "Calendar component" (the structure_eo and structure_house_prices
+# fixtures), which names a part of a decomposition, not a calendar adjusted series.
 _ADJUSTMENT_CODES = {
     "NSA": "unadjusted",
-    "CA": "unadjusted",
+    "CA": "calendar adjusted",
     "SA": "seasonally adjusted",
     "SCA": "seasonally adjusted",
     "TC": "trend-cycle",
@@ -419,13 +431,44 @@ def hierarchy(dims: Sequence[SliceDimension]) -> dict[int, dict[int, list[int]]]
 # ---- the query ------------------------------------------------------------------------
 
 
+# A label that says a series is calendar (working-day, trading-day) adjusted: Eurostat's
+# "Calendar adjusted data, not seasonally adjusted data", its French "Données corrigées
+# des effets de calendrier, ...". Not when the calendar words are negated.
+_CALENDAR_ADJUSTED = re.compile(
+    r"(?<!not )(?<!non )(?<!non-)(?<!nor )"
+    r"(?:(?:calendar|working[- ]day|trading[- ]day)[- ]adjusted"
+    r"|corrig[ée]e?s? des (?:(?:effets|variations) (?:de|du|des) )?(?:calendrier|jours ouvrables))",
+    re.IGNORECASE,
+)
+# "not seasonally adjusted", which carries the words "seasonally adjusted" but says the
+# opposite: query_checks.adjustment read it as unadjusted for a calendar adjusted label.
+_NOT_SEASONAL = re.compile(
+    r"\b(?:not|non)[- ]seasonally adjusted|\bnon d[ée]saisonnalis\w*", re.IGNORECASE
+)
+_SEASONAL = re.compile(r"seasonally|d[ée]saisonnalis", re.IGNORECASE)
+_UNADJUSTED_OR_TREND = re.compile(r"\bunadjusted|trend[- ]cycle|tendance[- ]cycle", re.IGNORECASE)
+
+
+def _label_adjustment(label: str) -> str | None:
+    """The adjustment a label says: "calendar adjusted" when it names a calendar (or
+    working-day) adjustment and no seasonal one, else what query_checks reads in it."""
+    text = _NOT_SEASONAL.sub(" ", label)
+    if (
+        _CALENDAR_ADJUSTED.search(text)
+        and not _SEASONAL.search(text)
+        and not _UNADJUSTED_OR_TREND.search(text)
+    ):
+        return "calendar adjusted"
+    return query_checks.adjustment(label, None)
+
+
 def _adjustment(dims: Sequence[SliceDimension], codes: Sequence[str], title: str) -> str | None:
     for dim, code in zip(dims, codes, strict=True):
         if dim.role == "adjustment":
-            return _ADJUSTMENT_CODES.get(code.upper()) or query_checks.adjustment(
-                dim.labels.get(code, code), None
+            return _ADJUSTMENT_CODES.get(code.upper()) or _label_adjustment(
+                dim.labels.get(code, code)
             )
-    return query_checks.adjustment(title, None)
+    return _label_adjustment(title)
 
 
 async def run(

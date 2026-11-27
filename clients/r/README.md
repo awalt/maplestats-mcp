@@ -38,8 +38,16 @@ unemployment <- ms_get_data(
 )
 attr(unemployment, "citation")
 
-# The raw result, as the server returns it
+# The raw result, as the server returns it (every field, the whole provenance)
 ms_call_tool("boc_get_observations", series_names = I("FXUSDCAD"), recent = 5)
+
+# The server's compact answer: a list of six or more rows is one CSV text block
+ms_call_tool(
+  "boc_get_observations",
+  series_names = I("FXUSDCAD"),
+  recent = 30,
+  detail = "brief"
+)
 
 # Which tools to call for a question that spans sources
 ms_plan_query("How has rent in Calgary changed against wages?")
@@ -60,6 +68,20 @@ nested fields into `parent_child` columns and cleans names to snake_case, as
 `lubridate::ymd()` yourself. The attributes are `citation`, `provenance`,
 `left_out` (fields of the result beside the rows), `tool` and `arguments`;
 most dplyr verbs drop them, so read them before transforming.
+
+`ms_get_data()` and `ms_call_tool()` ask the server for `detail = "full"`:
+every field the tool returns, the whole provenance and each list of rows as
+objects, so the tibble has one column for every field (status codes and
+`context_*` columns included). The server's own default, `detail = "brief"`,
+writes a list of six or more rows as one CSV text block and cuts the
+provenance, which cannot be read as rows; only `ms_call_tool()` takes
+`detail`, for when you want that compact form. `detail` needs server 0.6.0
+(2026-11-18) or newer: an older server rejects it, so the client repeats the
+call without it and gets the full result. A note the server states once for
+several series (`shared_notes`) is written back into each row's
+`context_notes`. A column that is null on every row (for example
+`non_numeric`) is still a column, and a result with no observations comes back
+as series metadata rows, not an empty tibble.
 
 Errors are conditions of class `maplestats_error` with the server's message,
 which says how to fix the call. A `maplestats_rate_limited` error (the hosted

@@ -151,7 +151,29 @@ CMA = {
     ],
     "footnote": [],
 }
+# A semi-annual index (frequencyCode 11): its own period is six months, so a percent
+# change "over one period" is a six-month change.
+SEMI = {
+    "productId": "99100001",
+    "frequencyCode": 11,
+    "surveyCode": ["9999"],
+    "dimension": [
+        {
+            "dimensionPositionId": 1,
+            "dimensionNameEn": "Geography",
+            "member": _members((1, "Canada")),
+        }
+    ],
+    "footnote": [],
+}
+# A bi-monthly index (frequencyCode 7, one period every two months) and a weekly one
+# (frequencyCode 2, whose change has no step in months).
+BIMONTHLY = {**SEMI, "productId": "99100002", "frequencyCode": 7}
+WEEKLY = {**SEMI, "productId": "99100003", "frequencyCode": 2}
 CUBES = {
+    99100002: BIMONTHLY,
+    99100003: WEEKLY,
+    99100001: SEMI,
     14109999: CMA,
     14100287: LFS,
     11100090: DISABILITY,
@@ -206,6 +228,32 @@ SERIES = {
             (date(2026, 9, 1), 167.7, 0, 0),
         ],
     ),
+    # Semi-annual: 107.1 / 105.0 = +2.0% in six months, 107.1 / 102.0 = +5.0% in twelve.
+    77: (
+        99100001,
+        "1",
+        0,
+        "2002=100",
+        [
+            (date(2024, 7, 1), 100.0, 0, 0),
+            (date(2025, 1, 1), 102.0, 0, 0),
+            (date(2025, 7, 1), 105.0, 0, 0),
+            (date(2026, 1, 1), 107.1, 0, 0),
+        ],
+    ),
+    # Bi-monthly: 104.0 / 102.0 = +2.0% in two months, 104.0 / 100.0 = +4.0% in twelve.
+    78: (
+        99100002,
+        "1",
+        0,
+        "2002=100",
+        [
+            (date(2025, 1, 1), 100.0, 0, 0),
+            (date(2025, 11, 1), 102.0, 0, 0),
+            (date(2026, 1, 1), 104.0, 0, 0),
+        ],
+    ),
+    79: (99100003, "1", 0, "2002=100", [(date(2026, 1, 5), 100.0, 0, 0)]),
     # One series per CMA member: Victoriaville 101 ... British Columbia 107.
     **{
         100 + m: (14109999, f"{m}.1", 0, "Percent", [(date(2026, 9, 1), 5.0, 0, 0)])
@@ -565,6 +613,44 @@ async def test_bank_of_canada_outage_is_noted(monkeypatch):
     )
     assert problems == []
     assert any("not re-read" in note for note in result.notes)
+
+
+async def test_a_not_re_read_note_names_its_source_in_the_language_asked(monkeypatch):
+    """The French note carried the English source names ("Statistics Canada WDS")."""
+
+    async def down(ids, start, end):
+        raise UpstreamUnavailable("WDS is down.")
+
+    monkeypatch.setattr(wds, "get_data_from_vector_by_reference_period_range", down)
+    _, wds_result = await _check(
+        "Quel est le taux de chômage du Canada ?",
+        {"value": 6.5, "period": "2026-09", "vector_id": 2062815},
+        lang="fr",
+    )
+    (note,) = wds_result.notes
+    assert "non relu" in note and "Statistique Canada" in note
+    assert "Statistics Canada" not in note
+
+    async def observations(names, start_date=None, end_date=None, recent=None, lang="en"):
+        if start_date:
+            raise UpstreamUnavailable("Valet is down.")
+        return SimpleNamespace(
+            observations=[SimpleNamespace(ref_date=date(2026, 11, 2), values={"FXUSDCAD": 1.4})]
+        )
+
+    monkeypatch.setattr(client.boc, "get_observations", observations)
+    _, boc_result = await _check(
+        "USD/CAD ?",
+        {"value": 9.0, "period": "2026-10-01", "boc_series": "FXUSDCAD"},
+        lang="fr",
+    )
+    (note,) = boc_result.notes
+    assert "Banque du Canada" in note and "Bank of Canada" not in note
+    # English keeps the English names.
+    _, english = await _check(
+        "USD/CAD?", {"value": 9.0, "period": "2026-10-01", "boc_series": "FXUSDCAD"}
+    )
+    assert "Bank of Canada Valet did not answer" in english.notes[0]
 
 
 async def test_whole_numbers_are_precise_to_the_unit():
@@ -927,6 +1013,78 @@ async def test_a_percent_without_the_earlier_period_is_a_note():
     )
     assert problems == []
     assert any("2023-01" in note and "cannot be computed" in note for note in result.notes)
+
+
+# A percent change "over one period" is over the series' own period: six months for a
+# semi-annual series. The horizon used to come from how the period was written
+# ("2026-01" read as a month), so the six-month change was never offered.
+SEMI_QUESTION = "What was the six-month change in the semi-annual price index in January 2026?"
+
+
+def _semi(value, period: str | None = "2026-01-01", unit="percent") -> dict:
+    return {"value": value, "unit": unit, "period": period, "vector_id": 77}
+
+
+async def test_a_semi_annual_percent_is_checked_over_its_own_period():
+    # No period cited: the latest, 2026-01, against six months and twelve months back.
+    problems, result = await _check(SEMI_QUESTION, _semi(2.0, None))
+    assert problems == [] and result.checked == 1
+    assert not any("cannot be computed" in note for note in result.notes)
+    problems, _ = await _check(SEMI_QUESTION, _semi(5.0, None))
+    assert problems == []
+
+
+async def test_a_wrong_semi_annual_percent_quotes_both_horizons():
+    problems, result = await _check(SEMI_QUESTION, _semi(9.9, None))
+    assert problems == [(0, "value")]
+    assert "2.0% from 2025-S2" in result.problems[0].problem
+    assert "5.0% from 2025-S1 (12 months)" in result.problems[0].problem
+
+
+async def test_a_day_cited_for_a_semi_annual_percent_is_checked_not_skipped():
+    # 2026-01-01 is a day, so the series' own frequency gives the period: the check
+    # used to stop with a note, because semi-annual was missing from its table.
+    problems, result = await _check(SEMI_QUESTION, _semi(2.0))
+    assert problems == []
+    assert not any("not checked" in note for note in result.notes)
+    problems, _ = await _check(SEMI_QUESTION, _semi(9.9))
+    assert problems == [(0, "value")]
+
+
+async def test_a_month_cited_for_a_semi_annual_percent_is_still_its_own_period():
+    problems, _ = await _check(SEMI_QUESTION, _semi(2.0, "2026-01"))
+    assert problems == []
+
+
+BIMONTHLY_QUESTION = "What was the two-month change in the bi-monthly price index in January 2026?"
+
+
+def _bimonthly(value, period: str | None = "2026-01") -> dict:
+    return {"value": value, "unit": "percent", "period": period, "vector_id": 78}
+
+
+async def test_a_bi_monthly_percent_is_checked_over_its_own_period():
+    # A month cited for a bi-monthly series: one period back is two months, not one.
+    problems, result = await _check(BIMONTHLY_QUESTION, _bimonthly(2.0))
+    assert problems == [] and result.checked == 1
+    assert not any("not checked" in note for note in result.notes)
+    problems, result = await _check(BIMONTHLY_QUESTION, _bimonthly(9.9))
+    assert problems == [(0, "value")]
+    assert "2.0% from 2025-11" in result.problems[0].problem
+    assert "4.0% from 2025-01 (12 months)" in result.problems[0].problem
+    # No period cited: the latest, 2026-01, is read the same way.
+    problems, _ = await _check(BIMONTHLY_QUESTION, _bimonthly(2.0, None))
+    assert problems == []
+
+
+async def test_a_percent_of_a_weekly_series_says_which_periods_are_supported():
+    figure = {"value": 2.0, "unit": "percent", "period": "2026-01-05", "vector_id": 79}
+    problems, result = await _check("Weekly change?", figure)
+    assert problems == []
+    (note,) = result.notes
+    assert "monthly, bi-monthly, quarterly, semi-annual or annual periods only" in note
+    _, french = await _check("Variation hebdomadaire ?", figure, lang="fr")
+    assert "bimestrielles" in french.notes[0] and "semestrielles" in french.notes[0]
 
 
 async def test_a_percent_series_is_compared_as_it_is():

@@ -14,17 +14,23 @@ entries(node::AbstractDict) = Pair{String,Any}[string(k) => v for (k, v) in pair
 entries(node::Record) = node
 without_provenance(node) = filter(p -> first(p) != "provenance", entries(node))
 
-"""Every list of objects in the payload, three levels deep, provenance aside."""
+"""
+Every list of objects in the payload, three levels deep, provenance aside, each
+with the keys that lead to it. JSON3 hands out a new view on every access, so a
+list is told apart by its path, not by `===`.
+"""
 function record_lists(payload)
-    found = Any[]
-    frontier = Any[payload]
+    found = Pair{Vector{String},Any}[]
+    frontier = Pair{Vector{String},Any}[String[] => payload]
     for _ in 1:4
-        next_frontier = Any[]
-        for node in frontier
+        next_frontier = Pair{Vector{String},Any}[]
+        for (path, node) in frontier
             if is_record_list(node)
-                push!(found, node)
+                push!(found, path => node)
             elseif is_object(node)
-                append!(next_frontier, last.(without_provenance(node)))
+                for (key, value) in without_provenance(node)
+                    push!(next_frontier, [path; key] => value)
+                end
             end
         end
         frontier = next_frontier
@@ -52,21 +58,20 @@ function flatten_record(record, prefix::String="")
     return flat
 end
 
-function holds(node, best)
-    node === best && return true
-    is_object(node) || return false
-    return any(p -> holds(last(p), best), without_provenance(node))
-end
+"""Whether `path` leads to the list at `best_path` or to an object that holds it."""
+holds(path::Vector{String}, best_path::Vector{String}) =
+    length(path) < length(best_path) && best_path[1:length(path)] == path
 
 """The result's fields outside the rows, by dotted name."""
-function left_out(node, best, prefix::String="")
+function left_out(node, best_path::Vector{String}, path::Vector{String}=String[])
     left = Record()
     is_object(node) || return left
     for (key, value) in without_provenance(node)
-        value === best && continue
-        name = prefix * key
-        if is_object(value) && holds(value, best)
-            append!(left, left_out(value, best, name * "."))
+        here = [path; key]
+        here == best_path && continue
+        name = join(here, ".")
+        if is_object(value) && holds(here, best_path)
+            append!(left, left_out(value, best_path, here))
         elseif is_object(value)
             push!(left, name => "[object]")
         elseif value isa AbstractVector
@@ -92,6 +97,43 @@ function update_record(outer::Record, inner::Record)
     return merged
 end
 
+const NOTE_REFERENCE = r"^shared_notes\[(\d+)\]$"
+
+"""The JSON text of `node` with each "shared_notes[i]" replaced by its text."""
+function swapped_json(node, notes::Vector{String}; top::Bool=false)
+    if is_object(node)
+        kept = [p for p in entries(node) if !(top && first(p) == "shared_notes")]
+        members = [JSON3.write(first(p)) * ":" * swapped_json(last(p), notes) for p in kept]
+        return "{" * join(members, ",") * "}"
+    elseif node isa AbstractVector
+        return "[" * join([swapped_json(item, notes) for item in node], ",") * "]"
+    elseif node isa AbstractString
+        found = match(NOTE_REFERENCE, node)
+        index = found === nothing ? 0 : parse(Int, found[1]) + 1
+        return JSON3.write(1 <= index <= length(notes) ? notes[index] : node)
+    end
+    return JSON3.write(node)
+end
+
+"""
+    resolve_shared_notes(payload)
+
+The payload with each "shared_notes[i]" replaced by its text. The server states a
+note, caveat, footnote or licence shared by two or more items of a list once, in a
+top-level `shared_notes` list, and puts "shared_notes[i]" in each item
+(shared/brief.py, share_repeated_notes), in brief and in full results alike. The
+references are replaced wherever they stand as a whole value or list item, and
+`shared_notes` is dropped, so it is not reported as left out. JSON3's values cannot
+be changed, so the payload is written out with the texts in place and read back; a
+payload without `shared_notes` comes back as it is.
+"""
+function resolve_shared_notes(payload)
+    is_object(payload) || return payload
+    notes = get_key(payload, "shared_notes")
+    notes isa AbstractVector || return payload
+    return JSON3.read(swapped_json(payload, String[string(n) for n in notes]; top=true))
+end
+
 """FastMCP wraps a list result under "result"."""
 function unwrap_result(payload)
     is_object(payload) || return payload
@@ -115,8 +157,8 @@ function rows_and_left_out(payload)
         isempty(single) && return (Record[], Record())
         return ([flatten_record(single)], Record())
     end
-    best = lists[argmax(length.(lists))]
-    left = left_out(payload, best)
+    best_path, best = lists[argmax(length.(last.(lists)))]
+    left = left_out(payload, best_path)
     first_row = entries(best[1])
     child_keys = [k for (k, v) in first_row if is_record_list(v)]
     isempty(child_keys) && return ([flatten_record(row) for row in best], left)

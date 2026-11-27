@@ -31,8 +31,13 @@ result.left_out  # fields of the result beside the rows
 lfs = ms.get_data("wds_get_data_from_vectors", vector_ids=[2062815], latest_n=12)
 lfs.citation
 
-# The raw result, as the server returns it
+# The raw result, as the server returns it (every field, the whole provenance)
 ms.call_tool("boc_get_observations", series_names=["FXUSDCAD"], recent=5)
+
+# The server's compact answer: a list of six or more rows is one CSV text block
+ms.call_tool(
+    "boc_get_observations", detail="brief", series_names=["FXUSDCAD"], recent=30
+)
 
 # Which tools to call for a question that spans sources
 ms.plan_query("How has rent in Calgary changed against wages?")
@@ -49,6 +54,19 @@ print(code["scripts"][0]["code"])
 observations become one row each, carrying the series' fields), turns nested
 fields into `parent_child` columns and cleans names to snake_case. It does not
 convert types: dates stay text.
+
+`get_data` and `call_tool` ask the server for `detail="full"`: every field the
+tool returns, the whole provenance and each list of rows as objects, so the
+frame has one column for every field (status codes and `context_*` columns
+included). The server's own default, `detail="brief"`, writes a list of six or
+more rows as one CSV text block and cuts the provenance, which cannot be read
+as rows; only `call_tool` takes `detail`, for when you want that compact form.
+`detail` needs server 0.6.0 (2026-11-18) or newer: an older server rejects it, so
+the client repeats the call without it and gets the full result. A note the
+server states once for several series (`shared_notes`) is written back into each
+row's `context_notes`. A column that is null on every row (for example
+`non_numeric`) is still a column, and a result with no observations comes back
+as series metadata rows, not an empty frame.
 
 Errors from the server raise `maplestats.MapleStatsError` with its message,
 which says how to fix the call. `maplestats.RateLimited` (a subclass) means the

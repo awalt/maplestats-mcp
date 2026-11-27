@@ -21,6 +21,7 @@ with the WDS route named (a 3.3 GB census table took 240 s just to download).
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import math
 import re
@@ -433,8 +434,12 @@ async def _from_wds(
     end: str | None,
     rows: _Slice,
     codes: Mapping[str, Any] | None,
+    seconds: float,
 ) -> str:
-    """The slice rebuilt from WDS by coordinate, when the file is blocked; the WDS URL."""
+    """The slice rebuilt from WDS by coordinate, when the file is blocked; the WDS URL.
+
+    `seconds` is the time budget the file route gets (ScanLimitExceeded when it is gone).
+    """
     combinations = math.prod(len(k) for k in kept)
     if combinations > WDS_MAX_COORDINATES:
         raise UpstreamUnavailable(
@@ -448,6 +453,18 @@ async def _from_wds(
             )
         )
     latest_n = wds_table.periods_to_ask(dict(cube), start)
+    first, last = _bounds(start, end)
+    # latest_n counts back from the table's last period to `start`, but an earlier `end`
+    # leaves the later ones out of the slice, so only the periods up to it can be rows.
+    in_window = latest_n
+    if last is not None and last < date.fromisoformat(str(cube["cubeEndDate"])[:10]):
+        in_window = wds_table.periods_to_ask({**cube, "cubeEndDate": last.isoformat()}, start)
+    # The table has no more series than nbSeriesCube, whatever members combine to. A slice
+    # that cannot fit under MAX_ROWS is refused as the file route refuses it, before the
+    # calls: a daily history reads one series per call, and would fail at the row cap
+    # after about 23 of them, or at the tool timeout, instead of at once.
+    if min(combinations, int(cube.get("nbSeriesCube") or combinations)) * in_window > MAX_ROWS:
+        raise _TooManyRows
     ids = [[str(m["memberId"]) for m in k] for k in kept]
     coordinates = [".".join([*combo, *["0"] * (10 - len(combo))]) for combo in _product(ids)]
     names = {
@@ -468,13 +485,38 @@ async def _from_wds(
         return context._code_text(dict(codes), key, field, stem, code, "en") or ""
 
     table_id = context.table_number(pid)
-    first, last = _bounds(start, end)
     # Annual and longer periods as the CSV writes them, a year: WDS dates a fiscal year
     # by its first day (refPer 1991-04-01 for 1991/1992), the CSV only by its years.
     yearly = 12 <= int(cube.get("frequencyCode") or 0) <= 18
-    for at in range(0, len(coordinates), _WDS_BATCH):
-        batch = coordinates[at : at + _WDS_BATCH]
-        data = await client.get_data_from_cube_pid_coords_and_latest_n_periods(pid, batch, latest_n)
+    step = _batch_size(latest_n)
+    unpublished: NotFound | None = None
+    deadline = time.monotonic() + seconds
+    for at in range(0, len(coordinates), step):
+        batch = coordinates[at : at + step]
+        remaining = deadline - time.monotonic()
+        try:
+            if remaining <= 0:
+                raise TimeoutError
+            data = await asyncio.wait_for(
+                client.get_data_from_cube_pid_coords_and_latest_n_periods(pid, batch, latest_n),
+                timeout=remaining,
+            )
+        except TimeoutError as exc:
+            # Each call is one POST, and a slice of many series is many calls (one per
+            # series for a history past QUERY_MAX_LATEST_N): stop at the budget the file
+            # route has, with its "took too long, narrow the slice" error, not at the
+            # tool timeout.
+            raise ScanLimitExceeded(
+                f"The WDS rebuild of table {pid} passed {seconds:.0f} s.", 0
+            ) from exc
+        except NotFound as exc:
+            # The helper raises when none of the call's coordinates is a series (a lone
+            # one included). Members combine freely in the product above, but the table
+            # publishes only some combinations, so a whole call can be unpublished while
+            # the next one holds data: keep going. When no call returns a row, the last
+            # explanation is raised below.
+            unpublished = exc
+            continue
         # One coordinate comes back as the series itself; several, in `series`.
         for series in data.series or [data]:
             parts = series.coordinate.split(".")
@@ -510,7 +552,23 @@ async def _from_wds(
                     pid,
                     table_id,
                 )
+    if unpublished is not None and not rows.rows:
+        raise unpublished
     return f"{client.constants.BASE_URL}getDataFromCubePidCoordAndLatestNPeriods"
+
+
+def _batch_size(latest_n: int) -> int:
+    """Coordinates per WDS call, so that the call passes client.check_coordinates.
+
+    That check refuses a call of several coordinates whose coordinates x latest_n is over
+    INLINE_MAX_OBSERVATIONS, or whose latest_n is over QUERY_MAX_LATEST_N. A fixed 300
+    coordinates tripped it for a slice well under WDS_MAX_COORDINATES: 150 monthly series
+    since 1990 ask 434 periods each, 65,100 observations. One coordinate has no such
+    limit, so a history longer than QUERY_MAX_LATEST_N is read one series per call.
+    """
+    if latest_n > client.constants.QUERY_MAX_LATEST_N:
+        return 1
+    return max(1, min(_WDS_BATCH, client.constants.INLINE_MAX_OBSERVATIONS // latest_n))
 
 
 def _product(lists: list[list[str]]) -> list[list[str]]:
@@ -601,7 +659,9 @@ async def query_table(
                 source = "full-table file"
             except _Blocked:
                 rows.rows.clear()
-                source_url = await _from_wds(pid, cube, kept, start_period, end_period, rows, codes)
+                source_url = await _from_wds(
+                    pid, cube, kept, start_period, end_period, rows, codes, seconds
+                )
                 source = "WDS by coordinate"
     except _TooManyRows as exc:
         raise InvalidInput(

@@ -362,3 +362,19 @@ def test_docstrings_carry_use_for_and_keywords_in_both_languages():
     for fn in (tools.nrcan_fuel_prices_list_locations, tools.nrcan_fuel_prices_get_prices):
         doc = fn.__doc__ or ""
         assert "Use for:" in doc and "Keywords:" in doc and "Mots-clés :" in doc
+
+
+def test_module_and_tool_descriptions_say_nrcans_terms_apply():
+    # The terms were in provenance only: a reader of the catalogue or of a tool's
+    # description saw "NRCan prices" with nothing about reuse. Each description now
+    # names the terms and where to read them, in the wording provenance carries.
+    from maplestats_mcp.modules import nrcan_fuel_prices as module
+
+    assert "non-commercial reproduction only" in module.MODULE_DESCRIPTION
+    assert "provenance.licence" in module.MODULE_DESCRIPTION
+    assert "reproduction non commerciale seulement" in module.MODULE_DESCRIPTION_FR
+    assert "provenance.licence" in module.MODULE_DESCRIPTION_FR
+    for fn in (tools.nrcan_fuel_prices_list_locations, tools.nrcan_fuel_prices_get_prices):
+        doc = fn.__doc__ or ""
+        assert "NRCan's terms apply" in doc and "provenance.licence" in doc
+        assert doc.index("provenance.licence") < doc.index("Keywords:")

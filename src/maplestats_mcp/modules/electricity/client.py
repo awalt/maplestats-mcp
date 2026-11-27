@@ -34,6 +34,7 @@ from __future__ import annotations
 import csv
 import statistics
 import xml.etree.ElementTree as ET
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, date, datetime, timedelta, timezone
 from typing import NoReturn
 
@@ -332,6 +333,96 @@ def _ttl_for_year(year: int) -> int:
     return constants.CACHE_TTL_ARCHIVE_SECONDS
 
 
+async def _year_rows[T](
+    chosen: int,
+    first: int,
+    limit: int,
+    *,
+    kind: str,
+    load: Callable[[int], Awaitable[list[T]]],
+    in_range: Callable[[T], bool],
+    latest: bool,
+) -> tuple[list[T], bool, list[int]]:
+    """The rows of `chosen` year's file, with the year before ahead of them when
+    the latest hours need it.
+
+    IESO publishes one file per calendar year, and in the first days of a year
+    the new file is absent or holds fewer hours than were asked for (the
+    current-year file ends about a day behind the clock). The latest `limit`
+    hours would then fail with a 404 or come back short, so the year before is
+    read too and the hours are the last of both. That is for a call with no
+    year, no start date and no end date (`latest`) and the year now running only:
+    an end date in an earlier year asks for that year's file alone.
+    Returns the rows in time order, whether every read came from the cache, and
+    the years read, oldest first.
+    """
+    ttl = _ttl_for_year(chosen)
+    top_up = latest and chosen == ieso_today().year and chosen > first
+
+    async def read(year: int) -> tuple[list[T], bool]:
+        return await cached_fetch(f"electricity:{kind}:{year}", ttl, lambda: load(year))
+
+    rows: list[T] = []
+    cached = True
+    years: list[int] = []
+    try:
+        rows, cached = await read(chosen)
+        years.append(chosen)
+    except NotFound:
+        # Only the file of the year now running can be missing for want of time;
+        # a past year without a file is an error, not a reason to read another.
+        if not top_up:
+            raise
+    if top_up and sum(1 for row in rows if in_range(row)) < limit:
+        try:
+            earlier, earlier_cached = await read(chosen - 1)
+        except NotFound:
+            if not rows:
+                raise
+        else:
+            rows = earlier + rows
+            cached = cached and earlier_cached
+            years.insert(0, chosen - 1)
+    return rows, cached, years
+
+
+def _years_note(
+    years: list[int], chosen: int, limit: int, matched: Sequence[DemandHour | FuelHour]
+) -> tuple[str, str]:
+    """What limits says when the year before was read: (English, French), or empty.
+
+    `matched` is the hours the summary figures cover, which then are the hours
+    returned: the whole previous file would be a year of hours under a result that
+    names this year.
+    """
+    before = chosen - 1
+    if years not in ([before, chosen], [before]) or not matched:
+        return "", ""
+    span = f"{len(matched):,} hours returned ({matched[0].date.isoformat()} to {matched[-1].date.isoformat()})"
+    span_fr = f"{len(matched):,} heures renvoyées (du {matched[0].date.isoformat()} au {matched[-1].date.isoformat()})"
+    if years == [before, chosen]:
+        english = (
+            f" The {chosen} file held fewer than the {limit} hours asked for, so the last "
+            f"hours of the {before} file are included; the summary figures and rows_matched "
+            f"cover only the {span}."
+        )
+        french = (
+            f" Le fichier de {chosen} contenait moins que les {limit} heures demandées ; les "
+            f"dernières heures du fichier de {before} sont donc incluses ; les chiffres de "
+            f"synthèse et rows_matched ne couvrent que les {span_fr}."
+        )
+        return english, french
+    english = (
+        f" The {chosen} file is not published yet, so the rows come from the {before} file; "
+        f"the summary figures and rows_matched cover only the {span}."
+    )
+    french = (
+        f" Le fichier de {chosen} n'est pas encore publié ; les lignes viennent du fichier "
+        f"de {before} ; les chiffres de synthèse et rows_matched ne couvrent que les {span_fr}."
+    )
+    return english, french
+
+
 # ------------------------------------------------------------------ demand
 
 
@@ -381,26 +472,37 @@ async def get_hourly_demand(
         _parse_date(end_date, "end_date", lang),
     )
     chosen = _year_for_range(year, start, end, constants.FIRST_DEMAND_YEAR, lang)
-    path = f"Demand/PUB_Demand_{chosen}.csv"
 
-    async def fetch() -> list[DemandHour]:
+    async def load(file_year: int) -> list[DemandHour]:
+        path = f"Demand/PUB_Demand_{file_year}.csv"
         return parse_demand_csv(await _get_text(path, "hourly_demand", lang), lang)
 
-    all_rows, was_cached = await cached_fetch(
-        f"electricity:demand:{chosen}", _ttl_for_year(chosen), fetch
+    def in_range(row: DemandHour) -> bool:
+        return (start is None or row.date >= start) and (end is None or row.date <= end)
+
+    all_rows, was_cached, years = await _year_rows(
+        chosen,
+        constants.FIRST_DEMAND_YEAR,
+        limit,
+        kind="demand",
+        load=load,
+        in_range=in_range,
+        latest=year is None and start is None and end is None,
     )
-    matched = [
-        row
-        for row in all_rows
-        if (start is None or row.date >= start) and (end is None or row.date <= end)
-    ]
+    path = f"Demand/PUB_Demand_{years[-1]}.csv"
+    matched = [row for row in all_rows if in_range(row)]
+    if years != [chosen]:
+        # The year before was read only to fill `limit` hours: the peak, the average
+        # and rows_matched cover the hours returned, not that whole file.
+        matched = matched[-limit:]
+    years_en, years_fr = _years_note(years, chosen, limit, matched)
     # From a start, the first rows after it; otherwise the last rows, which
     # with only an end date are the ones up to that end.
     shown = matched[:limit] if start else matched[-limit:]
     valid = [row for row in matched if row.ontario_demand_mw is not None]
     peak = max(valid, key=lambda row: row.ontario_demand_mw or 0, default=None)
     return HourlyDemand(
-        year=chosen,
+        year=years[-1],
         rows=shown,
         rows_matched=len(matched),
         peak_ontario_demand_mw=peak.ontario_demand_mw if peak else None,
@@ -428,9 +530,10 @@ async def get_hourly_demand(
             ),
             licence=_LICENCE,
             limits=_limits(
-                f"Rows capped at {limit}; peak and average cover all {len(matched)} matched hours.",
+                f"Rows capped at {limit}; peak and average cover all {len(matched)} matched hours."
+                + years_en,
                 f"Lignes plafonnées à {limit} ; la pointe et la moyenne couvrent les "
-                f"{len(matched)} heures retenues.",
+                f"{len(matched)} heures retenues." + years_fr,
                 lang,
             ),
             lang=lang,
@@ -575,19 +678,30 @@ async def get_supply_by_fuel(
         _parse_date(end_date, "end_date", lang),
     )
     chosen = _year_for_range(year, start, end, constants.FIRST_FUEL_YEAR, lang)
-    path = f"GenOutputbyFuelHourly/PUB_GenOutputbyFuelHourly_{chosen}.xml"
 
-    async def fetch() -> list[FuelHour]:
+    async def load(file_year: int) -> list[FuelHour]:
+        path = f"GenOutputbyFuelHourly/PUB_GenOutputbyFuelHourly_{file_year}.xml"
         return parse_fuel_xml(await _get_text(path, "supply_by_fuel", lang), lang)
 
-    all_rows, was_cached = await cached_fetch(
-        f"electricity:fuel:{chosen}", _ttl_for_year(chosen), fetch
+    def in_range(row: FuelHour) -> bool:
+        return (start is None or row.date >= start) and (end is None or row.date <= end)
+
+    all_rows, was_cached, years = await _year_rows(
+        chosen,
+        constants.FIRST_FUEL_YEAR,
+        limit,
+        kind="fuel",
+        load=load,
+        in_range=in_range,
+        latest=year is None and start is None and end is None,
     )
-    matched = [
-        row
-        for row in all_rows
-        if (start is None or row.date >= start) and (end is None or row.date <= end)
-    ]
+    path = f"GenOutputbyFuelHourly/PUB_GenOutputbyFuelHourly_{years[-1]}.xml"
+    matched = [row for row in all_rows if in_range(row)]
+    if years != [chosen]:
+        # The year before was read only to fill `limit` hours: the totals, the shares
+        # and rows_matched cover the hours returned, not that whole file.
+        matched = matched[-limit:]
+    years_en, years_fr = _years_note(years, chosen, limit, matched)
     # Same rule as get_hourly_demand: only a start counts from the front.
     shown = matched[:limit] if start else matched[-limit:]
     sums: dict[str, int] = {}
@@ -618,7 +732,7 @@ async def get_supply_by_fuel(
         for fuel, amount in sorted(sums.items(), key=lambda item: -item[1])
     ]
     return SupplyByFuel(
-        year=chosen,
+        year=years[-1],
         rows=shown,
         rows_matched=len(matched),
         totals=totals,
@@ -644,9 +758,9 @@ async def get_supply_by_fuel(
             licence=_LICENCE,
             limits=_limits(
                 f"Rows capped at {limit}; totals cover all {len(matched)} matched hours. "
-                "Shares exclude the control_actions series.",
+                "Shares exclude the control_actions series." + years_en,
                 f"Lignes plafonnées à {limit} ; les totaux couvrent les {len(matched)} heures "
-                "retenues. Les parts excluent la série control_actions.",
+                "retenues. Les parts excluent la série control_actions." + years_fr,
                 lang,
             ),
             lang=lang,

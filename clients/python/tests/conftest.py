@@ -45,6 +45,22 @@ def fixture_for(params: dict[str, Any]) -> str:
     raise AssertionError(f"No recording for {tool} {arguments}")
 
 
+def answer_for(params: dict[str, Any]) -> str:
+    """The recording that answers a tools/call, as the real server would choose it.
+
+    A call_tool without detail="full" gets the server's brief result, where a
+    list of six or more rows is CSV text; the long recordings have a _brief twin
+    for that. Every other recording is the same whatever `detail` says.
+    """
+    name = fixture_for(params)
+    asked_full = (
+        params["name"] != "call_tool" or params["arguments"].get("detail") == "full"
+    )
+    if not asked_full and (FIXTURES / f"{name}_brief.sse").exists():
+        return f"{name}_brief"
+    return name
+
+
 class FakeServer:
     """Records what the client sent; answers from fixtures or an override."""
 
@@ -66,7 +82,7 @@ class FakeServer:
         if body["method"] == "notifications/initialized":
             return httpx.Response(202)
         assert request.headers.get("mcp-session-id") == SESSION
-        name = fixture_for(body["params"])
+        name = answer_for(body["params"])
         return httpx.Response(200, headers=sse, text=recorded(name, body["id"]))
 
     def bodies(self) -> list[dict[str, Any]]:

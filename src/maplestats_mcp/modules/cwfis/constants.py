@@ -114,3 +114,21 @@ NFDB_CAUSES_FR = {
     "U": "Inconnue",
     "H-PB": "Humaine (brûlage dirigé)",
 }
+
+# Province and territory names, English then French, for a `province` filter written as
+# a name; the tools' own codes are the keys. The layer's own values are codes.
+PROVINCE_NAMES = {
+    "BC": ("British Columbia", "Colombie-Britannique"),
+    "AB": ("Alberta", "Alberta"),
+    "SK": ("Saskatchewan", "Saskatchewan"),
+    "MB": ("Manitoba", "Manitoba"),
+    "ON": ("Ontario", "Ontario"),
+    "QC": ("Quebec", "Québec"),
+    "NB": ("New Brunswick", "Nouveau-Brunswick"),
+    "NS": ("Nova Scotia", "Nouvelle-Écosse"),
+    "PE": ("Prince Edward Island", "Île-du-Prince-Édouard"),
+    "NL": ("Newfoundland and Labrador", "Terre-Neuve-et-Labrador"),
+    "YT": ("Yukon", "Yukon"),
+    "NT": ("Northwest Territories", "Territoires du Nord-Ouest"),
+    "NU": ("Nunavut", "Nunavut"),
+}

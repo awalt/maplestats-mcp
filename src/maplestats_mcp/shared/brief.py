@@ -160,6 +160,26 @@ _ROW_CODES = frozenset(
         "frequency_code",
     }
 )
+# The codes that change how a value reads (a flag, a suppression, a scale). A row drops
+# such a code only when a decoded field says the same in words: statcan_delta_read_table's
+# rows carry the codes and no text (their legend is stated once for the table), so
+# dropping the codes made a "use with caution" or a thousands-scaled value look like a
+# plain number. The decoded field is the code's name without "_code" (status), or that
+# with one of the suffixes below (CIPO's status_description), or the scale_multiplier of
+# a scalar factor. decimals and frequency_code only shape the display, so they are
+# always dropped.
+_FLAG_CODES = ("symbol_code", "status_code", "security_level_code", "scalar_factor_code")
+_TWIN_SUFFIXES = ("", "_description", "_label", "_name", "_text")
+# Not treated as the words of a status code: an `active` flag. LNHPD sends status_code
+# (1 active, others not) beside `active`, but the rule is by field name and would then
+# also drop the status_code of any row that happens to have an `active` field, with
+# nothing in the row to tell that apart; LNHPD's code stays, stated once when every
+# row has it.
+_EXTRA_TWINS = {"scalar_factor_code": ("scale_multiplier",)}
+# What a flag code holds when there is nothing to flag (WDS code sets: 0 is "none",
+# "normal", "public" and 10**0). MDALL and ISED IP Horizons write their status codes as
+# text, so "0" is read the same way; no other text code is guessed at.
+_NEUTRAL_CODES = (0, "0", None)
 # Values that only restate the default: dropped from a brief row.
 _DEFAULT_FLAGS: dict[str, tuple[Any, ...]] = {
     "status": ("normal", "normale"),
@@ -353,6 +373,22 @@ def _short_caveats(node: Any) -> Any:
     return node
 
 
+def _superseded(node: Mapping[str, Any], key: str, lang: str) -> bool:
+    """Whether `key` is the other language of a bilingual pair (title_en / title_fr)
+    whose `lang` side has something to say, so that `key` is redundant.
+
+    A pair with nothing on the `lang` side keeps the other one: StatCan sends a null
+    French title for a table it has not translated, and dropping the English one left
+    the answer with no title at all. The empty side is dropped later with the other
+    empty fields; the key's suffix says which language the fallback is in.
+    """
+    other = "_fr" if lang == "en" else "_en"
+    if not key.endswith(other):
+        return False
+    wanted = f"{key[: -len(other)]}_{lang}"
+    return wanted in node and (not _empty(node[wanted]) or _empty(node[key]))
+
+
 def _one_language(node: Any, lang: str) -> Any:
     """`node` keeping one language of each bilingual pair (title_en / title_fr).
 
@@ -363,11 +399,10 @@ def _one_language(node: Any, lang: str) -> Any:
         return [_one_language(v, lang) for v in node]
     if not isinstance(node, dict):
         return node
-    other = "_fr" if lang == "en" else "_en"
     return {
         key: value if key == "provenance" else _one_language(value, lang)
         for key, value in node.items()
-        if not (key.endswith(other) and f"{key[: -len(other)]}_{lang}" in node)
+        if not _superseded(node, key, lang)
     }
 
 
@@ -620,14 +655,13 @@ def _metadata(
         return items
     if not isinstance(node, dict):
         return node
-    other = "_fr" if lang == "en" else "_en"
     out: dict[str, Any] = {}
     for key, value in node.items():
         if key == "provenance":
             out[key] = value
             continue
         # One language of a bilingual pair (cube_title_en / cube_title_fr).
-        if key.endswith(other) and f"{key[: -len(other)]}_{lang}" in node:
+        if _superseded(node, key, lang):
             continue
         if key in _CODES_DROPPED or (in_rows and key in _ITEM_DROPPED):
             continue
@@ -716,15 +750,42 @@ def _empty(value: Any) -> bool:
     return value is None or value == "" or value == [] or value == {}
 
 
-def _clean(node: Any, key: str = "", in_rows: bool = False) -> Any:
+def _decoded(row: Mapping[str, Any], code: str) -> bool:
+    """Whether `row` says what flag code `code` means in words (see _FLAG_CODES)."""
+    stem = code.removesuffix("_code")
+    twins = [stem + suffix for suffix in _TWIN_SUFFIXES] + list(_EXTRA_TWINS.get(code, ()))
+    return any(not _empty(row.get(name)) for name in twins)
+
+
+def _undecoded_codes(rows: list[dict[str, Any]]) -> frozenset[str]:
+    """The flag codes a list of rows must keep: those some row holds with a value that
+    flags or scales something and no decoded field of that row says it.
+
+    Decided on the rows' own data, for the whole list, so that a column is either there
+    for every row without a twin or nowhere: a flagged row then reads against rows
+    that say 0, not against silence. A code that is neutral on every such row is
+    dropped as before, since nothing is hidden.
+    """
+    keep: set[str] = set()
+    for row in rows:
+        for code in _FLAG_CODES:
+            if code in row and row[code] not in _NEUTRAL_CODES and not _decoded(row, code):
+                keep.add(code)
+    return frozenset(keep)
+
+
+def _clean(
+    node: Any, key: str = "", in_rows: bool = False, keep: frozenset[str] = frozenset()
+) -> Any:
     """`node` without the fields a brief result drops, its long row lists as CSV.
 
     `key` is the field `node` is the value of; `in_rows` is true for the items of
-    a list of objects.
+    a list of objects; `keep` holds the flag codes (_FLAG_CODES) the list must keep.
     """
     if isinstance(node, list):
         rows = all(isinstance(v, dict) for v in node) and bool(node)
-        cleaned = [_clean(v, key, in_rows=rows) for v in node]
+        kept = _undecoded_codes(node) if rows else frozenset()
+        cleaned = [_clean(v, key, in_rows=rows, keep=kept) for v in node]
         return _compact_list(cleaned) if rows else cleaned
     if not isinstance(node, dict):
         return node
@@ -734,7 +795,7 @@ def _clean(node: Any, key: str = "", in_rows: bool = False) -> Any:
         if k == "provenance" and isinstance(v, dict):
             out[k] = _brief_provenance(v)
             continue
-        if in_rows and k in _ROW_CODES:
+        if in_rows and k in _ROW_CODES and not (k in keep and not _decoded(node, k)):
             continue
         if in_rows and k in _DEFAULT_FLAGS and v in _DEFAULT_FLAGS[k]:
             continue

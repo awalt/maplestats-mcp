@@ -14,6 +14,37 @@ from typing import Any
 
 Record = dict[str, Any]
 
+_NOTE_REFERENCE = re.compile(r"shared_notes\[(\d+)\]")
+
+
+def resolve_shared_notes(payload: Any) -> Any:
+    """The payload with each "shared_notes[i]" replaced by its text.
+
+    The server states a note, caveat, footnote or licence shared by two or more
+    items of a list once, in a top-level `shared_notes` list, and puts
+    "shared_notes[i]" in each item (shared/brief.py, share_repeated_notes), in
+    brief and in full results alike. The references are replaced wherever they
+    stand as a whole value or list item, and `shared_notes` is dropped, so it is
+    not reported as left out. A payload without `shared_notes` comes back as it is.
+    """
+    notes = payload.get("shared_notes") if isinstance(payload, dict) else None
+    if not isinstance(notes, list):
+        return payload
+
+    def swap(node: Any) -> Any:
+        if isinstance(node, str):
+            found = _NOTE_REFERENCE.fullmatch(node)
+            if found and int(found[1]) < len(notes):
+                return notes[int(found[1])]
+            return node
+        if isinstance(node, list):
+            return [swap(v) for v in node]
+        if isinstance(node, dict):
+            return {k: swap(v) for k, v in node.items()}
+        return node
+
+    return swap({k: v for k, v in payload.items() if k != "shared_notes"})
+
 
 def _record_lists(payload: Any) -> list[list[Record]]:
     """Every list of objects in the payload, three levels deep, provenance aside."""

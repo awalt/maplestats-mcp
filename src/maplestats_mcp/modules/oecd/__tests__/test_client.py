@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -228,6 +229,18 @@ async def test_429_blocks_further_requests(httpx_mock):
     with pytest.raises(UpstreamUnavailable, match="about 10 minutes"):
         await client.get_data("DSD_EO@DF_EO", "USA.GDPV_ANNPCT.A", start_period="2024")
     assert len(_data_requests(httpx_mock)) == 1
+
+
+@pytest.mark.parametrize(("retry_after", "minutes"), [(600, "10 minutes"), (601, "11 minutes")])
+def test_block_wait_is_rounded_to_whole_minutes(monkeypatch, retry_after, minutes):
+    # 3875.038 + 600 - 3875.038 is 600.0000000000005 in floating point, which the plain
+    # ceil turned into 11 minutes; a clock that has not moved between block() and
+    # spend() (Windows' coarse monotonic clock) gives exactly that wait.
+    clock = SimpleNamespace(monotonic=lambda: 3875.038)
+    monkeypatch.setattr(client, "time", clock)
+    client.BUDGET.block(retry_after)
+    with pytest.raises(UpstreamUnavailable, match=f"about {minutes}"):
+        client.BUDGET.spend("en", data=True)
 
 
 async def test_hourly_budget_is_kept_and_cache_hits_are_free(httpx_mock, monkeypatch):

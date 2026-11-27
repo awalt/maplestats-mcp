@@ -362,6 +362,22 @@
     document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   }
 
+  // ---- CSV text (tests/test_review3_chat_csv.py runs this part in node) ----
+  // Series titles, units and statuses come from upstream sources, and Excel and LibreOffice
+  // run a cell that starts with = + - @ tab or carriage return as a formula. Such a cell gets a
+  // leading apostrophe, except a plain number (-12.5), which stays one. The text starts with
+  // a UTF-8 byte order mark, or Excel reads the accents of a French title as Windows-1252.
+  const PLAIN_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+  function csvCell(v) {
+    let s = v == null ? "" : String(v);
+    if (/^[=+\-@\t\r]/.test(s) && !PLAIN_NUMBER.test(s)) s = "'" + s;
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+  function csvText(header, rows) {
+    return "\uFEFF" + [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
+  }
+  // ---- end CSV text ----
+
   function save() {
     try { localStorage.setItem(STORE, JSON.stringify(turns)); } catch (e) { /* full or blocked */ }
   }
@@ -500,10 +516,8 @@
     }
     filter.oninput = render;
     download.onclick = () => {
-      const cell = (v) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-      const csv = [cols.map(([, l]) => l).join(","),
-        ...shown().map((r) => cols.map(([k]) => cell(r[k])).join(","))].join("\n");
-      saveFile(new Blob([csv], { type: "text/csv" }), "maplestats-data.csv");
+      const csv = csvText(cols.map(([, l]) => l), shown().map((r) => cols.map(([k]) => r[k])));
+      saveFile(new Blob([csv], { type: "text/csv;charset=utf-8" }), "maplestats-data.csv");
     };
     render();
     return el("div", {}, el("div", { class: "table-tools" }, filter, download), holder, count);

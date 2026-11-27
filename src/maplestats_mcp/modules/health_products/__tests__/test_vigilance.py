@@ -84,6 +84,34 @@ async def test_french_terms_and_organ_class_filter(httpx_mock):
         await client.search_reactions("ab", lang="fr")
 
 
+ACCENTED = "\n".join(
+    [
+        _row(1, 11, "Rash", "Éruption cutanée", "Skin disorders", "Affections de la peau"),
+        _row(2, 12, "Rash", "éruption bulleuse", "Skin disorders", "Affections de la peau"),
+        _row(3, 13, "Headache", "Céphalée", "Nervous system disorders", "Système nerveux"),
+    ]
+) + "\n"  # fmt: skip
+
+
+@pytest.mark.parametrize("term", ["éruption", "ÉRUPTION", "Éruption", "éRUPTION"])
+def test_accented_letters_match_in_either_case(term):
+    # The block-level byte test folded ASCII case only, so "éruption" never found
+    # "Éruption" (and "ÉRUPTION" never found "éruption"): the line was dropped
+    # before the exact casefold test could accept it.
+    matcher = extract.ReactionMatcher(term, "", 0, "fr")
+    matcher.feed(ACCENTED.encode("utf-8"))
+    matcher.finish()
+    assert sorted(matcher.hits) == [11, 12]
+    assert matcher.terms == {"Éruption cutanée": 1, "éruption bulleuse": 1}
+
+
+async def test_an_accented_search_finds_the_capitalised_term(httpx_mock):
+    _serve(httpx_mock, _extract(ACCENTED))
+    result = await client.search_reactions("éruption", lang="fr")
+    assert sorted(hit.report_id for hit in result.reports) == [11, 12]
+    assert result.top_reactions == {"Éruption cutanée": 1, "éruption bulleuse": 1}
+
+
 def test_stop_reason_in_french():
     assert client._stop_reason_fr("the 25 s time limit") == "limite de temps de 25 s"
     assert client._stop_reason_fr("the 40 MB read ceiling") == "plafond de lecture de 40 Mo"
