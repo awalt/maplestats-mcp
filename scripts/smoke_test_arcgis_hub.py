@@ -96,6 +96,32 @@ async def check_ottawa_files() -> None:
 
     await check_ottawa_election_results()
     await check_ottawa_construction_permits()
+    await check_ottawa_service_requests()
+
+
+async def check_ottawa_service_requests() -> None:
+    failed = []
+    for label, item_id in (
+        ("Current Year", "65fe42e2502d442b8a774fd3d954cac5"),
+        ("Previous Year", "87abd7493677492f83295ec56e6a4929"),
+    ):
+        try:
+            result = await _check(
+                f"Ottawa {label} Service Requests",
+                files.query_file("ottawa", item_id, limit=1),
+            )
+            if (
+                result.format != "csv"
+                or not result.columns
+                or not result.rows
+                or not result.total_rows
+            ):
+                raise AssertionError("expected a CSV with columns, rows and a complete count")
+            print(f"  {result.total_rows:,} rows; retrieved from {result.provenance.url}")
+        except Exception as exc:  # noqa: BLE001
+            failed.append(f"{label}: {type(exc).__name__}: {exc}")
+    if failed:
+        raise AssertionError("\n".join(failed))
 
 
 async def check_ottawa_election_results() -> None:
@@ -276,6 +302,9 @@ async def _failing(portals: list[str]) -> list[str]:
 
 
 async def main() -> int:
+    if sys.argv[1:] == ["--ottawa-311"]:
+        await check_ottawa_service_requests()
+        return 0
     portals = sys.argv[1:] or list(constants.PORTALS)
     failed = await _failing(portals)
     if failed:

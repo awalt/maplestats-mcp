@@ -19,11 +19,14 @@ import codecs
 import csv
 import io
 import zipfile
+from collections import Counter
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, time
 from itertools import chain, islice
+from pathlib import PurePosixPath
 from typing import Any, Literal
+from urllib.parse import unquote, urlsplit
 
 from maplestats_mcp.shared.errors import InvalidInput, UpstreamError
 from maplestats_mcp.shared.executor import check_deadline
@@ -166,6 +169,40 @@ def detect_format(body: bytes, declared: str | None) -> FileFormat:
         f"le fichier n'est ni un classeur Excel ni un CSV lisible (format du portail "
         f"{declared!r}).",
     )
+
+
+def linked_table_hint(declared: str, content_type: str, *urls: str) -> str | None:
+    """A catalogue format, filename or media-type hint for a linked table."""
+    media_type = content_type.partition(";")[0].strip().lower()
+    if media_type in ("text/html", "application/xhtml+xml"):
+        raise call_error(
+            UpstreamError,
+            "the link returned a web page, not a data file.",
+            "le lien a renvoyé une page Web, pas un fichier de données.",
+        )
+    label = declared.strip().casefold()
+    if label in {
+        "csv",
+        "csv collection",
+        "xls",
+        "xlsx",
+        "excel",
+        "microsoft excel",
+        "zip",
+        "zip archive",
+    }:
+        return label
+    for url in urls:
+        suffix = PurePosixPath(unquote(urlsplit(url).path)).suffix.lower()
+        if suffix in (".csv", ".xls", ".xlsx", ".zip"):
+            return suffix[1:]
+    return {
+        "text/csv": "csv",
+        "application/csv": "csv",
+        "application/vnd.ms-excel": "xls",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+        "application/zip": "zip",
+    }.get(media_type)
 
 
 def _normal(text: str) -> str:
@@ -359,11 +396,21 @@ def _csv_delimiter(sample: str) -> str:
         # but only the commas are consistent across the data records.
         return csv.Sniffer().sniff(sample, delimiters="".join(_DELIMITERS)).delimiter
     except csv.Error:
+        # Sniffer can fail when Ottawa's header contains pipes and only some rows
+        # have quoted commas. Compare parsed record widths before counting raw separators.
+        def consistent_records(delimiter: str) -> int:
+            rows = csv.reader(io.StringIO(sample, newline=""), delimiter=delimiter)
+            widths = Counter(len(row) for row in islice(rows, 20) if len(row) > 1)
+            return max(widths.values(), default=0)
+
+        best = max(_DELIMITERS, key=consistent_records)
+        if consistent_records(best) > 1:
+            return best
         first = next((line for line in sample.splitlines()[:20] if line.strip()), "")
         return max(_DELIMITERS, key=first.count) if first else ","
 
 
-def _csv_rows(body: bytes) -> Iterator[list[str]]:
+def _csv_rows(body: bytes, *, strict: bool = False) -> Iterator[list[str]]:
     with io.TextIOWrapper(io.BytesIO(body), encoding=_csv_encoding(body), newline="") as text:
         sample = text.read(_CSV_SAMPLE_CHARS)
         if len(sample) == _CSV_SAMPLE_CHARS:
@@ -371,10 +418,14 @@ def _csv_rows(body: bytes) -> Iterator[list[str]]:
             if last_break >= 0:
                 sample = sample[:last_break]
         delimiter = _csv_delimiter(sample)
+        if strict and (not sample.strip() or sample.lstrip().startswith("<")):
+            raise csv.Error("expected CSV records, found an empty file or markup")
         text.seek(0)
-        for index, row in enumerate(csv.reader(text, delimiter=delimiter)):
+        for index, row in enumerate(csv.reader(text, delimiter=delimiter, strict=strict)):
             if index % _DEADLINE_EVERY == 0:
                 check_deadline()
+            if strict and any("\x00" in cell for cell in row):
+                raise csv.Error("unexpected NUL character in CSV")
             yield [cell.strip() for cell in row]
 
 
@@ -580,6 +631,7 @@ def scan(
     offset: int,
     limit: int,
     max_page_cells: int | None = None,
+    strict_csv: bool = False,
 ) -> ScanResult:
     options: dict[str, Any] = {
         "header_row": header_row,
@@ -593,7 +645,7 @@ def scan(
     }
     try:
         if fmt == "csv":
-            return scan_rows(_csv_rows(body), csv_like=True, **options)
+            return scan_rows(_csv_rows(body, strict=strict_csv), csv_like=True, **options)
         if fmt == "xlsx":
             book = _open_xlsx(body)
             try:

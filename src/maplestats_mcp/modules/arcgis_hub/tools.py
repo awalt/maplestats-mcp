@@ -132,21 +132,22 @@ async def arcgis_hub_query_file(
     offset: int = 0,
     lang: Lang = "en",
 ) -> FileTableResult:
-    """Query a stored CSV, Excel workbook, or a table in a ZIP from ArcGIS Hub.
+    """Read CSV, Excel or ZIP tables stored in or linked from ArcGIS Hub.
 
-    Use for: reading table rows from a file item found with
-    arcgis_hub_search_datasets, for example an Ottawa Excel or budget
-    bundle. If several files or worksheets are available, first get
+    Use for: reading a file item found with arcgis_hub_search_datasets,
+    including a public Document Link to an external CSV on an approved
+    data host. If several files or worksheets are available, first get
     their names, then pass the exact `member` path and/or a `sheet` name.
     Rows are objects keyed by column name with text values. Select
     columns, use case-insensitive exact matches in `filters`, or search
     across cells with `contains`. Use `next_offset` for the next page.
     Set `header_row` (1-based) and `header_rows` to override the header guess.
-    Limit 1–100 rows per call. Use call_tool with detail="full" for JSON row objects.
-    Keywords: CSV, Excel, XLSX, XLS, spreadsheet, worksheet, ZIP, archive,
-    tabular data, records, filters, pagination, ArcGIS Hub.
-    Mots-clés : CSV, Excel, XLSX, XLS, tableur, feuille, ZIP, archive,
-    données tabulaires, lignes, filtres, pagination, ArcGIS Hub.
+    Use limit=0 for columns and a complete matching row count without a page.
+    Reads return up to 100 rows. Use call_tool with detail="full" for row objects.
+    Keywords: CSV, Excel, spreadsheet, ZIP, archive, Document Link, external file,
+    download, schema, columns, row count, filters, pagination, ArcGIS Hub.
+    Mots-clés : CSV, Excel, tableur, archive ZIP, lien externe, téléchargement,
+    schéma, colonnes, nombre de lignes, filtres, pagination, ArcGIS Hub.
     """
     return await files.query_file(
         portal,

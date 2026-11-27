@@ -177,6 +177,10 @@ class FeatureQueryResult(BaseModel):
     provenance: Provenance
 
 
+class FileTableProvenance(Provenance):
+    catalogue_url: str = Field(description="The public catalogue page for the item.")
+
+
 class FileTableResult(BaseModel):
     portal: str
     item_id: str
@@ -195,4 +199,4 @@ class FileTableResult(BaseModel):
     offset: int = 0
     next_offset: int | None = None
     scan_capped: bool = False
-    provenance: Provenance
+    provenance: FileTableProvenance

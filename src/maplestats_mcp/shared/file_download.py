@@ -27,7 +27,8 @@ import asyncio
 import time
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Protocol
 from urllib.parse import urljoin, urlparse
 
@@ -67,6 +68,7 @@ class Downloaded:
     body: bytes
     final_url: str
     content_type: str
+    retrieved_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 HostCheck = Callable[[str], bool]
@@ -119,16 +121,26 @@ def _refuse(url: str, context: str) -> InvalidInput:
     )
 
 
+def _https_host(url: str) -> str | None:
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme == "https" and parsed.username is None and parsed.port in (None, 443):
+            return parsed.hostname
+    except ValueError:
+        pass
+    return None
+
+
 def check_url(url: str, allow_host: HostCheck, context: str) -> None:
-    """https and an allowed host, or InvalidInput (nothing is requested)."""
-    parsed = urlparse(url)
-    if parsed.scheme != "https" or not parsed.hostname:
+    """Standard HTTPS and an allowed host, or InvalidInput before any request."""
+    host = _https_host(url)
+    if host is None:
         raise call_error(
             InvalidInput,
-            f"{context}: only https file links are downloaded; got {url!r}.",
-            f"{context} : seuls les liens de fichiers https sont téléchargés ; reçu {url!r}.",
+            f"{context}: file links must use HTTPS on port 443 without credentials.",
+            f"{context} : les liens doivent utiliser HTTPS sur le port 443 sans identifiants.",
         )
-    if not allow_host(parsed.hostname):
+    if not allow_host(host):
         raise _refuse(url, context)
 
 
@@ -145,9 +157,9 @@ def check_redirect(origin: str, target: str, allow_host: HostCheck, context: str
     upstream's doing, so it must not read as invalid input, which would send an
     MCP client off to change its arguments.
     """
-    parsed = urlparse(target)
-    if parsed.scheme != "https" or not parsed.hostname or not allow_host(parsed.hostname):
-        host = parsed.hostname or target
+    host = _https_host(target)
+    if host is None or not allow_host(host):
+        host = host or "an invalid HTTPS target"
         raise call_error(
             RedirectRefused,
             f"{context}: {origin} redirected to {host}, which this reader does not follow "
@@ -180,8 +192,6 @@ async def _fetch_chain(
     check_url(url, allow_host, context)
     current = url
     for _ in range(MAX_REDIRECTS + 1):
-        if current != url:
-            check_redirect(url, current, allow_host, context)
         await limiter_for(urlparse(current).hostname or "").acquire()
         async with _client.stream("GET", current, timeout=timeout) as response:
             status = response.status_code
@@ -193,12 +203,23 @@ async def _fetch_chain(
                         f"{context}: {current} redirected without a location.",
                         f"{context} : {current} a redirigé sans indiquer d'adresse.",
                     )
-                current = urljoin(str(response.url), location)
+                try:
+                    target = urljoin(str(response.url), location)
+                except ValueError:
+                    target = location
+                check_redirect(url, target, allow_host, context)
+                current = target
                 continue
             if status >= 400:
                 answer = await _read_error_answer(response)
                 raise_if_cloudflare_challenge(answer)
                 answer.raise_for_status()
+            if status != 200 or "content-range" in response.headers:
+                raise call_error(
+                    UpstreamError,
+                    f"{context}: expected a complete file response, received HTTP {status}.",
+                    f"{context} : réponse de fichier complet attendue, HTTP {status} reçu.",
+                )
             declared = response.headers.get("content-length", "")
             if declared.isdigit() and int(declared) > max_bytes:
                 raise call_error(
@@ -226,9 +247,17 @@ async def _fetch_chain(
                     chunks.append(chunk)
                 else:
                     sink.feed(chunk)
+            # Content-Length describes the wire bytes for an encoded response.
+            encoding = response.headers.get("content-encoding", "").strip().lower()
+            if encoding in ("", "identity") and declared.isdigit() and total != int(declared):
+                raise call_error(
+                    UpstreamError,
+                    f"{context}: incomplete file download (received {total} of {declared} bytes).",
+                    f"{context} : téléchargement incomplet ({total} octets sur {declared}).",
+                )
             return Downloaded(
                 body=b"".join(chunks),
-                final_url=current,
+                final_url=str(response.url),
                 content_type=response.headers.get("content-type", ""),
             )
     raise call_error(
@@ -276,11 +305,23 @@ async def download(
             f"{context}: {url} returned HTTP {status}.",
             f"{context} : {url} a renvoyé HTTP {status}.",
         ) from exc
-    except httpx.HTTPError as exc:
+    except httpx.ProxyError as exc:
+        raise call_error(
+            UpstreamUnavailable,
+            f"{context}: the outbound proxy refused or failed to connect to the file host.",
+            f"{context} : le proxy sortant a refusé ou n'a pas pu joindre l'hôte du fichier.",
+        ) from exc
+    except httpx.TimeoutException as exc:
         raise call_error(
             UpstreamUnavailable,
             f"{context}: {url} did not respond in time ({type(exc).__name__}).",
             f"{context} : {url} n'a pas répondu à temps ({type(exc).__name__}).",
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise call_error(
+            UpstreamUnavailable,
+            f"{context}: the file transfer did not complete ({type(exc).__name__}).",
+            f"{context} : le transfert du fichier n'a pas abouti ({type(exc).__name__}).",
         ) from exc
 
 
