@@ -73,6 +73,7 @@ quirks:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from urllib.parse import urlencode
@@ -105,6 +106,16 @@ _LIMITER = get_limiter(
 
 _client = new_client(http2=False)
 _warmed: set[str] = set()
+# One cookie jar serves every call, and the portal keeps the selected candidate in that
+# session: another call's warm-up, selection or download between a call's own steps can
+# leave it with the wrong candidate's report. Calls that use the session take turns: the
+# search, the report chain and the election list (a GET on the same jar, whose effect on
+# the session is not known). That serializes them, so one slow download makes the others
+# wait up to the client's timeout; accepted because a call is a handful of requests, the
+# module's own rate limit is three requests a second anyway, and results are cached for
+# an hour.
+# Never taken inside a locked section (the re-warm and retry run under the one hold).
+_SESSION_LOCK = asyncio.Lock()
 
 
 def _resolve(mapping: dict[str, str], value: str, name: str, lang: str = "en") -> str:
@@ -270,24 +281,26 @@ async def list_elections(*, act: str = "after_2019", lang: str = "en") -> Electi
 
     async def fetch() -> list[ElectionOption]:
         await _LIMITER.acquire()
-        try:
-            response = await _client.get(url)
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            status = exc.response.status_code
-            raise lang_error(
-                UpstreamError,
-                lang,
-                f"elections_financial_returns:list_elections returned HTTP {status}.",
-                f"elections_financial_returns:list_elections a renvoyé HTTP {status}.",
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise lang_error(
-                UpstreamUnavailable,
-                lang,
-                "elections_financial_returns:list_elections did not respond in time.",
-                "elections_financial_returns:list_elections n'a pas répondu à temps.",
-            ) from exc
+        # Same cookie jar as the report chain: a GET here must not land between its steps.
+        async with _SESSION_LOCK:
+            try:
+                response = await _client.get(url)
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code
+                raise lang_error(
+                    UpstreamError,
+                    lang,
+                    f"elections_financial_returns:list_elections returned HTTP {status}.",
+                    f"elections_financial_returns:list_elections a renvoyé HTTP {status}.",
+                ) from exc
+            except httpx.HTTPError as exc:
+                raise lang_error(
+                    UpstreamUnavailable,
+                    lang,
+                    "elections_financial_returns:list_elections did not respond in time.",
+                    "elections_financial_returns:list_elections n'a pas répondu à temps.",
+                ) from exc
         # Confirmed live: this endpoint's JSON body is itself a JSON-encoded
         # string wrapping the actual array -- two decode passes are needed.
         try:
@@ -374,26 +387,27 @@ async def _search_html(url: str, form: dict[str, str], lang: str = "en") -> tupl
 
     async def fetch() -> str:
         await _LIMITER.acquire()
-        await _warm_up(url, lang=lang)
-        html = await post_search()
-        if _has_search_results(html):
-            return html
+        async with _SESSION_LOCK:
+            await _warm_up(url, lang=lang)
+            html = await post_search()
+            if _has_search_results(html):
+                return html
 
-        await _warm_up(url, force=True, lang=lang)
-        html = await post_search()
-        if not _has_search_results(html):
-            _warmed.discard(url)
-            raise lang_error(
-                UpstreamError,
-                lang,
-                "elections_financial_returns:search_candidates: the portal returned its empty "
-                "search form even after refreshing the session, so no results can be trusted. "
-                "Try again shortly.",
-                "elections_financial_returns:search_candidates : le portail a renvoyé son "
-                "formulaire de recherche vide même après le renouvellement de la session ; aucun "
-                "résultat n'est fiable. Réessayez sous peu.",
-            )
-        return html
+            await _warm_up(url, force=True, lang=lang)
+            html = await post_search()
+            if not _has_search_results(html):
+                _warmed.discard(url)
+                raise lang_error(
+                    UpstreamError,
+                    lang,
+                    "elections_financial_returns:search_candidates: the portal returned its "
+                    "empty search form even after refreshing the session, so no results can be "
+                    "trusted. Try again shortly.",
+                    "elections_financial_returns:search_candidates : le portail a renvoyé son "
+                    "formulaire de recherche vide même après le renouvellement de la session ; "
+                    "aucun résultat n'est fiable. Réessayez sous peu.",
+                )
+            return html
 
     return await cached_fetch(cache_key, constants.CACHE_TTL_SECONDS, fetch)
 
@@ -547,6 +561,24 @@ async def _check_candidate_in_election(
         )
 
 
+def _export_client_ids(body: dict[str, object]) -> set[str]:
+    """The `Client_id` values the download's rows carry (empty when it has none).
+
+    Every row section of the parts checked carries the candidate's own client id
+    (live 2026-09-21 to 2026-10-03: "Client_id" in DETAIL_DATA and GROUP_DATA); the
+    export header names only the election. The French key name has not been checked,
+    so a French download without a "Client_id" key goes unchecked.
+    """
+    found: set[str] = set()
+    for value in body.values():
+        for row in value if isinstance(value, list) else []:
+            if isinstance(row, dict):
+                for key, cell in row.items():
+                    if str(key).lower() == "client_id" and cell not in (None, ""):
+                        found.add(str(cell).strip())
+    return found
+
+
 async def get_financial_return_part(
     candidate_client_id: str,
     part: str,
@@ -670,9 +702,8 @@ async def get_financial_return_part(
                 "while downloading the report", "au téléchargement du rapport", lang
             ) from exc
 
-    async def fetch() -> dict[str, object]:
-        search_url = _search_url(act_code, election_id, report_code, status_code, lang)
-        await _LIMITER.acquire()
+    async def run_chain(search_url: str) -> dict[str, object]:
+        """Warm, select and download under one hold of the session lock, retry included."""
         await _warm_up(search_url, lang=lang)
         detail_url, download_url = await open_report(search_url)
         download_response = await download(download_url)
@@ -717,6 +748,21 @@ async def get_financial_return_part(
                 "elections_financial_returns:get_financial_return_part a renvoyé une réponse de "
                 "forme inattendue.",
             )
+        # The export is read as the candidate asked for only if it names that candidate.
+        exported = _export_client_ids(body)
+        if exported and candidate_client_id not in exported:
+            _warmed.discard(search_url)
+            names = ", ".join(sorted(exported))
+            raise lang_error(
+                UpstreamError,
+                lang,
+                "elections_financial_returns:get_financial_return_part: the export is for "
+                f"client {names}, not the {candidate_client_id!r} asked for, so the portal "
+                "session mixed two requests. Try again shortly.",
+                "elections_financial_returns:get_financial_return_part : l'export est celui du "
+                f"client {names} et non de {candidate_client_id!r}, la session du portail a donc "
+                "mélangé deux requêtes. Réessayez sous peu.",
+            )
         return {
             "body": body,
             "download_url": download_url,
@@ -734,6 +780,12 @@ async def get_financial_return_part(
                 "GET de l'adresse Download avec un nouveau queryId.",
             ),
         }
+
+    async def fetch() -> dict[str, object]:
+        search_url = _search_url(act_code, election_id, report_code, status_code, lang)
+        await _LIMITER.acquire()
+        async with _SESSION_LOCK:
+            return await run_chain(search_url)
 
     result, was_cached = await cached_fetch(cache_key, constants.CACHE_TTL_SECONDS, fetch)
     body = result["body"]

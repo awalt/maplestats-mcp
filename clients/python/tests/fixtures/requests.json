@@ -65,5 +65,33 @@
       },
       "language": "python"
     }
+  },
+  "boc_long": {
+    "tool": "boc_get_observations",
+    "arguments": {
+      "series_names": [
+        "FXUSDCAD"
+      ],
+      "recent": 12
+    }
+  },
+  "wds_long": {
+    "tool": "wds_get_data_from_vectors",
+    "arguments": {
+      "vector_ids": [
+        2062815
+      ],
+      "latest_n": 12
+    }
+  },
+  "wds_two": {
+    "tool": "wds_get_data_from_vectors",
+    "arguments": {
+      "vector_ids": [
+        2062810,
+        2062811
+      ],
+      "latest_n": 3
+    }
   }
 }

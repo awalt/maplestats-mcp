@@ -130,6 +130,20 @@ def _serve(httpx_mock, rows: list[dict[str, Any]], page_cap: int = 1000) -> Fake
         ("464000", 464000.0),
         ("$1,200.50", 1200.5),
         ("-5000", -5000.0),
+        # A decimal comma is 100 times smaller than a thousands separator would read.
+        ("38900,25", 38900.25),
+        ("1 200,50", 1200.5),
+        # French Canadian form: the currency sign after the number, with a space before it.
+        ("38900,25 $", 38900.25),
+        ("1 200,50 $", 1200.5),
+        ("1 200,50 $", 1200.5),
+        # One decimal digit: a thousands group always has three digits, so ",d" is a decimal.
+        ("0,5", 0.5),
+        ("12,3", 12.3),
+        # Thousands commas and parentheses read exactly as before.
+        ("1,200", 1200.0),
+        ("1,200,000", 1200000.0),
+        ("(1,200)", None),
         ("", None),
         (None, None),
         ("null", None),
@@ -452,6 +466,70 @@ async def test_summary_counts_each_contract_once_at_its_latest_value(httpx_mock)
         "reporting_period",
     }
     assert "latest row" in summary.method
+
+
+async def test_summary_by_fiscal_year_states_which_period_an_amended_contract_sits_in(
+    httpx_mock,
+):
+    # P1 first published in 2019-2020 and amended in 2023-2024: its whole value is in the
+    # latest row's year, and the method says so in both languages.
+    rows = [
+        _contract(1, procurement_id="P1", contract_value="100", reporting_period="2019-2020-Q1"),
+        _contract(2, procurement_id="P1", contract_value="400", reporting_period="2023-2024-Q2"),
+    ]
+    _serve(httpx_mock, rows)
+    summary = await client.summarize(dataset="contracts", group_by="fiscal_year")
+    assert [(g.key, g.total_value) for g in summary.groups] == [("2023-2024", 400.0)]
+    assert "counts wholly in 2023-2024" in summary.method
+    assert "fiscal_year filter" not in summary.method
+    french = await client.summarize(dataset="contracts", group_by="quarter", lang="fr")
+    assert "entièrement en 2023-2024" in french.method
+
+
+async def test_the_fiscal_year_filter_is_described_as_reading_that_years_rows(httpx_mock):
+    _serve(httpx_mock, [_contract(1, reporting_period="2019-2020-Q1")])
+    summary = await client.summarize(dataset="contracts", group_by="department", fiscal_year=2019)
+    assert "never sees later amendments" in summary.method
+    assert "counts wholly" not in summary.method
+    assert "date_from and date_to" not in summary.method
+    # Rows are summed as published when amendments are not collapsed: no rule to state.
+    _serve(httpx_mock, [_contract(1, reporting_period="2019-2020-Q1")])
+    plain = await client.summarize(
+        dataset="contracts", group_by="department", fiscal_year=2019, value_mode="all_rows"
+    )
+    assert "never sees later amendments" not in plain.method
+
+
+async def test_the_method_says_a_date_range_limits_rows_before_the_latest_is_chosen(httpx_mock):
+    # The range is sent to the portal as contract_date days, so an amendment row dated
+    # outside it is never read and cannot be the latest row.
+    _serve(httpx_mock, [_contract(1, contract_date="2024-05-01")])
+    summary = await client.summarize(
+        dataset="contracts", group_by="department", date_from="2024-04-01", date_to="2024-06-30"
+    )
+    assert "date_from and date_to keep rows by their contract_date before the latest row" in (
+        summary.method
+    )
+    # Not a period or fiscal-year rule: no all_rows sentence about periods.
+    assert "counts each row in the period" not in summary.method
+    french = await client.summarize(
+        dataset="contracts",
+        group_by="department",
+        date_from="2024-04-01",
+        date_to="2024-06-30",
+        lang="fr",
+    )
+    assert "date_from et date_to retiennent les lignes d'après leur contract_date" in (
+        french.method
+    )
+
+
+async def test_the_french_fiscal_year_filter_sentence_says_cet_exercice_la(httpx_mock):
+    _serve(httpx_mock, [_contract(1, reporting_period="2019-2020-Q1")])
+    french = await client.summarize(
+        dataset="contracts", group_by="department", fiscal_year=2019, lang="fr"
+    )
+    assert "publiées durant cet exercice-là" in french.method
 
 
 async def test_summary_all_rows_sums_amendments_as_published(httpx_mock):

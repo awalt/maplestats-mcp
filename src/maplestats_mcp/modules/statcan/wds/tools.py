@@ -706,9 +706,9 @@ def _with_newer_data_note(result: VectorDataSet, end_ref_period: str, lang: str)
     return result.model_copy(update={"provenance": provenance})
 
 
-# Left undefined when MAPLE_QUERY_SERIES=0, so discovery never lists it. The hosted
-# server sets it to 0 until each query runs in a memory-capped process: one query
-# could otherwise exhaust the instance's memory (security review, 2026-11-03).
+# Left undefined when MAPLE_QUERY_SERIES=0, so discovery never lists it. The Render
+# backup sets 0, since one query could exhaust its 512 MB (security review, 2026-11-03);
+# the Azure endpoint sets 1 (docker.yml).
 if config.get_query_series_enabled():
 
     @tool

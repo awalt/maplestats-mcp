@@ -50,3 +50,16 @@ MAX_FILE_BYTES = 30 * 1024 * 1024
 # default is smaller and every response is also held to a byte budget.
 ROWS_DEFAULT = 40
 ROWS_MAX = 2000
+# Header names (lower case) of the column that holds a row's time frame, in the
+# order they are tried: "2024–2025" under "Time frame" in the English files and
+# "Période" in the French ones. A table with none of them keeps the file order.
+PERIOD_COLUMNS = (
+    "time frame",
+    "période",
+    "periode",
+    "cadre temporel",
+    "fiscal year",
+    "exercice",
+    "year",
+    "année",
+)

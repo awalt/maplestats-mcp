@@ -437,6 +437,112 @@ async def test_a_value_missing_from_the_answer_is_left_out_and_asked_again(httpx
     assert [v.geography_code for v in again.values] == [BC, ALBERTA]
 
 
+async def test_a_pair_the_answer_left_out_is_named_in_the_coverage(httpx_mock):
+    """Alberta was asked for and not returned. The result carried only BC, so a reader could
+    not tell "not published for Alberta" from "never asked"; the coverage now names it."""
+    httpx_mock.add_response(
+        url=data_url("DF_PR", [BC, ALBERTA], ["229"]), json=payload([BC], ["229"])
+    )
+    result = await client.get_data(None, [BC, ALBERTA], ["229"])
+    assert [v.geography_code for v in result.values] == [BC]
+    coverage = result.provenance.coverage or ""
+    assert ALBERTA in coverage and "229" in coverage
+    assert BC not in coverage
+    assert "1 of the 2" in coverage
+
+
+async def test_a_pair_the_answer_left_out_is_named_in_french(httpx_mock):
+    httpx_mock.add_response(
+        url=data_url("DF_PR", [BC, ALBERTA], ["229"]), json=payload([BC], ["229"], lang="fr")
+    )
+    result = await client.get_data(None, [BC, ALBERTA], ["229"], lang="fr")
+    coverage = result.provenance.coverage or ""
+    assert ALBERTA in coverage and "1 des 2" in coverage
+    assert "No value" not in coverage
+
+
+async def test_a_complete_answer_has_no_coverage_note(httpx_mock):
+    add_data(httpx_mock, "DF_PR", [BC, ALBERTA], ["229"])
+    result = await client.get_data(None, [BC, ALBERTA], ["229"])
+    assert result.provenance.coverage is None
+
+
+async def test_a_pair_held_from_the_store_is_not_reported_as_left_out(httpx_mock):
+    add_data(httpx_mock, "DF_PR", [BC, ALBERTA], ["229"])
+    await client.get_data(None, [BC, ALBERTA], ["229"])
+    cache_module._caches.clear()
+    again = await client.get_data(None, [BC, ALBERTA], ["229"])
+    assert again.provenance.coverage is None
+
+
+async def test_every_pair_left_out_is_counted_across_levels(httpx_mock):
+    # A province and a metro area; each level's answer lacks its second characteristic.
+    httpx_mock.add_response(url=data_url("DF_PR", [BC], ["1", "229"]), json=payload([BC], ["1"]))
+    httpx_mock.add_response(
+        url=data_url("DF_CMACA", [KELOWNA], ["1", "229"]), json=payload([KELOWNA], ["1"])
+    )
+    result = await client.get_data(None, [BC, KELOWNA], ["1", "229"])
+    coverage = result.provenance.coverage or ""
+    assert "2 of the 4" in coverage
+    assert BC in coverage and KELOWNA in coverage
+
+
+ONTARIO = "2021A000235"
+ALBERTA_LOWER = ALBERTA.lower()
+
+
+def _recoded_answer(monkeypatch, httpx_mock, asked: list[str]) -> None:
+    """The answer carries BC, and Alberta under a lower-case code (not the one asked)."""
+    monkeypatch.setitem(NAMES, ALBERTA_LOWER, NAMES[ALBERTA])
+    monkeypatch.setitem(VALUES, (ALBERTA_LOWER, "229"), VALUES[(ALBERTA, "229")])
+    httpx_mock.add_response(
+        url=data_url("DF_PR", asked, ["229"]), json=payload([BC, ALBERTA_LOWER], ["229"])
+    )
+
+
+async def test_values_under_other_codes_are_counted_beside_the_gaps(monkeypatch, httpx_mock):
+    """One value came back under a code that is not the one asked, and three pairs came back
+    with no value: the note says so, and does not hide the gaps or claim all three are
+    missing (the re-coded value may be one of them)."""
+    asked = [CANADA, BC, ALBERTA, ONTARIO]
+    _recoded_answer(monkeypatch, httpx_mock, asked)
+    result = await client.get_data(None, asked, ["229"])
+    assert len(result.values) == 2
+    coverage = result.provenance.coverage or ""
+    assert coverage.startswith("3 of the 4 geography and characteristic pairs asked for came back")
+    assert "under the code asked" in coverage
+    for code in (CANADA, ALBERTA, ONTARIO):
+        assert code in coverage
+    assert "1 value came back under other codes and may be some of them" in coverage
+    assert "missing, not zero" in coverage
+
+
+async def test_values_under_other_codes_are_counted_in_french(monkeypatch, httpx_mock):
+    asked = [CANADA, BC, ALBERTA, ONTARIO]
+    _recoded_answer(monkeypatch, httpx_mock, asked)
+    result = await client.get_data(None, asked, ["229"], lang="fr")
+    coverage = (result.provenance.coverage or "").replace(" ", " ")
+    assert coverage.startswith("3 des 4 paires")
+    assert "sous le code demandé" in coverage
+    assert "1 valeur est revenue sous d'autres codes et peuvent en être certaines" in coverage
+    assert "came back" not in coverage
+
+
+async def test_several_values_under_other_codes_are_plural(monkeypatch, httpx_mock):
+    asked = [CANADA, BC, ALBERTA, ONTARIO]
+    monkeypatch.setitem(NAMES, ALBERTA_LOWER, NAMES[ALBERTA])
+    monkeypatch.setitem(VALUES, (ALBERTA_LOWER, "229"), VALUES[(ALBERTA, "229")])
+    monkeypatch.setitem(NAMES, "2021a000235", "Ontario  [Province]")
+    monkeypatch.setitem(VALUES, ("2021a000235", "229"), "90000")
+    httpx_mock.add_response(
+        url=data_url("DF_PR", asked, ["229"]),
+        json=payload([BC, ALBERTA_LOWER, "2021a000235"], ["229"]),
+    )
+    result = await client.get_data(None, asked, ["229"])
+    coverage = result.provenance.coverage or ""
+    assert "2 values came back under other codes" in coverage
+
+
 async def test_reproduce_code_records_the_request_of_every_level(httpx_mock):
     from maplestats_mcp.shared.http import recording
 

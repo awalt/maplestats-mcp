@@ -70,6 +70,8 @@ async def _page(
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int, bool]:
     """One datastore_search page (a full page by default): records, total, cached."""
+    # resource_checked: every id here is a constant of this module (a Toronto table), so
+    # the CanadaBuys lookup the CKAN client makes for a caller's id would only add a request.
     result = await ckan_client.datastore_search(
         c.PORTAL,
         resource_id,
@@ -80,6 +82,7 @@ async def _page(
         limit=limit or c.PAGE_ROWS,
         offset=offset,
         lang=lang,
+        resource_checked=True,
     )
     return result.records, result.total_count, result.provenance.cached
 
@@ -203,7 +206,10 @@ def _check_paging(limit: int, offset: int, lang: str) -> None:
 
 async def _profile_columns(table: c.ProfileTable, lang: str) -> list[str]:
     """The neighbourhood columns of a profile table (every column but the labels)."""
-    result = await ckan_client.datastore_search(c.PORTAL, table.resource_id, limit=1, lang=lang)
+    # resource_checked: table.resource_id is a constant of this module, as in _page.
+    result = await ckan_client.datastore_search(
+        c.PORTAL, table.resource_id, limit=1, lang=lang, resource_checked=True
+    )
     return [
         f.id
         for f in result.fields

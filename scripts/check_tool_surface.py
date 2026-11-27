@@ -5,11 +5,11 @@ and output schema and annotations, the contract clients build against. This
 compares that file in the working tree with its version at the merge base
 of HEAD and origin/main, and sorts the differences into breaking changes (a
 tool or parameter removed or renamed, a type narrowed, a required parameter
-added, an output field removed or made nullable), additive ones, and others
-to read by hand. tests/test_tool_surface.py fails while a breaking change's
-tool is not named in a changelog.d/ fragment (or CHANGELOG.md's Unreleased
-section); a `prefix_*` in backticks names a whole family. To see the full
-list:
+added, an output field removed, made nullable or no longer required without
+gaining a default), additive ones, and others to read by hand.
+tests/test_tool_surface.py fails while a breaking change's tool is not named in a
+changelog.d/ fragment (or CHANGELOG.md's Unreleased section); a `prefix_*` in
+backticks names a whole family. To see the full list:
 
     uv run python scripts/check_tool_surface.py [--base REF]
 
@@ -199,8 +199,10 @@ class _SchemaDiff:
                 path,
                 f"default changed from {_show(old.get('default'))} to {_show(new.get('default'))}",
             )
-        old_branches = _branches(old, self.old_root)
-        new_branches = _branches(new, self.new_root)
+        old_labelled = _labelled_branches(old, self.old_root, old_ref)
+        new_labelled = _labelled_branches(new, self.new_root, new_ref)
+        old_branches = [branch for _, branch in old_labelled]
+        new_branches = [branch for _, branch in new_labelled]
         old_kinds = _kinds(old_branches)
         new_kinds = _kinds(new_branches)
         shown = f"from {_show_kinds(old_kinds)} to {_show_kinds(new_kinds)}"
@@ -214,8 +216,31 @@ class _SchemaDiff:
             new_branch = _single(new_branches, kind)
             if old_branch is not None and new_branch is not None:
                 self._compare_branch(old_branch, new_branch, path, seen)
+            else:
+                self._compare_matched(old_labelled, new_labelled, kind, path, seen)
         if len(self.changes) == before and old != new:
             self._add("other", path, "schema changed in a way this check does not name")
+
+    def _compare_matched(self, old_labelled, new_labelled, kind: str, path: str, seen) -> None:
+        """Compare the members of a union that share a JSON type, paired by their $ref.
+
+        With several members of one type (two models in an anyOf) there is no
+        single branch to compare. A member that names the same $ref on both
+        sides is the same model, so its fields are compared; members that
+        cannot be paired are left alone, as before.
+        """
+        new_by_ref = {
+            ref: branch
+            for ref, branch in new_labelled
+            if ref is not None and kind in _branch_kinds(branch)
+        }
+        for ref, old_branch in old_labelled:
+            new_branch = new_by_ref.get(ref) if ref is not None else None
+            if new_branch is None or kind not in _branch_kinds(old_branch):
+                continue
+            if (ref, ref) in seen:
+                continue
+            self._compare_branch(old_branch, new_branch, path, seen | {(ref, ref)})
 
     def _compare_values(self, old_branches, new_branches, path: str) -> None:
         old_values = _values(old_branches)
@@ -312,9 +337,16 @@ class _SchemaDiff:
                 self._add("breaking", child, "now required")
             elif self.side == "input" and name in old_required and name not in new_required:
                 self._add("additive", child, "now optional")
-            elif self.side == "output" and (name in old_required) != (name in new_required):
-                state = "now" if name in new_required else "no longer"
-                self._add("other", child, f"{state} marked required")
+            elif self.side == "output" and name in old_required and name not in new_required:
+                # A field callers could count on may now be left out, like one made nullable.
+                # With a default (`cached: bool` to `cached: bool = False`) a model still
+                # carries it, so only the schema changed: Provenance does this in every tool.
+                if "default" in _resolve(new_props[name], self.new_root)[0]:
+                    self._add("other", child, "no longer marked required (it now has a default)")
+                else:
+                    self._add("breaking", child, "no longer marked required")
+            elif self.side == "output" and name in new_required and name not in old_required:
+                self._add("additive", child, "now marked required")
             self.compare(old_props[name], new_props[name], child, seen)
 
 
@@ -337,14 +369,21 @@ def _resolve(schema: Any, root: Any) -> tuple[dict, str | None]:
     return merged, ref
 
 
-def _branches(schema: dict, root: Any) -> list[dict]:
-    """The alternatives an anyOf/oneOf lists, flattened; otherwise the schema itself."""
+def _labelled_branches(
+    schema: dict, root: Any, ref: str | None = None
+) -> list[tuple[str | None, dict]]:
+    """The alternatives an anyOf/oneOf lists, flattened, each with the $ref it came through.
+
+    A schema that is no union is its own one alternative, labelled with the ref it was
+    resolved from (None for an inline schema).
+    """
     alternatives = schema.get("anyOf") or schema.get("oneOf")
     if not alternatives:
-        return [schema]
-    flat: list[dict] = []
+        return [(ref, schema)]
+    flat: list[tuple[str | None, dict]] = []
     for alternative in alternatives:
-        flat.extend(_branches(_resolve(alternative, root)[0], root))
+        resolved, alternative_ref = _resolve(alternative, root)
+        flat.extend(_labelled_branches(resolved, root, alternative_ref))
     return flat
 
 

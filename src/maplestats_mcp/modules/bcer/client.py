@@ -229,6 +229,29 @@ def _provenance(
     return provenance
 
 
+def _malformed_note(count: int, member: str, lang: str) -> list[str]:
+    """A note when the scan skipped lines that did not have the header's number of fields.
+
+    RowScanner counts them (a quoted field holding a line break lands there) and the
+    results never said so, so a total could be short with nothing to show it. Said only
+    when there were some.
+    """
+    if not count:
+        return []
+    return [
+        _say(
+            lang,
+            f"{count:,} line(s) of {member} did not have as many fields as the header (a quoted "
+            "field holding a line break does this) and were skipped, so the rows and counts "
+            "here may be short by up to that many.",
+            f"{fr_number(count)} ligne(s) de {member} n'avaient pas autant de champs que "
+            "l'en-tête (un champ entre guillemets contenant un saut de ligne en est la cause) "
+            "et ont été ignorées : les lignes et les comptes peuvent être inférieurs d'au plus "
+            "autant.",
+        )
+    ]
+
+
 async def _as_of(name: str) -> datetime | None:
     """The file's Last-Modified, or None when HEAD fails (provenance does not need it)."""
     try:
@@ -433,6 +456,7 @@ class IndexPage:
     matched: int = 0
     wells: set[str] = field(default_factory=set)
     total_rows: int = 0
+    malformed: int = 0
     earliest_ip: str | None = None  # the smallest first-production period among the matches
 
 
@@ -511,6 +535,7 @@ def _filter_index(body: bytes, query: IndexQuery, offset: int, limit: int) -> In
     )
     scanner.feed(body)
     page.total_rows = scanner.seen
+    page.malformed = scanner.malformed
     return page
 
 
@@ -610,6 +635,7 @@ async def search_wells(
             "viennent de la table des puits (NAD83, degrés décimaux).",
         )
     )
+    notes.extend(_malformed_note(page.malformed, "well_index.csv", lang))
     rows = [_index_row(cells, lookup) for cells in page.rows]
     filters = {
         key: value
@@ -951,6 +977,7 @@ async def get_production(
     months: dict[str, _Month] = {}
     latest: list[tuple[str, str, str, str, list[str]]] = []
     matched = 0
+    malformed = 0
     ordered = True
     for _start, member in chosen:
         holder: list[_Accumulator] = []
@@ -960,6 +987,7 @@ async def get_production(
         accumulator = holder[0]
         scans.append(scan)
         matched += scanner.matched
+        malformed += scanner.malformed
         ordered = ordered and scanner.ordered
         for period, month in accumulator.months.items():
             total = months.setdefault(period, _Month())
@@ -980,6 +1008,7 @@ async def get_production(
     stop = _stop_note(lang, scans, budget)
     if stop:
         notes.append(stop)
+    notes.extend(_malformed_note(malformed, constants.PRODUCTION_ZIP, lang))
     notes.append(
         _say(
             lang,
@@ -1122,6 +1151,7 @@ async def _well_records(
     stop = _stop_note(lang, [scan], budget)
     if stop:
         notes.append(stop)
+    notes.extend(_malformed_note(scanner.malformed, member_name, lang))
     if scanner.matched == 0 and scan.complete:
         notes.append(
             _say(
@@ -1362,7 +1392,7 @@ async def search_facilities(
     )
     await run_parse(scanner.feed, body)
     date_line = next((m.group(1) for line in scanner.title if (m := _FILE_DATE.search(line))), None)
-    notes: list[str] = []
+    notes: list[str] = _malformed_note(scanner.malformed, name, lang)
     if scanner.matched == 0:
         notes.append(
             _say(
@@ -1444,7 +1474,7 @@ async def get_reference_table(
         title_rows=info.title_rows, keep=keep, row_limit=limit, context=info.member
     )
     await run_parse(scanner.feed, body)
-    notes: list[str] = []
+    notes: list[str] = _malformed_note(scanner.malformed, info.member, lang)
     if scanner.matched == 0:
         notes.append(
             _say(

@@ -400,7 +400,7 @@ async def describe_dataset(dataset: str, lang: str = "en") -> DatasetStructure:
 
 async def _fetch(
     fid: str, key: str, params: dict[str, Any], structure: sdmx.Structure, lang: str
-) -> tuple[list[sdmx.Series], bool]:
+) -> tuple[list[sdmx.Series], list[sdmx.Series], bool]:
     url = _data_url(fid, key)
 
     async def fetch() -> str:
@@ -424,8 +424,11 @@ async def _fetch(
     text, cached = await cached_fetch(
         f"abs:data:{fid}:{key}:{sorted(params.items())}", constants.CACHE_TTL_DATA_SECONDS, fetch
     )
+    # Series with no number at all are not returned (an answer of only those is NotFound),
+    # but the sentence on values left out counts them.
+    empty: list[sdmx.Series] = []
     try:
-        return sdmx.parse_csv(text, structure.dimensions, _SERIES_ATTRIBUTES), cached
+        return sdmx.parse_csv(text, structure.dimensions, _SERIES_ATTRIBUTES, empty), empty, cached
     except sdmx.SdmxFormatError as exc:
         raise_localized(
             UpstreamError, f"{fid}: {exc}", f"{fid} : colonnes SDMX-CSV inattendues.", lang
@@ -479,7 +482,7 @@ async def get_data(
             lang,
         )
     params = sdmx.data_params(start_period, end_period, last_n)
-    fetched, cached = await _fetch(fid, key, params, structure, lang)
+    fetched, empty, cached = await _fetch(fid, key, params, structure, lang)
     if not fetched:
         raise_localized(
             NotFound,
@@ -514,6 +517,11 @@ async def get_data(
                 "csv_url pour tout obtenir.",
             )
         )
+    # The ABS sends a missing value as an empty cell with a status ("M: Missing value"):
+    # those observations are not rows, so the notes say how many there were and why.
+    gaps = sdmx.no_value_note(fetched, lang, empty)
+    if gaps:
+        limits.append(gaps)
     series = [_series_info(s) for s in fetched]
     return DataResult(
         dataset=fid,

@@ -194,6 +194,9 @@ class _Fetched:
     coverage: str
     notes: list[str] = field(default_factory=list)
     not_covered: list[str] = field(default_factory=list)
+    # Series the answer held with no number at all: not in `series`, but counted in the
+    # sentence on values left out.
+    empty: list[sdmx.Series] = field(default_factory=list)
 
 
 def _fallback_note(lang: str) -> str:
@@ -287,7 +290,7 @@ async def _rplumber_fetched(
         areas,
         sex,
         classif1,
-        rplumber.from_year(start_period, last_n, freq, datetime.now(UTC).year),
+        rplumber.from_year(start_period, last_n, freq, datetime.now(UTC).year, end_period),
         rplumber.to_year(end_period),
         lang,
     )
@@ -693,7 +696,7 @@ async def _fetch(
     params: dict[str, Any],
     structure: sdmx.Structure,
     lang: str,
-) -> tuple[list[sdmx.Series], bool]:
+) -> tuple[list[sdmx.Series], list[sdmx.Series], bool]:
     url = _data_url(fid, key)
 
     async def fetch() -> str:
@@ -719,8 +722,9 @@ async def _fetch(
         constants.CACHE_TTL_DATA_SECONDS,
         fetch,
     )
+    empty: list[sdmx.Series] = []
     try:
-        return sdmx.parse_csv(text, structure.dimensions, _SERIES_ATTRIBUTES), cached
+        return sdmx.parse_csv(text, structure.dimensions, _SERIES_ATTRIBUTES, empty), empty, cached
     except sdmx.SdmxFormatError as exc:
         raise_localized(
             UpstreamError, f"{fid}: {exc}", f"{fid} : colonnes SDMX-CSV inattendues.", lang
@@ -797,9 +801,10 @@ async def _get_data_sdmx(
             lang,
         )
     params = sdmx.data_params(start_period, end_period, last_n)
-    fetched, cached = await _fetch(fid, key, params, structure, lang)
+    fetched, empty, cached = await _fetch(fid, key, params, structure, lang)
     return _Fetched(
         series=fetched,
+        empty=empty,
         cached=cached,
         fid=fid,
         name=structure.name,
@@ -986,6 +991,11 @@ async def get_data(
                 "csv_url pour tout obtenir.",
             )
         )
+    # An empty OBS_VALUE with an OBS_STATUS is a value ILOSTAT does not have: those
+    # observations are not rows, so the notes say how many there were and why.
+    gaps = sdmx.no_value_note(fetched, lang, got.empty)
+    if gaps:
+        limits.append(gaps)
     series = [_series_info(s) for s in fetched]
     rows = [
         DataRow(
@@ -1105,9 +1115,10 @@ async def _compare_sdmx(
         lang,
     )
     params = sdmx.data_params(start_period, end_period, last_n)
-    fetched, cached = await _fetch(fid, key, params, structure, lang)
+    fetched, empty, cached = await _fetch(fid, key, params, structure, lang)
     return _Fetched(
         series=fetched,
+        empty=empty,
         cached=cached,
         fid=fid,
         name=structure.name,
@@ -1279,6 +1290,9 @@ async def compare_countries(
                 "voyez le statut de chaque observation avant de comparer les années.",
             )
         )
+    gaps = sdmx.no_value_note(fetched, lang, got.empty)
+    if gaps:
+        notes.append(gaps)
     notes.append(_modelled_note(lang) if spec.modelled else _definitions_note(lang))
     notes.extend(got.notes)
     rank, rank_period, ranked = _rank(countries)

@@ -2,7 +2,7 @@
 # plus one live call when MAPLESTATS_LIVE=1.
 
 using MapleStats
-using MapleStats: clean_names
+using MapleStats: clean_names, resolve_shared_notes, rows_and_left_out
 using JSON3
 using Test
 
@@ -31,6 +31,21 @@ function fixture_for(params)
     return error("No recording for $(tool) $(JSON3.write(arguments))")
 end
 
+"""
+The recording that answers a tools/call, as the real server would choose it.
+
+A call_tool without detail = "full" gets the server's brief result, where a list of
+six or more rows is CSV text; the long recordings have a _brief twin for that. Every
+other recording is the same whatever `detail` says.
+"""
+function answer_for(params)
+    name = fixture_for(params)
+    asked_full =
+        params.name != "call_tool" || get(params.arguments, :detail, nothing) == "full"
+    brief = "$(name)_brief"
+    return !asked_full && isfile(joinpath(FIXTURES, "$(brief).sse")) ? brief : name
+end
+
 """Records what the client sent; answers from fixtures or an override."""
 mutable struct FakeServer
     seen::Vector{Any}
@@ -40,6 +55,40 @@ FakeServer() = FakeServer([], nothing)
 
 const SSE = ["content-type" => "text/event-stream"]
 const SEARCH_COLUMNS = ["name", "description", "arguments", "input_schema"]
+const SCALE_NOTE = "Values are in thousands: multiply value by scale_multiplier for the full figure."
+const LATEST_NOTE = "The latest period is preliminary and may be revised."
+const WDS_LONG_COLUMNS = [
+    "product_id",
+    "coordinate",
+    "vector_id",
+    "context_citation",
+    "context_table_id",
+    "context_table_title",
+    "context_table_url",
+    "context_series_title",
+    "context_unit",
+    "context_scale",
+    "context_frequency",
+    "context_geography",
+    "context_members",
+    "context_table_release_time",
+    "context_first_period",
+    "context_last_period",
+    "context_notes",
+    "transformed",
+    "ref_period",
+    "value",
+    "decimals",
+    "scalar_factor_code",
+    "scale_multiplier",
+    "symbol_code",
+    "status_code",
+    "security_level_code",
+    "release_time",
+    "symbol",
+    "status",
+    "security_level",
+]
 
 function (server::FakeServer)(url, headers, body; timeout)
     push!(server.seen, (url=url, headers=Dict(headers), body=JSON3.read(body)))
@@ -53,8 +102,24 @@ function (server::FakeServer)(url, headers, body; timeout)
     end
     message.method == "notifications/initialized" && return (202, Pair{String,String}[], "")
     @assert Dict(headers)["mcp-session-id"] == SESSION
-    return (200, SSE, recorded(fixture_for(message.params), message.id))
+    return (200, SSE, recorded(answer_for(message.params), message.id))
 end
+
+"""A tool error as the server sends it: an isError result in one event."""
+function error_reply(id, text)
+    block = Dict("type" => "text", "text" => text)
+    result = Dict("content" => [block], "isError" => true)
+    reply = Dict("jsonrpc" => "2.0", "id" => id, "result" => result)
+    return (200, SSE, "data: $(JSON3.write(reply))\n\n")
+end
+
+# What a server that does not know `detail` says: the project's own wording, the one a
+# bare validator uses, and the French one.
+const OLD_SERVER_ERRORS = [
+    "detail is not a parameter of this tool; parameters: query",
+    "Unexpected argument: detail",
+    "detail n'est pas un paramètre de cet outil; paramètres : query",
+]
 
 methods_sent(server) = [entry.body.method for entry in server.seen]
 fake_client(server) = Client(; url="https://test.invalid/mcp", transport=server)
@@ -100,23 +165,111 @@ end
         @test all(ismissing, found.input_schema)
     end
 
-    @testset "search falls back on a server without detail" begin
-        # A server before the compact search rejects `detail` and answers the full form.
+    for refusal in OLD_SERVER_ERRORS
+        @testset "search falls back on a server without detail: $(refusal)" begin
+            # A server before the compact search rejects `detail` and answers the full
+            # form.
+            server = FakeServer()
+            server.override = function (message)
+                message.method == "tools/call" || return nothing
+                if haskey(message.params.arguments, :detail)
+                    return error_reply(message.id, refusal)
+                end
+                return (200, SSE, recorded("search_tools", message.id))
+            end
+            found = search_tools("bank of canada exchange rate"; client=fake_client(server))
+            @test size(found, 1) > 0
+            @test !ismissing(found.input_schema[1])
+            @test !haskey(server.seen[end].body.params.arguments, :detail)
+        end
+
+        @testset "data calls fall back on a server without detail: $(refusal)" begin
+            # A server before 0.6.0 does not know call_tool's `detail`; it answers in
+            # full.
+            server = FakeServer()
+            server.override = function (message)
+                message.method == "tools/call" || return nothing
+                if haskey(message.params.arguments, :detail)
+                    return error_reply(message.id, refusal)
+                end
+                return nothing
+            end
+            client = fake_client(server)
+            df = get_data(
+                "boc_get_observations"; client, series_names=["FXUSDCAD"], recent=3
+            )
+            @test size(df, 1) == 3
+            calls = [e.body.params for e in server.seen if e.body.method == "tools/call"]
+            @test length(calls) == 2
+            @test calls[1].arguments.detail == "full"
+            @test calls[2].name == "call_tool"
+            @test !haskey(calls[2].arguments, :detail)
+            @test calls[2].arguments.arguments.recent == 3
+            # The raw call falls back the same way.
+            @test boc(client).provenance.source == "boc"
+        end
+    end
+
+    @testset "an error that only mentions detail is not repeated" begin
+        # The tool's own error, not a refusal of the argument: one call, and it throws.
         server = FakeServer()
         server.override = function (message)
             message.method == "tools/call" || return nothing
-            if haskey(message.params.arguments, :detail)
-                block = Dict("type" => "text", "text" => "Unexpected argument: detail")
-                result = Dict("content" => [block], "isError" => true)
-                reply = Dict("jsonrpc" => "2.0", "id" => message.id, "result" => result)
-                return (200, SSE, "data: $(JSON3.write(reply))\n\n")
-            end
-            return (200, SSE, recorded("search_tools", message.id))
+            return error_reply(message.id, "No detail found for FXUSDCAD.")
         end
-        found = search_tools("bank of canada exchange rate"; client=fake_client(server))
-        @test size(found, 1) > 0
-        @test !ismissing(found.input_schema[1])
-        @test !haskey(server.seen[end].body.params.arguments, :detail)
+        error = try
+            boc(fake_client(server))
+            nothing
+        catch caught
+            caught
+        end
+        @test error isa MapleStatsError
+        @test occursin("No detail found", error.message)
+        @test count(==("tools/call"), methods_sent(server)) == 1
+    end
+
+    @testset "the raw call passes detail to the server's own tools" begin
+        server = FakeServer()
+        client = fake_client(server)
+        # search_tools takes `detail` itself, so it goes in its arguments, as given.
+        call_tool(
+            "search_tools"; query="bank of canada exchange rate", detail="full", client
+        )
+        call = server.seen[3].body.params
+        @test call.name == "search_tools"
+        @test Dict(string(k) => v for (k, v) in pairs(call.arguments)) ==
+            Dict("query" => "bank of canada exchange rate", "detail" => "full")
+        # Without one, nothing is added.
+        call_tool("plan_query"; question="Unemployment rate in Alberta", client)
+        sent = server.seen[4].body.params.arguments
+        @test Dict(string(k) => v for (k, v) in pairs(sent)) ==
+            Dict("question" => "Unemployment rate in Alberta")
+    end
+
+    @testset "plan_query has no detail and the server says so" begin
+        server = FakeServer()
+        server.override = function (message)
+            message.method == "tools/call" || return nothing
+            text = "detail is not a parameter of this tool; parameters: question, lang"
+            return error_reply(message.id, text)
+        end
+        error = try
+            call_tool(
+                "plan_query";
+                question="Unemployment rate in Alberta",
+                detail="full",
+                client=fake_client(server),
+            )
+            nothing
+        catch caught
+            caught
+        end
+        @test error isa MapleStatsError
+        @test occursin("detail is not a parameter", error.message)
+        calls = [e.body.params for e in server.seen if e.body.method == "tools/call"]
+        @test length(calls) == 1
+        @test calls[1].name == "plan_query"
+        @test calls[1].arguments.detail == "full"
     end
 
     @testset "a search with no match is an empty DataFrame" begin
@@ -139,14 +292,16 @@ end
             series_names=["FXUSDCAD"],
             recent=3,
         )
-        @test names(df) == ["ref_date", "values_fxusdcad"]
+        # A full result carries every field: non_numeric is null on every row here.
+        @test names(df) == ["ref_date", "values_fxusdcad", "non_numeric"]
         @test size(df, 1) == 3
         @test eltype(df.values_fxusdcad) == Float64
         @test metadata(df, "provenance").source == "boc"
         @test startswith(
             only(metadata(df, "citation")), "Source: boc. https://www.bankofcanada.ca/"
         )
-        @test metadata(df, "left_out")["series"] == "[object]"
+        @test metadata(df, "left_out") ==
+            Dict("series" => "[object]", "transformed" => nothing)
         @test metadata(df, "tool") == "boc_get_observations"
     end
 
@@ -162,6 +317,151 @@ end
         @test unique(df.vector_id) == [2062815]
         @test metadata(df, "citation") == [df.context_citation[1]]
         @test occursin("Table 14-10-0287-01", only(metadata(df, "citation")))
+    end
+
+    @testset "data tools are called with full detail" begin
+        server = FakeServer()
+        client = fake_client(server)
+        boc(client)
+        get_data("boc_get_observations"; client, series_names=["FXUSDCAD"], recent=3)
+        calls = [e.body.params for e in server.seen if e.body.method == "tools/call"]
+        @test length(calls) == 2
+        for call in calls
+            # `detail` is call_tool's own argument, beside `name` and `arguments`.
+            @test call.name == "call_tool"
+            @test call.arguments.detail == "full"
+            @test call.arguments.arguments.recent == 3
+            @test !haskey(call.arguments.arguments, :detail)
+        end
+    end
+
+    @testset "call_tool can ask for the brief answer" begin
+        server = FakeServer()
+        call_tool(
+            "boc_get_observations";
+            detail="brief",
+            client=fake_client(server),
+            series_names=["FXUSDCAD"],
+            recent=3,
+        )
+        call = server.seen[3].body.params.arguments
+        @test call.detail == "brief"
+        @test call.arguments.recent == 3
+        @test !haskey(call.arguments, :detail)
+    end
+
+    @testset "a brief call returns the rows as csv text" begin
+        # What the server's default answer holds for twelve rows, and what get_data
+        # would be unable to read as rows.
+        raw = call_tool(
+            "wds_get_data_from_vectors";
+            detail="brief",
+            client=fake_client(FakeServer()),
+            vector_ids=[2062815],
+            latest_n=12,
+        )
+        block = raw.series[1].observations
+        @test block.format == "csv"
+        @test block.rows == 12
+        @test startswith(block.csv, "ref_period,value\n2025-11-01,")
+        @test !haskey(raw.provenance, :queried_at)
+    end
+
+    @testset "a long StatCan result becomes one row per observation" begin
+        server = FakeServer()
+        df = get_data(
+            "wds_get_data_from_vectors";
+            client=fake_client(server),
+            vector_ids=[2062815],
+            latest_n=12,
+        )
+        call = server.seen[3].body.params.arguments
+        @test call.detail == "full"
+        @test call.arguments.latest_n == 12
+        @test size(df) == (12, 30)
+        @test names(df) == WDS_LONG_COLUMNS
+        @test df.ref_period[[1, 12]] == ["2025-11-01", "2026-10-01"]
+        @test eltype(df.value) == Float64
+        @test unique(df.vector_id) == [2062815]
+        @test unique(df.context_unit) == ["Percent"]
+        @test metadata(df, "citation") == [df.context_citation[1]]
+        @test occursin("Table 14-10-0287-01", only(metadata(df, "citation")))
+        # A full result keeps the whole provenance, caveats and query time included.
+        provenance = metadata(df, "provenance")
+        @test provenance.source == "statcan-wds"
+        @test haskey(provenance, :queried_at)
+        @test length(provenance.caveats) == 2
+        @test metadata(df, "left_out") == Dict("failed" => "[list]")
+    end
+
+    @testset "a long Bank of Canada result becomes one row per date" begin
+        server = FakeServer()
+        df = get_data(
+            "boc_get_observations";
+            client=fake_client(server),
+            series_names=["FXUSDCAD"],
+            recent=12,
+        )
+        @test server.seen[3].body.params.arguments.detail == "full"
+        @test size(df) == (12, 3)
+        @test names(df) == ["ref_date", "values_fxusdcad", "non_numeric"]
+        @test length(unique(df.ref_date)) == 12
+        @test eltype(df.values_fxusdcad) == Float64
+        provenance = metadata(df, "provenance")
+        @test provenance.source == "boc"
+        @test startswith(provenance.caveats[1], "Indicative rate")
+        @test startswith(
+            only(metadata(df, "citation")), "Source: boc. https://www.bankofcanada.ca/"
+        )
+        @test metadata(df, "left_out") ==
+            Dict("series" => "[object]", "transformed" => nothing)
+    end
+
+    @testset "notes the server states once are written back into the rows" begin
+        server = FakeServer()
+        client = fake_client(server)
+        # wds_two was shaped by the server's own shape(): the note both series share is
+        # in a top-level `shared_notes` list and each series holds a reference.
+        raw = call_tool(
+            "wds_get_data_from_vectors"; client, vector_ids=[2062810, 2062811], latest_n=3
+        )
+        @test collect(raw.shared_notes) == [SCALE_NOTE]
+        @test raw.series[1].context.notes[1] == "shared_notes[0]"
+
+        df = get_data(
+            "wds_get_data_from_vectors"; client, vector_ids=[2062810, 2062811], latest_n=3
+        )
+        @test size(df, 1) == 6
+        @test df.vector_id == [fill(2062810, 3); fill(2062811, 3)]
+        @test df.context_notes ==
+            [fill("$(SCALE_NOTE); $(LATEST_NOTE)", 3); fill(SCALE_NOTE, 3)]
+        cells = [string(cell) for column in eachcol(df) for cell in column]
+        @test !any(occursin("shared_notes", cell) for cell in cells)
+        @test metadata(df, "left_out") == Dict("failed" => "[list]")
+        @test metadata(df, "citation") == [df.context_citation[1], df.context_citation[4]]
+    end
+
+    @testset "references are resolved wherever they stand" begin
+        # A wrapped list result: shared_notes sits beside "result" (shape() output).
+        shared = "A note long enough to be shared across items of the list."
+        wrapped = JSON3.read(
+            """{"result":[{"name":"alpha","notes":["shared_notes[0]","Kept."]},""" *
+            """{"name":"beta","notes":["shared_notes[0]"],"note":"shared_notes[9]"}],""" *
+            """"shared_notes":["$(shared)"]}""",
+        )
+        resolved = resolve_shared_notes(wrapped)
+        @test collect(keys(resolved)) == [:result]
+        alpha, beta = resolved.result
+        @test collect(alpha.notes) == [shared, "Kept."]
+        @test collect(beta.notes) == [shared]
+        # An index past the list is left as it came.
+        @test beta.note == "shared_notes[9]"
+        rows, left = rows_and_left_out(resolved)
+        @test last(rows[2][2]) == shared
+        @test isempty(left)
+        # Without shared_notes the payload is returned as it is.
+        plain = JSON3.read("""{"series":[{"notes":["shared_notes[0]"]}]}""")
+        @test resolve_shared_notes(plain) === plain
     end
 
     @testset "a tool error raises with the server's message" begin

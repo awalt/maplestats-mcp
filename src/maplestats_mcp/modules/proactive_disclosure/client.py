@@ -82,11 +82,19 @@ def _text(value: Any) -> str | None:
 
 
 def money(value: Any) -> float | None:
-    """A DataStore amount as a number: "38900.25", "464000", "$1,200.50", "-5000"."""
+    """A DataStore amount as a number: "38900.25", "464000", "$1,200.50", "-5000", "1 200,50 $"."""
     text = _text(value)
     if text is None:
         return None
-    cleaned = re.sub(r"[\s$ ,]", "", text)
+    # A currency sign or a space after the number ("38900,25 $") must not hide a decimal
+    # comma, so they go first. With no period, one or two digits after the last comma are
+    # decimals ("38900,25", "0,5"): a thousands group always has three digits, and every
+    # column read here is a dollar amount. Dropping that comma would read the amount 10 or
+    # 100 times too large. "1,200" and "1,200.50" read as before.
+    text = re.sub(r"[\s$]", "", text)
+    if "." not in text:
+        text = re.sub(r",(\d{1,2})$", r".\1", text)
+    cleaned = text.replace(",", "")
     try:
         return float(cleaned)
     except ValueError:
@@ -1355,6 +1363,55 @@ async def summarize(
             "comprises."
         ),
     )
+    # Contracts carry the quarter each row was published in, and an amendment restates the
+    # agreement's whole value in a later quarter: the latest row's period and value win. A
+    # first-row period would need every earlier and later row of each agreement, which the
+    # fiscal_year filter (rows of that year only) cannot read, so the rule is stated instead.
+    by_period = spec.key == "contracts" and group_by in ("fiscal_year", "quarter")
+    year_filtered = spec.key == "contracts" and "fiscal_year" in crit.shown
+    date_ranged = spec.key == "contracts" and f"{spec.date_field}_from" in crit.shown
+    if dedupe and (by_period or year_filtered or date_ranged):
+        rule_en: list[str] = []
+        rule_fr: list[str] = []
+        if by_period:
+            rule_en.append(
+                "A contract's fiscal year or quarter is the one its latest row was published "
+                "in (reporting_period): an agreement first published in 2019-2020 and amended "
+                "in 2023-2024 counts wholly in 2023-2024."
+            )
+            rule_fr.append(
+                "Pour un contrat, l'exercice ou le trimestre est celui où sa dernière ligne a "
+                "été publiée (reporting_period) : une entente publiée pour la première fois "
+                "en 2019-2020 puis modifiée en 2023-2024 est comptée entièrement en 2023-2024."
+            )
+        if year_filtered:
+            rule_en.append(
+                "The fiscal_year filter reads only the rows published in that fiscal year, "
+                "before the latest row is chosen, so it never sees later amendments: an "
+                "agreement it shows carries the value it had by then."
+            )
+            rule_fr.append(
+                "Le filtre fiscal_year ne lit que les lignes publiées durant cet exercice-là, "
+                "avant le choix de la dernière ligne : il ne voit jamais les modifications "
+                "ultérieures, et une entente qu'il montre a la valeur qu'elle avait alors."
+            )
+        if date_ranged:
+            rule_en.append(
+                f"date_from and date_to keep rows by their {spec.date_field} before the latest "
+                "row of each agreement is chosen, so an amendment dated outside the range is "
+                "not seen."
+            )
+            rule_fr.append(
+                f"date_from et date_to retiennent les lignes d'après leur {spec.date_field} "
+                "avant le choix de la dernière ligne de chaque entente : une modification "
+                "datée hors de la plage n'est pas vue."
+            )
+        if by_period or year_filtered:
+            rule_en.append("value_mode='all_rows' counts each row in the period it was published.")
+            rule_fr.append(
+                "value_mode='all_rows' compte chaque ligne dans la période où elle a été publiée."
+            )
+        method += " " + pick(lang, " ".join(rule_en), " ".join(rule_fr))
     limits = pick(
         lang,
         f"a summary reads at most {constants.SCAN_MAX_ROWS:,} matching rows; groups beyond "

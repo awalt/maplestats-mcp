@@ -87,7 +87,7 @@ post_message <- function(client, body) {
   response <- httr2::req_perform(request)
   status <- httr2::resp_status(response)
 
-  # The hosted server allows 60 requests a minute per client.
+  # The hosted server allows 120 requests a minute per client.
   if (status == 429) {
     retry <- httr2::resp_header(response, "retry-after")
     maplestats_abort(
@@ -222,17 +222,60 @@ json_object <- function(x) {
   if (length(x) == 0) structure(list(), names = character()) else x
 }
 
-call_server_tool <- function(client, name, arguments) {
+# What a server says of an argument it does not know, in English and French
+# ("detail is not a parameter of this tool; parameters: name, arguments").
+unknown_argument <- paste(
+  "not a parameter", "n'est pas un param", "unexpected",
+  "additional propert", "unrecognized", "unknown",
+  sep = "|"
+)
+
+# Whether the server refused `detail` as an argument it does not know. A server
+# older than the compact search (before 2026-11-09) does this to search_tools,
+# and one older than 0.6.0 (2026-11-18) to call_tool. Both answer in full
+# anyway, so the call is repeated once without it. The error must also say the
+# argument is unknown: any other error that mentions "detail" is the tool's
+# own, and repeating the call would only hide it.
+rejects_detail <- function(error) {
+  text <- tolower(conditionMessage(error))
+  grepl("detail", text, fixed = TRUE) && grepl(unknown_argument, text)
+}
+
+# `detail` is call_tool's own argument, beside `name` and `arguments`. The
+# server's default, "brief", writes a list of six or more rows as CSV text and
+# cuts the provenance; "full" keeps the rows as objects. For the server's own
+# tools (search_tools, plan_query) a `detail` that was given travels inside the
+# arguments, where the tool reads it.
+call_server_tool <- function(client, name, arguments, detail = NULL) {
   arguments <- json_object(arguments)
-  params <- if (name %in% direct_tools) {
-    list(name = name, arguments = arguments)
-  } else {
-    list(
-      name = "call_tool",
-      arguments = list(name = name, arguments = arguments)
-    )
+  if (name %in% direct_tools) {
+    if (!is.null(detail)) {
+      arguments$detail <- detail
+    }
+    params <- list(name = name, arguments = arguments)
+    return(decode_result(rpc_request(client, "tools/call", params)))
   }
-  decode_result(rpc_request(client, "tools/call", params))
+
+  params <- list(
+    name = "call_tool",
+    arguments = list(
+      name = name,
+      arguments = arguments,
+      detail = detail %||% "full"
+    )
+  )
+  tryCatch(
+    decode_result(rpc_request(client, "tools/call", params)),
+    maplestats_error = function(error) {
+      if (!rejects_detail(error)) {
+        stop(error)
+      }
+
+      # A server that does not know `detail` answers in full without it.
+      params$arguments$detail <- NULL
+      decode_result(rpc_request(client, "tools/call", params))
+    }
+  )
 }
 
 #' Search the server's tools
@@ -258,9 +301,7 @@ ms_search_tools <- function(query,
       list(query = query, detail = detail)
     ),
     maplestats_error = function(error) {
-      # A server older than the compact search has no `detail` and rejects
-      # it; its answer is the full form anyway.
-      if (!grepl("detail", conditionMessage(error), fixed = TRUE)) {
+      if (!rejects_detail(error)) {
         stop(error)
       }
       call_server_tool(client, "search_tools", list(query = query))
@@ -300,11 +341,21 @@ ms_plan_query <- function(question, lang = "en", client = ms_default_client()) {
 #'
 #' @param tool Tool name, as [ms_search_tools()] returns it.
 #' @param ... The tool's arguments, by name.
+#' @param detail `NULL` (the default) or `"full"` for every field, the whole
+#'   provenance and each list of rows as objects, or `"brief"` for the server's
+#'   compact answer: a list of six or more rows is one CSV text block
+#'   (`format`, `rows`, `csv`) and the provenance is cut to what a citation
+#'   needs. A server older than 0.6.0 answers in full either way. For the
+#'   server's own tools (`search_tools`, `plan_query`) a `detail` you pass goes
+#'   to the tool as one of its arguments.
 #' @param client A client from [ms_client()].
 #' @return The result as a list, provenance included.
 #' @export
-ms_call_tool <- function(tool, ..., client = ms_default_client()) {
-  call_server_tool(client, tool, list(...))
+ms_call_tool <- function(tool,
+                         ...,
+                         detail = NULL,
+                         client = ms_default_client()) {
+  call_server_tool(client, tool, list(...), detail)
 }
 
 #' Call a tool and return its rows as a tibble
@@ -312,7 +363,9 @@ ms_call_tool <- function(tool, ..., client = ms_default_client()) {
 #' The rows are the result's largest list of objects; a series' observations
 #' become one row each, carrying the series' fields. Nested fields become
 #' `parent_child` columns and names are cleaned to snake_case. Values keep
-#' their JSON types: dates stay text.
+#' their JSON types: dates stay text. The server is always asked for
+#' `detail = "full"`: a brief result writes six or more rows as CSV text, which
+#' cannot be read as rows, so the tibble has every field the server sends.
 #'
 #' @inheritParams ms_call_tool
 #' @return A tibble with attributes `citation` (character), `provenance`,
@@ -321,12 +374,14 @@ ms_call_tool <- function(tool, ..., client = ms_default_client()) {
 #' @export
 ms_get_data <- function(tool, ..., client = ms_default_client()) {
   arguments <- list(...)
-  raw <- call_server_tool(client, tool, arguments)
-  tidy <- rows_and_left_out(raw)
+  # Notes the server states once for several items are written back in.
+  payload <- call_server_tool(client, tool, arguments, "full") |>
+    resolve_shared_notes()
+  tidy <- rows_and_left_out(payload)
 
   data <- rows_to_tibble(tidy$rows)
-  attr(data, "citation") <- result_citation(raw)
-  attr(data, "provenance") <- result_provenance(raw)
+  attr(data, "citation") <- result_citation(payload)
+  attr(data, "provenance") <- result_provenance(payload)
   attr(data, "left_out") <- tidy$left_out
   attr(data, "tool") <- tool
   attr(data, "arguments") <- arguments

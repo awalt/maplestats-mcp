@@ -22,5 +22,7 @@ A tibble with attributes `citation` (character), `provenance`,
 The rows are the result's largest list of objects; a series' observations
 become one row each, carrying the series' fields. Nested fields become
 `parent_child` columns and names are cleaned to snake_case. Values keep
-their JSON types: dates stay text.
+their JSON types: dates stay text. The server is always asked for
+`detail = "full"`: a brief result writes six or more rows as CSV text, which
+cannot be read as rows, so the tibble has every field the server sends.
 }

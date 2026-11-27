@@ -525,11 +525,15 @@ def _parse_number(raw_value: str, lang: str) -> float:
     """Parse a value cell's number, raising ValueError when it is not one.
 
     English (confirmed live): a comma is a thousands separator ("1,013").
-    French: a comma is the decimal mark and a space or no-break space groups
-    thousands ("1 013,5", "1,5"), as in French Canadian typography. The
-    French export's number format has not been confirmed against a live
-    download yet; stripping every comma there would turn "1,5" into 15.0
-    without any error, so the French rule is the safer reading.
+    French: a comma is the decimal mark and a no-break space groups thousands
+    ("1 013,5", "1,5"), as in French Canadian typography. Confirmed against
+    HMIP's French export twice. The recorded vacancy-rate export
+    (fixtures/rms_vacancy_by_province_fr_export.csv) writes a decimal comma
+    ("0,8"). A live call on 2026-11-26 for Edmonton's average rent (octobre
+    2025, lang="fr") grouped thousands with a space character and had no comma
+    in any rent (1 181 and 1 484 read as 1181.0 and 1484.0), so "1,013" is
+    not a thousands figure in French. A cell with both marks ("1 013,5") has
+    not been seen in a live export.
     """
     if lang == "fr":
         return float(_FRENCH_THOUSANDS_RE.sub("", raw_value).replace(",", "."))

@@ -107,7 +107,10 @@ class _SizedTTLCache(TTLCache):
 
 
 _caches: dict[int, _SizedTTLCache] = {}
-_inflight: dict[tuple[int, str], asyncio.Future[Any]] = {}
+# Each shared fetch resolves to (data, when a last good copy served in its place
+# was fetched, or None for a fresh result): a waiter must label a stale copy as
+# the owner does, not as fresh.
+_inflight: dict[tuple[int, str], asyncio.Future[tuple[Any, datetime | None]]] = {}
 
 # (ttl, key) -> (result, when it was fetched, estimated bytes), oldest first.
 _last_good: OrderedDict[tuple[int, str], tuple[Any, datetime, int]] = OrderedDict()
@@ -276,7 +279,7 @@ async def cached_fetch(
         task = asyncio.current_task()
         cancel_requests = task.cancelling() if task else 0
         try:
-            return await asyncio.shield(pending), False
+            data, fetched = await asyncio.shield(pending)
         except asyncio.CancelledError:
             # The owner's fetch and this waiter can be cancelled in the same
             # turn, and then `pending.cancelled()` alone cannot tell them
@@ -285,8 +288,16 @@ async def cached_fetch(
             cancelled_itself = task is not None and task.cancelling() > cancel_requests
             if cancelled_itself or not pending.cancelled():
                 raise
+            continue
+        if fetched is None:
+            return data, False
+        # The owner served a last good copy: this call's provenance needs the caveat too.
+        served = _served.get()
+        if served is not None:
+            served.append(fetched)
+        return data, True
 
-    future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
+    future: asyncio.Future[tuple[Any, datetime | None]] = asyncio.get_running_loop().create_future()
     _inflight[flight_key] = future
     try:
         data = await fetcher()
@@ -303,7 +314,7 @@ async def cached_fetch(
         served = _served.get()
         if served is not None:
             served.append(fetched)
-        future.set_result(data)
+        future.set_result((data, fetched))
         return data, True
     except BaseException as exc:
         future.set_exception(exc)
@@ -313,7 +324,7 @@ async def cached_fetch(
         raise
     else:
         _store(ttl, cache, key, data)
-        future.set_result(data)
+        future.set_result((data, None))
         return data, False
     finally:
         _inflight.pop(flight_key, None)

@@ -124,6 +124,57 @@ async def test_french_data_follows_hreflang(httpx_mock):
     assert data.rows[0]["Lieu ou organisme"] == "Ontario"
 
 
+def _by_place_rows() -> list[list[object]]:
+    # The live tables are ordered by place, then by time frame: the end of the
+    # file is the last place's rows, whatever the newest time frame is.
+    return [
+        ["Province/territory", place, frame, rate]
+        for place, rate in (("Alberta", 10.0), ("Ontario", 11.0), ("Yukon", 12.0))
+        for frame in ("2022–2023", "2023–2024", "2024–2025")
+    ]
+
+
+async def test_latest_rows_are_the_newest_time_frame_not_the_end_of_the_file(httpx_mock):
+    httpx_mock.add_response(url=_EN_PAGE_URL, text=_page(_EN_FILE, "30-Day Stroke"))
+    httpx_mock.add_response(url=_EN_FILE, content=_workbook(_HEADER, _by_place_rows()))
+    data = await client.get_indicator_data(_SLUG, limit=3)
+    # Before: the last three rows were Yukon's three time frames.
+    assert [(r["Place or organization"], r["Time frame"]) for r in data.rows] == [
+        ("Alberta", "2024–2025"),
+        ("Ontario", "2024–2025"),
+        ("Yukon", "2024–2025"),
+    ]
+    assert data.matching_rows == 9 and data.returned_count == 3
+    assert data.provenance.coverage == "newest 3 of 9 matching rows"
+    # A request that fits keeps every row, in file order.
+    everything = await client.get_indicator_data(_SLUG, limit=20)
+    assert [r["Time frame"] for r in everything.rows][:3] == ["2022–2023", "2023–2024", "2024–2025"]
+    assert everything.returned_count == 9
+
+
+async def test_latest_rows_follow_the_french_period_column(httpx_mock):
+    httpx_mock.add_response(url=_EN_PAGE_URL, text=_page(_EN_FILE, "30-Day Stroke"))
+    httpx_mock.add_response(url=_FR_PAGE_URL, text=_page(_FR_FILE, "Mortalité AVC"))
+    french_header = ["Niveau de déclaration", "Lieu ou organisme", "Période", "Taux"]
+    httpx_mock.add_response(url=_FR_FILE, content=_workbook(french_header, _by_place_rows()))
+    data = await client.get_indicator_data(_SLUG, limit=2, lang="fr")
+    assert [(r["Lieu ou organisme"], r["Période"]) for r in data.rows] == [
+        ("Ontario", "2024–2025"),
+        ("Yukon", "2024–2025"),
+    ]
+    assert data.provenance.coverage == "2 lignes les plus récentes sur 9 correspondantes"
+
+
+async def test_a_table_without_a_period_column_keeps_the_file_order(httpx_mock):
+    header = ["Reporting level", "Place or organization", "Risk-adjusted rate"]
+    rows = [["Province/territory", place, rate] for place, rate in (("A", 1), ("B", 2), ("C", 3))]
+    httpx_mock.add_response(url=_EN_PAGE_URL, text=_page(_EN_FILE, "30-Day Stroke"))
+    httpx_mock.add_response(url=_EN_FILE, content=_workbook(header, rows))
+    data = await client.get_indicator_data(_SLUG, limit=2)
+    assert [r["Place or organization"] for r in data.rows] == ["B", "C"]
+    assert data.provenance.coverage == "last 2 of 3 matching rows"
+
+
 async def test_input_validation(httpx_mock):
     with pytest.raises(InvalidInput):
         await client.get_indicator("../../etc")

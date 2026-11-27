@@ -108,11 +108,12 @@ async def cwfis_get_weather_stations(
 ) -> StationResult:
     """Fire weather stations with the latest Fire Weather Index (FWI) system values.
 
-    Search by province code (SK and NL map to the layer's own codes), by name
-    fragment, or by point (latitude + longitude + radius_km up to 200, nearest
-    first). Stations report during the fire season; off season the layer holds
-    only a few, and an empty result's note says how many and where. Each station
-    has one noon observation plus FFMC, DMC, DC, ISI, BUI, FWI and DSR.
+    Search by province (a code, or a name in English or French; SK and NL map to
+    the layer's own codes), by name fragment, or by point (latitude + longitude
+    + radius_km up to 200, nearest first). Stations report during the fire
+    season; off season the layer holds only a few, and an empty result's note
+    says how many and where. Each station has one noon observation plus FFMC,
+    DMC, DC, ISI, BUI, FWI and DSR.
     Use for: today's fire weather index near a town, FWI by station, drought
     code and fine fuel moisture, wildfire risk indices for a province.
     Keywords: Fire Weather Index, FWI, FFMC, DMC, drought code, buildup index,

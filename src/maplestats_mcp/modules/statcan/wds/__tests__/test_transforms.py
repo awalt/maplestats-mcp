@@ -308,3 +308,24 @@ async def test_smoothed_change_of_a_rate_is_in_points(httpx_mock):
     # Point changes: July -0.1, August 0.0, September +0.1.
     assert [p.value for p in computed.points] == pytest.approx([(-0.1 + 0) / 2, (0 + 0.1) / 2])
     assert computed.unit == "percentage points"
+
+
+def test_no_observation_is_kept_beside_a_left_out_running_period():
+    from datetime import date
+
+    from maplestats_mcp.modules.statcan.wds.transforms import kept_dates
+    from maplestats_mcp.shared.transform import transform_series
+
+    # January to October 2026 only: annual with latest_n=1 has no complete year, so
+    # transform_series leaves 2026 out and no October value is kept beside it.
+    days = [date(2026, m, 1) for m in range(1, 11)]
+    points = [(d, 100.0) for d in days]
+    computed = transform_series(points, source_ppy=12, frequency="annual", latest_n=1)
+    assert computed.points == []
+    kept = kept_dates(computed, 1, days, latest_n=1, window_start=None, window_end=None)
+    assert kept == []
+    # Without aggregation an empty result keeps the latest published dates, as before.
+    plain = transform_series([], source_ppy=12, transform="diff", latest_n=1)
+    assert kept_dates(plain, 12, days, latest_n=1, window_start=None, window_end=None) == [
+        date(2026, 10, 1)
+    ]

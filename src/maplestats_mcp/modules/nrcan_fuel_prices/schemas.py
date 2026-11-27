@@ -46,7 +46,13 @@ class FuelPrices(BaseModel):
         description="The frequency NRCan served, which can differ from the one asked (see `note`)."
     )
     note: str | None = None
-    year: int | None = Field(description="The year asked for; None for daily prices.")
+    year: int | None = Field(
+        description=(
+            "The year of the page the latest rows come from: the year asked for, or the year "
+            "before when `latest_n` with no `year` found none in this year. None for daily "
+            "prices."
+        )
+    )
     unit: str
     locations: list[str]
     rows: list[FuelPrice] = Field(description="Oldest first.")

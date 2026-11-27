@@ -264,6 +264,13 @@ language data are not where tesseract looks). They skip without the extra, the
 program or the data; CI's `ocr` job installs all three and sets
 `MAPLE_REQUIRE_OCR=1` (`conftest.py`), which turns a skip there into a failure.
 
+`polars` is in the `dev` group: the tests that run the Python scripts
+`reproduce_code` writes and compare them with the tools' own output
+(`tests/test_reproduce*.py`) import it with `pytest.importorskip`, and they skipped
+in every CI job while it was in no group. CI's main and production-Python jobs set
+`MAPLE_REQUIRE_POLARS=1` (`conftest.py`), which turns a skip for want of polars into
+a failure, as `MAPLE_REQUIRE_OCR` does for the ocr tests.
+
 ### Changelog
 
 **Do not edit the Unreleased section of `CHANGELOG.md`.** Each change
@@ -287,8 +294,8 @@ uv run python scripts/build_changelog.py --preview
 version at the merge base of `HEAD` and `origin/main`, through
 `scripts/check_tool_surface.py`, and sorts the differences into breaking
 changes (a tool or parameter removed or renamed, a type narrowed, a
-required parameter added, an output field removed or made nullable),
-additive ones, and others (titles, annotations, defaults, anything it
+required parameter added, an output field removed, made nullable or no longer required
+without gaining a default), additive ones, and others (titles, annotations, defaults, anything it
 cannot name). Docstrings and schema descriptions are left out. **A
 breaking change needs a changelog note:** the test fails until every
 tool with one is named in a `changelog.d/` fragment (or under Unreleased
@@ -323,21 +330,29 @@ never blocks a merge (`continue-on-error`); a failure shows as "Newest
 FastMCP: FAILED" in the run summary with an error annotation. Raise the
 cap only after that job passes on the new minor, then run `uv lock`.
 
-**Before merging a change touching a client.py**, also run the live
-smoke test — mocked tests cannot catch a real API's actual quirks
+**Before merging a change touching a client.py**, also run that module's
+own live steps — mocked tests cannot catch a real API's actual quirks
 (they proved this twice already: the ALPN/TLS issue and the
 null-vs-absent-list bug above were both only found by hitting the
 real API):
 
-```powershell
-.\scripts\verify.ps1
-```
-
-or directly:
-
 ```bash
-uv run python scripts/smoke_test.py
+uv run python scripts/smoke_test_<module>.py           # where the module has its own script
+uv run python scripts/smoke_test_modules.py <module>   # otherwise; several names may follow
 ```
+
+`<module>` is the module's folder name, the first argument of its `Step`s in
+`smoke_test_modules.py`; with no name that script runs every module's steps. The
+StatCan sub-APIs have `smoke_test_statcan_<name>.py` scripts. A run that ends
+`SKIPPED` (exit code 75) met an upstream outage and is not a pass: read its `SKIP`
+lines and run it again later.
+
+`scripts/smoke_test.py` is not that check for other sources: it calls StatCan's
+WDS tools only. `scripts/verify.ps1` is the whole release gate, not a per-change
+check: it installs from the lock, runs ruff, pyright and the full mocked suite,
+then every `smoke_test*.py` script through `scripts/_run_smoke.py` (which, like
+`smoke.yml`, reports exit code 75 as skipped, not failed), and last builds the
+Docker image and checks its health if Docker is installed.
 
 ## Releasing
 
@@ -345,7 +360,8 @@ On a `release/<version>` branch:
 
 1. Set the version in `pyproject.toml`, `src/maplestats_mcp/__init__.py`
    and both places in `server.json`, then run `uv lock`
-   (`tests/test_release.py` checks they agree).
+   (`tests/test_release.py` checks that those four versions agree; CI's
+   `uv sync --locked` fails on a stale `uv.lock`).
 2. Write the changelog: `uv run python scripts/build_changelog.py
    --version <version>` moves every `changelog.d/` fragment (after
    anything left under Unreleased) into a `## [<version>] - <date>`
@@ -356,9 +372,10 @@ On a `release/<version>` branch:
    above, run the full gate and merge the pull request.
 4. Tag the merge commit `v<version>` and push the tag:
    `.github/workflows/release.yml` publishes to PyPI, the MCP Registry and
-   GitHub Releases. Where tags cannot be pushed (a cloud session's git
-   proxy), run that workflow by hand on `main` with the version instead; it
-   creates the tag after the gate passes.
+   GitHub Releases, once CI's run on that commit has succeeded (it waits up
+   to 45 minutes for that run to finish). Where tags cannot be pushed (a
+   cloud session's git proxy), run that workflow by hand on `main` with the
+   version instead; it creates the tag after the gate passes.
 
 ## Website
 

@@ -46,7 +46,8 @@ async def electricity_ontario_get_hourly_demand(
     Demand (Ontario demand plus exports) and Ontario Demand, plus the peak
     hour and average over the whole matched range. One calendar year per call;
     with no dates, the latest `limit` hours of `year` (default the current
-    year). Use electricity_ontario_get_realtime_demand for the current hour.
+    year; in early January the last hours of the year before are added).
+    Use electricity_ontario_get_realtime_demand for the current hour.
     Use for: Ontario electricity load, peak demand, daily or seasonal demand
     profile, demand history, how much power Ontario uses.
     Keywords: Ontario, IESO, electricity demand, hourly demand, peak demand,
@@ -91,7 +92,8 @@ async def electricity_ontario_get_supply_by_fuel(
     Hour-ending rows in MW plus energy totals and generation shares over the
     whole matched range. Covers IESO-metered generators, not embedded
     distribution-connected solar. One calendar year per call; the current-year
-    file ends about a day behind the clock. A full-year file is about 8 MB,
+    file ends about a day behind the clock (in early January the latest hours
+    also come from the year before). A full-year file is about 8 MB,
     so an uncached call takes 10-15 s. unavailable_data_points marks hours
     whose output IESO reports with some units unreported (the value may be
     understated); fuels_without_output marks hours with no value at all.

@@ -650,3 +650,63 @@ async def test_invalid_arguments_fail_before_any_request(httpx_mock, call):
     with pytest.raises(InvalidInput):
         await call()
     assert httpx_mock.get_requests() == []
+
+
+@pytest.mark.parametrize(
+    ("typed", "layer_code"),
+    [
+        ("Alberta", "AB"),
+        ("colombie-britannique", "BC"),
+        ("COLOMBIE BRITANNIQUE", "BC"),
+        ("Québec", "QC"),
+        ("quebec", "QC"),
+        ("Île-du-Prince-Édouard", "PE"),
+        ("Newfoundland and Labrador", "NF"),
+        ("terre-neuve-et-labrador", "NF"),
+        ("Saskatchewan", "SA"),
+        ("nl", "NF"),
+        ("NF", "NF"),
+    ],
+)
+async def test_stations_province_filter_accepts_names_in_both_languages(
+    httpx_mock, typed, layer_code
+):
+    # A name used to be sent as prov = 'ALBERTA', matched nothing and the empty answer
+    # said it was out of season.
+    httpx_mock.add_response(url=WFS, json=_collection({"name": "X", "prov": layer_code}))
+    await client.get_stations(province=typed)
+    assert f"prov = '{layer_code}'" in _query(httpx_mock.get_requests()[0])["CQL_FILTER"]
+
+
+async def test_stations_filter_and_output_read_the_same_province_values(httpx_mock):
+    # The layer's `prov` values are codes (AB, BC, NF, SA in every recorded response).
+    # The filter sends the code, so the output maps only the legacy codes back: a name
+    # in the layer would match no filter, so it is shown as written, not made into a
+    # code that no filter could then find.
+    httpx_mock.add_response(
+        url=WFS,
+        json=_collection(
+            {"name": "A", "prov": "Colombie-Britannique", "lat": 50.0, "lon": -119.0},
+            {"name": "B", "prov": "SA", "lat": 50.0, "lon": -119.0},
+            {"name": "C", "prov": "NF", "lat": 50.0, "lon": -119.0},
+            {"name": "D", "prov": "WA", "lat": 50.0, "lon": -119.0},
+        ),
+    )
+    result = await client.get_stations(latitude=50.0, longitude=-119.0, radius_km=10)
+    assert {s.name: s.province for s in result.stations} == {
+        "A": "Colombie-Britannique",
+        "B": "SK",
+        "C": "NL",
+        "D": "WA",
+    }
+    # Each province written back as a filter asks for the code the layer holds.
+    for typed, layer_code in (("SK", "SA"), ("NL", "NF"), ("WA", "WA")):
+        httpx_mock.add_response(url=WFS, json=_collection({"name": "X", "prov": layer_code}))
+        await client.get_stations(province=typed)
+        assert f"prov = '{layer_code}'" in _query(httpx_mock.get_requests()[-1])["CQL_FILTER"]
+
+
+def test_province_code_leaves_non_provinces_alone():
+    assert client.province_code("TX") is None
+    assert client.province_code("Texas") is None
+    assert client.province_code("") is None

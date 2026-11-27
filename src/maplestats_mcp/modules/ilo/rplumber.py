@@ -102,17 +102,26 @@ def indicator_id(dataflow: str, freq: str) -> str:
 
 
 def from_year(
-    start_period: str | None, last_n: int | None, freq: str, this_year: int
+    start_period: str | None,
+    last_n: int | None,
+    freq: str,
+    this_year: int,
+    end_period: str | None = None,
 ) -> int | None:
     """The `timefrom` year: the start period's, or enough years to hold `last_n`
     observations with a margin for a country that lags (the rows are trimmed to
-    the last N of each series afterwards). None when neither is given."""
+    the last N of each series afterwards). None when neither is given.
+
+    The years are counted back from the end period when one is given (and is not
+    in the future), not from the current year: last_n=10 with end_period="2015"
+    asked for 2013 to 2015 and returned three years instead of ten."""
     if start_period:
         return int(start_period.strip()[:4])
     if last_n is None:
         return None
     years = -(-last_n // _PERIODS_PER_YEAR[freq]) + 3
-    return max(1900, this_year - years)
+    anchor = min(this_year, to_year(end_period) or this_year)
+    return max(1900, anchor - years)
 
 
 def to_year(end_period: str | None) -> int | None:

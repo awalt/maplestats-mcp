@@ -17,7 +17,7 @@ import pytest
 
 from maplestats_mcp.modules.ckan import client, constants, documents, files
 from maplestats_mcp.shared import cache as cache_module
-from maplestats_mcp.shared.errors import InvalidInput
+from maplestats_mcp.shared.errors import InvalidInput, UpstreamError
 
 CONTRACT_HISTORY = "4fe645a1-ffcd-40c1-9385-2c771be956a4"
 
@@ -146,6 +146,56 @@ async def test_a_resource_of_a_canadabuys_dataset_is_refused_on_any_host(httpx_m
     )
     with pytest.raises(InvalidInput, match="CanadaBuys"):
         await client.get_resource("federal", "r2")
+
+
+def _resource_show(httpx_mock, resource: Any) -> None:
+    httpx_mock.add_response(url=re.compile(r".*/action/resource_show\?.*"), json=_ok(resource))
+
+
+@pytest.mark.parametrize(
+    "resource",
+    [
+        _resource("r1", "https://canadabuys.canada.ca/opendata/pub/x.csv"),
+        _resource("r2", "https://donnees-data.tpsgc-pwgsc.gc.ca/x.csv", CONTRACT_HISTORY),
+    ],
+)
+async def test_datastore_search_refuses_a_canadabuys_resource_before_reading_rows(
+    httpx_mock, resource
+):
+    # datastore_search takes a bare resource id, so it reads the resource's record first.
+    _resource_show(httpx_mock, resource)
+    with pytest.raises(InvalidInput, match="CanadaBuys"):
+        await client.datastore_search("federal", resource["id"])
+    assert not any("datastore_search" in str(r.url) for r in httpx_mock.get_requests())
+
+
+async def test_datastore_search_reads_an_allowed_resource_with_one_cached_lookup(httpx_mock):
+    _resource_show(httpx_mock, _resource("r3", "https://open.canada.ca/data/x.csv"))
+    httpx_mock.add_response(
+        url=re.compile(r".*/action/datastore_search\?.*"),
+        json=_ok({"records": [{"_id": 1}], "fields": [{"id": "_id", "type": "int"}], "total": 1}),
+        is_reusable=True,
+    )
+    await client.datastore_search("federal", "r3")
+    await client.datastore_search("federal", "r3", offset=1)
+    urls = [str(r.url) for r in httpx_mock.get_requests()]
+    assert sum("resource_show" in u for u in urls) == 1
+    assert sum("datastore_search" in u for u in urls) == 2
+
+
+async def test_datastore_search_reads_no_rows_when_the_resource_record_is_not_an_object(
+    httpx_mock,
+):
+    _resource_show(httpx_mock, [])
+    with pytest.raises(UpstreamError, match="cannot be checked"):
+        await client.datastore_search("federal", "r5")
+    assert not any("datastore_search" in str(r.url) for r in httpx_mock.get_requests())
+
+
+async def test_datastore_search_refuses_in_french(httpx_mock):
+    _resource_show(httpx_mock, _resource("r4", "https://achatscanada.canada.ca/x.csv"))
+    with pytest.raises(InvalidInput, match="AchatsCanada"):
+        await client.datastore_search("federal", "r4", lang="fr")
 
 
 async def test_the_file_reader_refuses_before_any_download(httpx_mock):

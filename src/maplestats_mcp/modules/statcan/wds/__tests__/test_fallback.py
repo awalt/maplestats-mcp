@@ -533,6 +533,44 @@ async def test_valet_vector_without_a_known_table_is_served_with_the_gap_stated(
     assert series.observations[-1].value == 170.3
 
 
+async def test_valet_citation_without_a_known_table_invents_no_table_number(
+    httpx_mock, cloudflare_challenge
+):
+    """Vector 41690914 is not in the recorded book, so its table is unknown. The citation
+    read "Table 00-00-0000-01", a number that does not exist; it now cites the Valet series
+    that was read, and the StatCan vector it carries."""
+    _block(httpx_mock, cloudflare_challenge)
+    _valet(httpx_mock)
+    result = await _fn(tools.wds_get_data_from_vectors)(vector_ids=[41690914], latest_n=3)
+    cite = result.series[0].context.citation
+    assert "00-00-0000" not in cite
+    assert "Table" not in cite
+    assert "Bank of Canada" in cite and "V41690914" in cite and "v41690914" in cite
+
+
+async def test_valet_citation_without_a_known_table_in_french(httpx_mock, cloudflare_challenge):
+    _block(httpx_mock, cloudflare_challenge)
+    _others(httpx_mock)
+    _valet(httpx_mock, host=VALET_FR)
+    result = await _fn(tools.wds_get_data_from_vectors)(
+        vector_ids=[41690914], latest_n=3, lang="fr"
+    )
+    cite = result.series[0].context.citation
+    assert "00-00-0000" not in cite
+    assert "Tableau" not in cite
+    assert "Banque du Canada" in cite and "V41690914" in cite and "v41690914" in cite
+
+
+async def test_valet_citation_with_a_known_table_is_unchanged(httpx_mock, cloudflare_challenge):
+    _block(httpx_mock, cloudflare_challenge)
+    _lists(httpx_mock)
+    _valet(httpx_mock)
+    result = await _fn(tools.wds_get_data_from_vectors)(vector_ids=[41690973], latest_n=3)
+    assert result.series[0].context.citation == (
+        "Statistics Canada. Table 18-10-0004-01. Vector v41690973."
+    )
+
+
 async def test_valet_cpi_by_coordinate_in_french_uses_the_french_host(
     httpx_mock, cloudflare_challenge
 ):

@@ -20,8 +20,9 @@ services:
         value: "0"
       # Claude's connectors and the chat demo may reach this server from shared
       # addresses, so one bucket can serve many people: check Render's request
-      # logs, and raise the limit (and the 60 a minute stated on the website's
-      # connect, FAQ and privacy pages) if it does.
+      # logs, and raise the limit if it does. 60 a minute is this backup's own
+      # limit; the website's connect, FAQ, privacy and terms pages state the Azure
+      # endpoint's 120 a minute (MAPLE_RATE_LIMIT_REQUESTS in docker.yml).
       - key: MAPLE_RATE_LIMIT_REQUESTS
         value: "60"
       # Slow file reads hold a slot for up to 2 minutes; 4 let a few of them
@@ -84,8 +85,10 @@ services:
       # PUMF tabulation downloads whole ZIPs; the free disk does not persist.
       - key: MAPLE_PUMF_TABULATE
         value: "0"
-      # wds_query_series stays off until each query runs in a memory-capped process:
-      # one query could exhaust the instance's 512 MB (security review, 2026-11-03).
+      # wds_query_series and the other SQL tools (wds_query_table, eurostat_query_dataset,
+      # oecd_query_dataset) stay off on this 512 MB backup: one query could exhaust its
+      # memory (security review, 2026-11-03). The Azure endpoint, with 2 GiB, has them on
+      # (docker.yml).
       - key: MAPLE_QUERY_SERIES
         value: "0"
       # StatCan open-database (LODE) archives are unpacked to the system temp

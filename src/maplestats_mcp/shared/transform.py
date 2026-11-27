@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from itertools import pairwise
@@ -582,7 +582,9 @@ def _compute(transform: str, current: float | None, lagged: float | None, ppy: i
         return None
     if transform in ("diff", "yoy_diff"):
         return current - lagged
-    if lagged == 0:
+    # From a negative base the ratio flips the sign: -100 to -50 would read as a
+    # 50% fall. A percent change is only defined from a positive level.
+    if lagged <= 0:
         return None
     ratio = current / lagged
     if transform == "annualized_pct_change":
@@ -607,6 +609,47 @@ def _trailing_mean(
         present = [v for v in span if v is not None]
         out.append(math.fsum(present) / window if len(present) == window else None)
     return out
+
+
+def _running_period(
+    points: Sequence[tuple[date, float | None]], source_ppy: int | None, out_ppy: int | None
+) -> date | None:
+    """The output period the source data end inside (still running, or the series
+    stopped there): the last source date falls before its last sub-period.
+
+    None for daily or weekly data, whose fetch is counted in observations and
+    whose partial periods are left as they were (null).
+    """
+    if not points or source_ppy is None or out_ppy is None or source_ppy == out_ppy:
+        return None
+    last = points[-1][0]
+    start = period_start(last, out_ppy)
+    last_sub = shift_months(start, 12 // out_ppy - 12 // source_ppy)
+    return start if period_start(last, source_ppy) < last_sub else None
+
+
+def _nulled_by(
+    levels: list[tuple[date, float | None]],
+    bases: list[float | None],
+    returned: list[date],
+    test: Callable[[float], bool],
+    window: int | None,
+    ppy: int | None,
+    smoothing: bool,
+) -> bool:
+    """Whether a returned value is null because its base passed `test` (0, or negative):
+    its own change, or for a smoothed change, one inside its window."""
+    hit = {
+        d
+        for (d, v), base in zip(levels, bases, strict=True)
+        if v is not None and base is not None and test(base)
+    }
+    if not hit:
+        return False
+    if smoothing and window is not None and ppy is not None:
+        keys = {_key(d, ppy) for d in hit}
+        return any(_key(d, ppy) - k in keys for d in returned for k in range(window))
+    return any(d in hit for d in returned)
 
 
 def transform_series(
@@ -695,6 +738,9 @@ def transform_series(
         )
 
     values: list[float | None]
+    # The level each percent change divides by, to say which values a zero or
+    # negative base left null (None where there is no base).
+    bases: list[float | None] = [None] * len(levels)
     if applied == "level":
         values = [v for _, v in levels]
     elif applied == "index":
@@ -707,29 +753,20 @@ def transform_series(
     elif out_ppy is None:
         # Empty levels must give empty values: a lone leading None would make the
         # strict zip below raise when a window holds no observations.
+        bases = [None] * min(len(levels), 1) + [levels[i - 1][1] for i in range(1, len(levels))]
         values = [None] * min(len(levels), 1) + [
-            _compute(applied, levels[i][1], levels[i - 1][1], None) for i in range(1, len(levels))
+            _compute(applied, levels[i][1], bases[i], None) for i in range(1, len(levels))
         ]
     else:
         by_key = {_key(d, out_ppy): v for d, v in levels}
         lag = lag_periods(applied, out_ppy)
+        bases = [by_key.get(_key(d, out_ppy) - lag) for d, _ in levels]
         values = [
-            _compute(applied, v, by_key.get(_key(d, out_ppy) - lag), out_ppy) for d, v in levels
+            _compute(applied, v, base, out_ppy) for (_, v), base in zip(levels, bases, strict=True)
         ]
         if smoothing:
             assert window is not None
             values = _trailing_mean(levels, values, window, out_ppy)
-    if applied in ("pct_change", "yoy_pct_change", "annualized_pct_change") and any(
-        v == 0 for _, v in levels
-    ):
-        notes.append(
-            pick(
-                lang,
-                "A percent change from a level of 0 is undefined and left null.",
-                "Une variation en pourcentage à partir d'un niveau nul est indéfinie et laissée "
-                "nulle.",
-            )
-        )
 
     rows = list(zip(levels, values, strict=True))
     if window_start is not None:
@@ -737,8 +774,39 @@ def transform_series(
         rows = [r for r in rows if r[0][0] >= first]
     if window_end is not None:
         rows = [r for r in rows if r[0][0] <= window_end]
+    dropped: str | None = None
     if latest_n is not None:
+        running = _running_period(points, source_ppy, out_ppy) if frequency else None
+        if running is not None and rows and rows[-1][0][0] == running:
+            # source_periods_needed fetched extra source periods for the output period
+            # the data end inside; latest_n counts complete periods, so that one is left
+            # out rather than returned null in place of the last complete period. A
+            # period cut by a gap is not this one and stays, null.
+            dropped = period_label(running, out_ppy)
+            rows = rows[:-1]
         rows = rows[-latest_n:] if latest_n > 0 else []
+    if applied in ("pct_change", "yoy_pct_change", "annualized_pct_change"):
+        returned = [d for (d, _), _ in rows]
+        if _nulled_by(levels, bases, returned, lambda b: b == 0, window, out_ppy, smoothing):
+            notes.append(
+                pick(
+                    lang,
+                    "A percent change from a level of 0 is undefined and left null.",
+                    "Une variation en pourcentage à partir d'un niveau nul est indéfinie et "
+                    "laissée nulle.",
+                )
+            )
+        if _nulled_by(levels, bases, returned, lambda b: b < 0, window, out_ppy, smoothing):
+            notes.append(
+                pick(
+                    lang,
+                    "A percent change from a negative level is undefined and left null; "
+                    "transform='diff' (or 'yoy_diff') gives the change in the series' own units.",
+                    "Une variation en pourcentage à partir d'un niveau négatif est indéfinie et "
+                    "laissée nulle ; transform='diff' (ou 'yoy_diff') donne la variation dans "
+                    "les unités de la série.",
+                )
+            )
     if applied == "moving_average" and window is not None:
         notes.append(
             pick(
@@ -790,6 +858,17 @@ def transform_series(
                 "(left null rather than a partial-period figure).",
                 f"Non agrégé, les données ne couvrent pas toute la période : {', '.join(cut)} "
                 "(laissé nul plutôt qu'un chiffre sur une période partielle).",
+            )
+        )
+    if dropped:
+        notes.append(
+            pick(
+                lang,
+                f"Not aggregated, the data end before the end of the period: {dropped} (left "
+                "out: the latest periods asked for count complete periods only).",
+                f"Non agrégé, les données s'arrêtent avant la fin de la période : {dropped} "
+                "(laissée de côté : les dernières périodes demandées ne comptent que les "
+                "périodes complètes).",
             )
         )
 

@@ -80,6 +80,22 @@ def test_a_release_merges_unreleased_and_fragments_in_section_order(tmp_path):
     assert updated.endswith("## [0.4.2] - 2026-10-24\n\n### Added\n\n- Older entry.\n")
 
 
+def test_a_blank_line_inside_an_entry_keeps_its_paragraphs_apart(tmp_path):
+    text = (
+        "### Fixed\n\n- First paragraph.\n\n  Second paragraph.\n\n"
+        "- Next entry.\n\n### Added\n\n- A page.\n  Two lines.\n\n- Last.\n"
+    )
+    _, sections = changelog.parse_sections(text, "demo.md")
+    # Only the blank line followed by an indented line of the same entry survives.
+    assert sections == {
+        "Fixed": ["- First paragraph.\n\n  Second paragraph.", "- Next entry."],
+        "Added": ["- A page.\n  Two lines.", "- Last."],
+    }
+    _fragment(tmp_path, "paragraphs.md", text)
+    release = changelog.release_section(CHANGELOG, tmp_path)
+    assert "- First paragraph.\n\n  Second paragraph.\n- Next entry." in release
+
+
 def test_a_release_refuses_a_version_already_written_or_nothing_to_write(tmp_path):
     with pytest.raises(ValueError, match="already has a section"):
         changelog.write_release(CHANGELOG, "0.4.2", "2026-10-30", tmp_path)

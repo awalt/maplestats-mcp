@@ -177,7 +177,11 @@ class _DownloadBudget:
         now = time.monotonic()
         wait = self._wait(now, data)
         if wait > 0:
-            minutes = max(1, math.ceil(wait / 60))
+            # Round to a millisecond before the ceil: block() stores now + seconds and this
+            # reads it back as (now + seconds) - now, which is a hair over `seconds` in
+            # floating point when the clock has not moved (Windows' monotonic clock ticks
+            # every ~16 ms), so a Retry-After of 600 s was announced as 11 minutes.
+            minutes = max(1, math.ceil(round(wait, 3) / 60))
             raise_localized(
                 UpstreamUnavailable,
                 f"The OECD API allows {constants.DATA_DOWNLOADS_PER_HOUR} data downloads an hour "

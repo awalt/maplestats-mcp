@@ -34,7 +34,7 @@ authentication.
      `reproduce_code`.)
    - "Export that table as an Excel workbook." (`call_tool` with
      `reproduce_workbook`; the hosted server returns the file as base64.)
-4. Limits: 60 requests per minute per client. The server is always on, so
+4. Limits: 120 requests per minute per client. The server is always on, so
    there is no cold start.
 
 ## Review checklist

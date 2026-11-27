@@ -10,6 +10,7 @@ package-level formats, and Yukon's missing DataStore extension.
 from __future__ import annotations
 
 import json
+import re
 from typing import get_args
 from urllib.parse import parse_qs, urlparse
 
@@ -38,6 +39,15 @@ def _error(kind: str, message: str) -> dict[str, object]:
 
 def _query(request: httpx.Request) -> dict[str, list[str]]:
     return parse_qs(urlparse(str(request.url)).query)
+
+
+def _resource_lookup(httpx_mock) -> None:
+    """The resource_show answer datastore_search reads first, for a resource that is allowed."""
+    httpx_mock.add_response(
+        url=re.compile(r".*/action/resource_show\?.*"),
+        json=_ok({"id": "res1", "package_id": "pkg1", "url": "https://open.canada.ca/x.csv"}),
+        is_optional=True,
+    )
 
 
 _FEDERAL_PACKAGE = {
@@ -458,6 +468,7 @@ async def test_empty_ids_are_rejected():
 
 
 async def test_datastore_search_encodes_filters_and_parses_rows(httpx_mock):
+    _resource_lookup(httpx_mock)
     httpx_mock.add_response(
         json=_ok(
             {
@@ -470,7 +481,7 @@ async def test_datastore_search_encodes_filters_and_parses_rows(httpx_mock):
     result = await client.datastore_search("federal", "res1", filters={"Year": "2024"}, limit=5)
     assert result.total_count == 57
     assert [f.id for f in result.fields] == ["_id", "Year"]
-    assert json.loads(_query(httpx_mock.get_request())["filters"][0]) == {"Year": "2024"}
+    assert json.loads(_query(httpx_mock.get_requests()[-1])["filters"][0]) == {"Year": "2024"}
 
 
 async def test_datastore_search_rejects_bad_paging():
@@ -514,6 +525,7 @@ async def test_roster_paging_stops_when_offset_is_ignored(httpx_mock):
 
 
 async def test_datastore_unknown_filter_column_is_rejected(httpx_mock):
+    _resource_lookup(httpx_mock)
     httpx_mock.add_response(
         json=_ok(
             {
@@ -531,6 +543,7 @@ async def test_datastore_unknown_filter_column_is_rejected(httpx_mock):
 async def test_datastore_filter_validation_uses_full_schema_with_projection(
     httpx_mock, filter_name, valid
 ):
+    _resource_lookup(httpx_mock)
     httpx_mock.add_response(
         json=_ok(
             {
@@ -564,8 +577,8 @@ async def test_datastore_filter_validation_uses_full_schema_with_projection(
                 "toronto", "r", fields="measure_name", filters={filter_name: "Community"}
             )
     requests = httpx_mock.get_requests()
-    assert _query(requests[1])["limit"] == ["0"]
-    assert "fields" not in _query(requests[1])
+    assert _query(requests[2])["limit"] == ["0"]
+    assert "fields" not in _query(requests[2])
 
 
 async def test_unsuccessful_envelope_message_is_short(httpx_mock):

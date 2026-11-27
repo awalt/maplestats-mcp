@@ -241,6 +241,16 @@ async def test_search_words_chapter_and_limit(httpx_mock):
     assert [line.tariff for line in padded.lines] == ["0401.10.10"]
 
 
+@pytest.mark.parametrize("word", ["%", "_", "ma_le", "m%e"])
+async def test_like_wildcards_in_a_search_word_match_only_themselves(httpx_mock, word):
+    # "%" and "_" used to be LIKE wildcards: "ma_le" found "maple" and "%" found every line.
+    _serve(httpx_mock)
+    result = await client.search(word, edition="2026-2")
+    assert result.total_matches == 0 and result.lines == []
+    plain = await client.search("maple", edition="2026-2")
+    assert [line.tariff for line in plain.lines] == ["1702.20.00"]
+
+
 async def test_french_file_and_accent_free_search(httpx_mock):
     _serve(httpx_mock, french=True)
     result = await client.search("sirop d'erable", lang="fr", edition="2026-2")

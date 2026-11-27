@@ -9,11 +9,12 @@ in `headers`. The figures are the live ones for those dates.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 import httpx
 import pytest
 
-from maplestats_mcp.modules.nrcan_fuel_prices import client, tools
+from maplestats_mcp.modules.nrcan_fuel_prices import client, constants, tools
 from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError
 
 PAGE = re.compile(r"https://www2\.nrcan-rncan\.gc\.ca/eneene/sources/pripri/prices_bycity_e\.cfm")
@@ -148,6 +149,124 @@ async def test_a_past_year_of_weekly_prices_asks_for_that_year(httpx_mock):
     assert params["priceYear"] == "2025" and params["frequency"] == "W"
 
 
+def _weekly(year: int, periods: list[str]):
+    rows = [(period, "146.9", "32.9", "9.7", "54.0") for period in periods]
+    return _table(
+        f"Weekly Average Retail Prices for Diesel in {year}", "Week Ending", ["Canada"], rows
+    )
+
+
+def _year_page(httpx_mock, year: int, table: str):
+    httpx_mock.add_response(
+        url=re.compile(PAGE.pattern + rf"\?.*priceYear={year}$"), text=_page(table)
+    )
+
+
+async def test_latest_n_with_no_year_reaches_into_the_previous_year(httpx_mock):
+    # Early in the year the current page holds few weeks: latest_n=4 needs last year's too.
+    this_year = datetime.now(client._EASTERN).year
+    _listing(httpx_mock)
+    _year_page(
+        httpx_mock, this_year, _weekly(this_year, [f"{this_year}-01-06", f"{this_year}-01-13"])
+    )
+    _year_page(
+        httpx_mock,
+        this_year - 1,
+        _weekly(
+            this_year - 1,
+            [f"{this_year - 1}-12-16", f"{this_year - 1}-12-23", f"{this_year - 1}-12-30"],
+        ),
+    )
+    result = await client.get_prices("diesel", ["Canada"], latest_n=4)
+    assert [r.period for r in result.rows] == [
+        f"{this_year - 1}-12-23",
+        f"{this_year - 1}-12-30",
+        f"{this_year}-01-06",
+        f"{this_year}-01-13",
+    ]
+    assert result.total_rows == 5 and result.note is None
+    # The latest rows are this year's, so that is the year reported.
+    assert result.year == this_year
+    # Provenance names both pages that were read.
+    assert f"priceYear={this_year - 1}" in (result.provenance.coverage or "")
+    assert f"priceYear={this_year}" in (result.provenance.coverage or "")
+
+
+async def test_latest_n_one_in_january_is_not_a_not_found(httpx_mock):
+    # Until the first Tuesday of January the current year's table is empty.
+    this_year = datetime.now(client._EASTERN).year
+    _listing(httpx_mock)
+    _year_page(httpx_mock, this_year, _page())
+    _year_page(httpx_mock, this_year - 1, _weekly(this_year - 1, [f"{this_year - 1}-12-30"]))
+    result = await client.get_prices("diesel", ["Canada"], latest_n=1)
+    assert [r.period for r in result.rows] == [f"{this_year - 1}-12-30"]
+    # Every row is last year's: `year` says so instead of repeating the current year.
+    assert result.year == this_year - 1
+
+
+async def test_the_reach_back_page_gets_the_current_cache_time(httpx_mock, monkeypatch):
+    # December's figures are posted in early January, so last year's page is still changing.
+    this_year = datetime.now(client._EASTERN).year
+    seen: dict[str, int] = {}
+    original = client._html
+
+    async def spy(url, params, ttl, lang):
+        years = [value for key, value in params if key == "priceYear"]
+        if years:
+            seen[years[0]] = ttl
+        return await original(url, params, ttl, lang)
+
+    monkeypatch.setattr(client, "_html", spy)
+    _listing(httpx_mock)
+    _year_page(httpx_mock, this_year, _page())
+    _year_page(httpx_mock, this_year - 1, _weekly(this_year - 1, [f"{this_year - 1}-12-30"]))
+    await client.get_prices("diesel", ["Canada"], latest_n=1)
+    assert seen[str(this_year - 1)] == constants.CACHE_TTL_CURRENT_SECONDS
+    # A past year asked for by `year` is not reached back to: it keeps the long cache time.
+    seen.clear()
+    _year_page(httpx_mock, 2024, _weekly(2024, ["2024-12-31"]))
+    await client.get_prices("diesel", ["Canada"], year=2024)
+    assert seen["2024"] == constants.CACHE_TTL_PAST_SECONDS
+
+
+async def test_a_period_on_both_pages_is_kept_once(httpx_mock):
+    this_year = datetime.now(client._EASTERN).year
+    shared = f"{this_year}-01-06"
+    _listing(httpx_mock)
+    _year_page(httpx_mock, this_year, _weekly(this_year, [shared]))
+    _year_page(
+        httpx_mock, this_year - 1, _weekly(this_year - 1, [f"{this_year - 1}-12-30", shared])
+    )
+    result = await client.get_prices("diesel", ["Canada"], latest_n=5)
+    assert [r.period for r in result.rows] == [f"{this_year - 1}-12-30", shared]
+    assert result.total_rows == 2
+
+
+async def test_latest_n_larger_than_what_exists_says_how_many_there_are(httpx_mock):
+    this_year = datetime.now(client._EASTERN).year
+    _listing(httpx_mock)
+    _year_page(
+        httpx_mock, this_year, _weekly(this_year, [f"{this_year}-01-06", f"{this_year}-01-13"])
+    )
+    _year_page(httpx_mock, this_year - 1, _weekly(this_year - 1, [f"{this_year - 1}-12-30"]))
+    result = await client.get_prices("diesel", ["Canada"], latest_n=12)
+    assert len(result.rows) == 3
+    assert "Only 3 weekly periods" in (result.note or "")
+    assert "12 asked" in (result.note or "") and "Pass `year`" in (result.note or "")
+
+
+async def test_latest_n_does_not_fetch_a_second_year_when_this_year_has_enough(httpx_mock):
+    this_year = datetime.now(client._EASTERN).year
+    _listing(httpx_mock)
+    _year_page(
+        httpx_mock, this_year, _weekly(this_year, [f"{this_year}-01-06", f"{this_year}-01-13"])
+    )
+    result = await client.get_prices("diesel", ["Canada"], latest_n=2)
+    assert len(result.rows) == 2 and result.note is None
+    # The listing and one price page: no request for the year before.
+    assert len(httpx_mock.get_requests()) == 2
+
+
 async def test_a_frequency_nrcan_does_not_publish_is_reported_as_the_one_served(httpx_mock):
     # Live 2026-11-24: auto propane asked monthly comes back weekly, with no margins.
     propane = _table(
@@ -243,3 +362,19 @@ def test_docstrings_carry_use_for_and_keywords_in_both_languages():
     for fn in (tools.nrcan_fuel_prices_list_locations, tools.nrcan_fuel_prices_get_prices):
         doc = fn.__doc__ or ""
         assert "Use for:" in doc and "Keywords:" in doc and "Mots-clés :" in doc
+
+
+def test_module_and_tool_descriptions_say_nrcans_terms_apply():
+    # The terms were in provenance only: a reader of the catalogue or of a tool's
+    # description saw "NRCan prices" with nothing about reuse. Each description now
+    # names the terms and where to read them, in the wording provenance carries.
+    from maplestats_mcp.modules import nrcan_fuel_prices as module
+
+    assert "non-commercial reproduction only" in module.MODULE_DESCRIPTION
+    assert "provenance.licence" in module.MODULE_DESCRIPTION
+    assert "reproduction non commerciale seulement" in module.MODULE_DESCRIPTION_FR
+    assert "provenance.licence" in module.MODULE_DESCRIPTION_FR
+    for fn in (tools.nrcan_fuel_prices_list_locations, tools.nrcan_fuel_prices_get_prices):
+        doc = fn.__doc__ or ""
+        assert "NRCan's terms apply" in doc and "provenance.licence" in doc
+        assert doc.index("provenance.licence") < doc.index("Keywords:")

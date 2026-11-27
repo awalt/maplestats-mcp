@@ -26,7 +26,9 @@ How it is built, and why:
   await, not the thread or the process): PAGE_SECONDS a page, and the loop over the
   pages draws from one budget the caller gives it (the reference reader gives its
   PDF_EXTRACT_SECONDS less what extraction already used), so the pages read are
-  whatever fits;
+  whatever fits. The budget also bounds the page being read: the child is killed at
+  whichever comes first, PAGE_SECONDS or what is left of the budget (the page render,
+  which PDFium cannot interrupt, is the one step that can still run past it);
 - where the operating system allows it (Linux), the child's address space is capped
   at `MAPLE_OCR_MEMORY_MB` by a one-line Python launcher that sets RLIMIT_AS and
   execs tesseract (a `preexec_fn` is unsafe in a process with threads);
@@ -36,14 +38,18 @@ How it is built, and why:
   page whose declared images pass MAX_DECLARED_PIXELS is refused, and one that
   would pass MAX_RENDER_PIXELS at 200 dpi is drawn at a lower resolution, down to
   MIN_DPI, then refused;
-- each page's text is cached with its resolution and the engine's version, inside the
-  shared response cache's byte budget (about 3 KB a page).
+- each page's text is cached with a hash of the document's bytes, its resolution and
+  the engine's version, inside the shared response cache's byte budget (about 3 KB a
+  page). The URL alone is not the document: a file replaced at the same URL within the
+  cache's day would have been served the old file's text.
 
 None of these caps raises an existing one.
 """
 
 from __future__ import annotations
 
+import contextvars
+import hashlib
 import importlib
 import importlib.util
 import io
@@ -142,7 +148,9 @@ class OcrRun:
     unread: list[int]  # asked for, within the page cap, not reached
     over_cap: list[int]  # asked for beyond MAX_PAGES
     stopped: Stopped | None = None
-    stopped_page: int | None = None  # the page a busy, timeout or failed stop happened at
+    # The page a busy, timeout or failed stop happened at, or the page the budget ran out
+    # in the middle of (a "time" stop between pages leaves it None).
+    stopped_page: int | None = None
     seconds: float = 0.0
 
 
@@ -173,6 +181,14 @@ class _Stop(Exception):
 _slot = threading.Semaphore(1)
 _probed: dict[str, tuple[str, frozenset[str]]] = {}
 _probe_lock = threading.Lock()
+
+# When the caller's time budget ends (a time.monotonic() value). read_pages sets it
+# around each page's read and run_parse copies the context into the worker thread, so
+# the page being read stops at the budget, not only at PAGE_SECONDS. Unset: PAGE_SECONDS
+# alone, as when _read_page is called directly.
+_budget_end: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    "ocr_budget_end", default=None
+)
 
 
 def reset() -> None:
@@ -444,8 +460,16 @@ def _command(engine: Engine, dpi: int, memory_mb: int) -> list[str]:
     return command
 
 
-def _tesseract(pgm: bytes, engine: Engine, dpi: int, memory_mb: int) -> str:
-    """Tesseract's TSV for the image, from a child killed at PAGE_SECONDS."""
+def _tesseract(
+    pgm: bytes, engine: Engine, dpi: int, memory_mb: int, seconds: float | None = None
+) -> str:
+    """Tesseract's TSV for the image, from a child killed at PAGE_SECONDS or after
+    `seconds` (what is left of the caller's budget), whichever is less.
+
+    A child killed at the budget is `_Stop("time")`, not a page over PAGE_SECONDS
+    (`_Stop("timeout")`): the page may be fine, the call has no time left for it.
+    """
+    limit = PAGE_SECONDS if seconds is None else min(PAGE_SECONDS, seconds)
     try:
         child = subprocess.Popen(
             _command(engine, dpi, memory_mb),
@@ -457,11 +481,11 @@ def _tesseract(pgm: bytes, engine: Engine, dpi: int, memory_mb: int) -> str:
     except OSError as exc:
         raise _Stop("failed", f"tesseract did not start ({exc})") from exc
     try:
-        out, err = child.communicate(pgm, timeout=PAGE_SECONDS)
+        out, err = child.communicate(pgm, timeout=limit)
     except subprocess.TimeoutExpired:
         child.kill()
         child.communicate()  # reaps the child and closes its pipes
-        raise _Stop("timeout") from None
+        raise _Stop("timeout" if limit >= PAGE_SECONDS else "time") from None
     except BaseException:
         child.kill()
         child.communicate()
@@ -504,6 +528,18 @@ def parse_tsv(tsv: str) -> tuple[str, float | None]:
     return text, confidence
 
 
+def _budget_left() -> float | None:
+    """Seconds left of the caller's budget (see _budget_end); None when it set none.
+    `_Stop("time")` when none is left."""
+    end = _budget_end.get()
+    if end is None:
+        return None
+    left = end - time.monotonic()
+    if left <= 0:
+        raise _Stop("time")
+    return left
+
+
 def _read_page(
     body: bytes, number: int, engine: Engine, dpi: int, wait: float, memory_mb: int
 ) -> _Recognised:
@@ -512,9 +548,12 @@ def _read_page(
         raise _Stop("busy")
     try:
         check_deadline()
+        # The wait for the slot above used part of the budget: no render for a page
+        # there is no time left to read.
+        _budget_left()
         pgm = _render_pgm(body, number, dpi)
         check_deadline()
-        text, confidence = parse_tsv(_tesseract(pgm, engine, dpi, memory_mb))
+        text, confidence = parse_tsv(_tesseract(pgm, engine, dpi, memory_mb, _budget_left()))
     finally:
         _slot.release()
     return _Recognised(text, confidence, dpi)
@@ -558,6 +597,51 @@ def _stopped_error(
     )
 
 
+async def _read_cached(
+    key: str,
+    body: bytes,
+    plan: _Plan,
+    engine: Engine,
+    memory_mb: int,
+    started: float,
+    seconds: float,
+) -> tuple[_Recognised, bool]:
+    """One page's text and whether it came from the cache, read within the budget that
+    began at `started` and lasts `seconds`.
+
+    Calls reading the same page at once share one read (cache.cached_fetch), and a call
+    that joined another's read is handed its outcome, including a stop that was about
+    the other call: its budget ending ("time") or its own wait for the engine ("busy",
+    which is cut to that call's remaining budget). Such a stop is not this call's, so it
+    reads again with its own budget while any is left. A "timeout" or a "failed" is about
+    the page, and is shared as it is: no second try.
+    """
+    while True:
+        remaining = seconds - (time.monotonic() - started)
+        ran = False
+
+        async def fetch(wait: float = min(BUSY_SECONDS, remaining)) -> _Recognised:
+            nonlocal ran
+            ran = True
+            token = _budget_end.set(started + seconds)
+            try:
+                return await run_parse(
+                    _read_page, body, plan.number, engine, plan.dpi, wait, memory_mb
+                )
+            finally:
+                _budget_end.reset(token)
+
+        try:
+            return await cache.cached_fetch(key, CACHE_TTL_SECONDS, fetch)
+        except _Stop as stop:
+            if ran or stop.kind not in ("time", "busy"):
+                raise
+            if seconds - (time.monotonic() - started) <= 0:
+                # Past this call's own budget too: the time limit, whatever the other
+                # call's stop was called.
+                raise _Stop("time") from None
+
+
 async def read_pages(
     body: bytes,
     numbers: Sequence[int],
@@ -572,10 +656,11 @@ async def read_pages(
 
     At most MAX_PAGES pages and `seconds` of work (the wait for the OCR slot included),
     then the pages not reached are returned in `unread` with `stopped` saying why: a
-    cap that ends the run is not an error. A page that must not be drawn raises
-    InvalidInput before any page is read; a first page that cannot be read at all (the
-    engine busy, a crash, a page over PAGE_SECONDS) raises too, since there is nothing to
-    return.
+    cap that ends the run is not an error, whether the budget ends between two pages or
+    in the middle of one (that page is then unread, with no pages read if it was the
+    first). A page that must not be drawn raises InvalidInput before any page is read; a
+    first page that cannot be read at all (the engine busy, a crash, a page over
+    PAGE_SECONDS) raises too, since there is nothing to return.
     """
     started = time.monotonic()
     ordered = sorted(set(numbers))
@@ -584,6 +669,8 @@ async def read_pages(
     memory_mb = config.get_ocr_memory_mb()
     run = OcrRun(engine, [], [], over_cap)
     total = 0
+    # The document's identity for the cache: the URL can serve another file tomorrow.
+    digest = hashlib.sha256(body).hexdigest()[:32]
     for index, plan in enumerate(plans):
         remaining = seconds - (time.monotonic() - started)
         if remaining <= 0:
@@ -591,15 +678,13 @@ async def read_pages(
             run.unread = [p.number for p in plans[index:]]
             break
         began = time.monotonic()
-        key = f"ocr:{url}:{plan.number}:{plan.dpi}:{engine.version}:{engine.languages}"
-
-        async def fetch(plan: _Plan = plan, wait: float = min(BUSY_SECONDS, remaining)):
-            return await run_parse(_read_page, body, plan.number, engine, plan.dpi, wait, memory_mb)
-
+        key = f"ocr:{url}:{digest}:{plan.number}:{plan.dpi}:{engine.version}:{engine.languages}"
         try:
-            read, cached = await cache.cached_fetch(key, CACHE_TTL_SECONDS, fetch)
+            read, cached = await _read_cached(key, body, plan, engine, memory_mb, started, seconds)
         except _Stop as stop:
-            if not run.pages:
+            # The budget ending inside a page is a cap that ends the run, like the one
+            # checked above between pages, so it is not an error even for the first page.
+            if not run.pages and stop.kind != "time":
                 raise _stopped_error(stop.kind, plan.number, stop.detail, lang, context) from None
             run.stopped, run.stopped_page = stop.kind, plan.number
             run.unread = [p.number for p in plans[index:]]

@@ -8,7 +8,7 @@ import pytest
 
 from maplestats_mcp.modules.statcan.rdaas import client
 from maplestats_mcp.shared import cache as cache_module
-from maplestats_mcp.shared.errors import InvalidInput, NotFound
+from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError
 
 _SEARCH_RESPONSE = {
     "results": {
@@ -210,6 +210,48 @@ async def test_get_classification_categories_detailed_handles_empty_body(httpx_m
     result = await client.get_classification_categories_detailed("MJRdRiFsfmJAprtT")
     assert result.categories == []
     assert result.provenance.coverage is not None
+
+
+async def test_categories_html_200_is_an_upstream_error_and_is_not_cached(httpx_mock):
+    """A 200 with an HTML maintenance page is not "no categories": it raises, and the
+    next call, once RDaaS is back, reads the real list instead of a cached empty one.
+
+    Before the fix the page was turned into {} like the live zero-byte NAICS answer and
+    cached for 24 hours as "RDaaS has no data for this classification"."""
+    httpx_mock.add_response(
+        content=b"<html><body>Service temporarily unavailable</body></html>",
+        headers={"content-type": "text/html"},
+    )
+    with pytest.raises(UpstreamError):
+        await client.get_classification_categories_detailed("MJRdRiFsfmJAprtT")
+
+    httpx_mock.add_response(json=_CATEGORIES_RESPONSE)
+    result = await client.get_classification_categories_detailed("MJRdRiFsfmJAprtT")
+    assert [c.code for c in result.categories] == ["00010"]
+    assert result.provenance.cached is False
+
+
+async def test_exclusions_html_200_is_an_upstream_error(httpx_mock):
+    httpx_mock.add_response(
+        content=b"<html><body>Maintenance</body></html>",
+        headers={"content-type": "text/html"},
+    )
+    with pytest.raises(UpstreamError):
+        await client.get_classification_exclusions("MJRdRiFsfmJAprtT")
+
+
+async def test_categories_html_200_error_is_french_on_request(httpx_mock):
+    httpx_mock.add_response(content=b"<html>Maintenance</html>")
+    with pytest.raises(UpstreamError, match="RDaaS a répondu"):
+        await client.get_classification_categories_detailed("MJRdRiFsfmJAprtT", lang="fr")
+
+
+async def test_categories_genuine_empty_json_stays_a_valid_result(httpx_mock):
+    """An empty but well-formed answer ({"@graph": []}) is data, not an outage."""
+    httpx_mock.add_response(json={"@graph": []})
+    result = await client.get_classification_categories_detailed("MJRdRiFsfmJAprtT")
+    assert result.categories == []
+    assert result.total_count == 0
 
 
 async def test_get_classification_exclusions_parses_source_and_target_fields(httpx_mock):
