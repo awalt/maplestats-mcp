@@ -54,6 +54,19 @@ class Topic:
     patterns: tuple[str, ...] = ()
 
 
+# Pump prices: NRCan's retail prices by city answer these (nrcan_fuel_prices_), and the
+# words also bring a question about them to the prices topic ("price of gas in Calgary").
+_FUEL_PRICE_TERMS = (
+    "price of gas",
+    "diesel",
+    "pump price*",
+    "fuel price*",
+    "prix de l'essence",
+    "prix a la pompe",
+    "prix du diesel",
+    "carburant*",
+)
+
 # A department's total spending or headcount is GC InfoBase's, not proactive
 # disclosure's: "How much did ESDC spend in 2023-24 and how many employees"
 # got no plan at all before these words were spending cues. The unambiguous
@@ -509,6 +522,7 @@ TOPICS: tuple[Topic, ...] = (
             "food price",
             "gas price",
             "gasoline",
+            *_FUEL_PRICE_TERMS,
             "indice des prix",
             "ipc",
             "cout de la vie",
@@ -523,6 +537,12 @@ TOPICS: tuple[Topic, ...] = (
                 "latest headline CPI and change: query='consumer price index'",
             ),
             PlanStep("wds_search_cubes", "CPI table by component or province (e.g. 18-10-0004)"),
+            PlanStep(
+                "nrcan_fuel_prices_get_prices",
+                "pump prices by city, with taxes and margins: product='regular' or "
+                "'diesel', locations=['Canada', <city>], latest_n=1",
+                ("gas price", "gasoline", *_FUEL_PRICE_TERMS),
+            ),
             PlanStep(
                 "boc_search_series",
                 "Bank of Canada core inflation: query='CPI-trim', 'CPI-median', 'CPI-common', "

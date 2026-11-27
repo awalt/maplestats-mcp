@@ -1067,6 +1067,21 @@ async def get_disease_detections(
                 else "Les lignes dont le jour et le mois sont illisibles sont groupées sous "
                 "leur année seule."
             )
+        # A row such as "Alberta and Saskatchewan" belongs to both provinces, so the
+        # province groups add up to more than the rows; row_count and herd_count above
+        # count each row once and are the national total.
+        several = sum(1 for row in rows if len(row.provinces) > 1)
+        if counts_by == "province" and several:
+            notes.append(
+                f"{several} row(s) name several provinces and are counted in each of them, so "
+                "the province counts add up to more than row_count and herd_count, which count "
+                "every row once; use those two for the national total."
+                if lang == "en"
+                else f"{several} ligne(s) nomment plusieurs provinces et sont comptées dans "
+                "chacune : la somme des décomptes par province dépasse row_count et "
+                "herd_count, qui comptent chaque ligne une seule fois ; utilisez ces deux "
+                "valeurs pour le total national."
+            )
 
     pages = [constants.DETECTION_PAGES[key][lang] for key in keys]
     return DiseaseDetectionResult(

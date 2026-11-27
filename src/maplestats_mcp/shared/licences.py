@@ -72,6 +72,17 @@ CANADA_CA_TERMS = (
     "source URL cited; commercial redistribution needs written permission."
 )
 
+# NRCan's own terms (natural-resources.canada.ca/corporate/terms-conditions, read 2026-11-24).
+# The retail fuel prices come from third-party data, as NRCan says on its fuel prices page.
+# Approved for a hosted reader by the owner on 2026-11-24 (issue #249).
+NRCAN_TERMS = (
+    "Natural Resources Canada terms and conditions "
+    "(https://natural-resources.canada.ca/corporate/terms-conditions): reproduction for "
+    "personal or public non-commercial purposes is allowed without permission, unaltered, "
+    "citing the title and NRCan as the author; commercial redistribution needs NRCan's prior "
+    "written permission. NRCan states that its fuel prices rely on third-party data."
+)
+
 CIHI_TERMS = (
     "CIHI Terms of Use (https://www.cihi.ca/en/terms-of-use): free use for education, "
     "non-commercial research, internal reference and private study, crediting CIHI as the "
@@ -422,6 +433,7 @@ SOURCE_LICENCES: dict[str, str] = {
     "ircc-processing-times": CANADA_CA_TERMS,
     "ised-cipo": CANADA_CA_TERMS,
     "nrcan-energy-use": CANADA_CA_TERMS,
+    "nrcan-fuel-prices": NRCAN_TERMS,
     "pmprb": CANADA_CA_TERMS,
     "health_products": OGL_CANADA,
     "finance_canada": CANADA_CA_TERMS,
@@ -507,6 +519,14 @@ LICENCES_FR: dict[str, str] = {
         "avis.html) : la reproduction non commerciale est permise sans autorisation, en citant "
         "le titre, l'auteur et l'adresse URL de la source ; la redistribution commerciale exige "
         "une autorisation écrite."
+    ),
+    NRCAN_TERMS: (
+        "Avis de Ressources naturelles Canada "
+        "(https://ressources-naturelles.canada.ca/organisation/avis) : la reproduction à des "
+        "fins personnelles ou publiques non commerciales est permise sans autorisation, sans "
+        "modification, en citant le titre et RNCan comme auteur ; la redistribution "
+        "commerciale exige l'autorisation écrite préalable de RNCan. RNCan indique que ses "
+        "prix des carburants s'appuient sur des données de tiers."
     ),
     BOC_TERMS: (
         "Conditions d'utilisation de la Banque du Canada "
@@ -931,6 +951,7 @@ COMMERCIAL_USE: dict[str, CommercialUse] = {
     EDMONTON_TERMS: "allowed",
     CALGARY_TERMS: "allowed",
     CANADA_CA_TERMS: "not_allowed",
+    NRCAN_TERMS: "not_allowed",
     CIHI_TERMS: "not_allowed",
     CMHC_TERMS: "not_allowed",
     HOUSE_OF_COMMONS_TERMS: "not_allowed",

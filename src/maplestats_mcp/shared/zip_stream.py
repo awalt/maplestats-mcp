@@ -38,7 +38,6 @@ import zlib
 from collections import deque
 from collections.abc import AsyncGenerator, Awaitable, Callable, Iterator
 from dataclasses import dataclass
-from typing import Any
 
 import httpx
 
@@ -608,6 +607,16 @@ class OnePassMember:
                 del buf[:count]
                 return out
 
+            async def skip(count: int) -> None:
+                # A member that is not wanted is dropped as it arrives: `take` would
+                # hold all of it (and a copy) before throwing it away.
+                while count:
+                    if not buf and not await more():
+                        raise truncated()
+                    dropped = min(count, len(buf))
+                    del buf[:dropped]
+                    count -= dropped
+
             while True:
                 if await take(4) != _LOCAL:
                     raise self._fail(
@@ -622,7 +631,7 @@ class OnePassMember:
                 wanted = self.wanted(name)
                 described = bool(flags & 0x08)
                 if not wanted and not described and method in (0, 8):
-                    await take(compressed)
+                    await skip(compressed)
                     continue
                 if method != 8:
                     raise self._fail(
@@ -632,23 +641,24 @@ class OnePassMember:
                         "une passe.",
                     )
                 inflater = zlib.decompressobj(-15)
-
-                def step(raw: bytes, inflater: Any = inflater) -> bytes:
-                    # Bounded output per call, so a deflate bomb cannot balloon memory.
-                    out = bytearray()
-                    while raw and not inflater.eof:
-                        out += inflater.decompress(raw, _INFLATE_STEP)
-                        raw = inflater.unconsumed_tail
-                    return bytes(out)
-
                 inflated = 0
                 pending = b""
+                data = b""  # input zlib has not taken yet (a call returns at its output cap)
+                drain = False  # the last call filled its cap: zlib may still hold output
                 while not inflater.eof:
-                    if not buf and not await more():
-                        raise truncated()
-                    data = bytes(buf)
-                    buf.clear()
-                    out = await run_in_pool(step, data)
+                    if not data and not drain:
+                        if not buf and not await more():
+                            raise truncated()
+                        data = bytes(buf)
+                        buf.clear()
+                    # One call returns at most _INFLATE_STEP bytes, and never more than one
+                    # byte past the ceiling, so a deflate bomb in a single chunk is stopped
+                    # here, before its output is held in memory, not after.
+                    # (A max_length of 0 would mean no bound at all, hence the floor of 1.)
+                    cap = max(1, min(_INFLATE_STEP, self.max_inflated_bytes - inflated + 1))
+                    out = await run_in_pool(inflater.decompress, data, cap)
+                    data = inflater.unconsumed_tail
+                    drain = len(out) == cap
                     if inflater.eof:
                         buf[:0] = inflater.unused_data
                     inflated += len(out)

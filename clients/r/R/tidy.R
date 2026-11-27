@@ -8,6 +8,37 @@ is_object <- function(x) {
   is.list(x) && !is.null(names(x))
 }
 
+# The text a "shared_notes[i]" reference stands for, else the value itself.
+swap_note <- function(node, notes) {
+  if (is.list(node)) {
+    return(purrr::modify(node, swap_note, notes = notes))
+  }
+  if (!is.character(node) || length(node) != 1) {
+    return(node)
+  }
+
+  index <- stringr::str_match(node, "^shared_notes\\[(\\d+)\\]$")[, 2]
+  index <- as.integer(index) + 1L
+  if (is.na(index) || index > length(notes)) node else notes[[index]]
+}
+
+# The payload with each "shared_notes[i]" replaced by its text. The server
+# states a note, caveat, footnote or licence shared by two or more items of a
+# list once, in a top-level `shared_notes` list, and puts "shared_notes[i]" in
+# each item (shared/brief.py, share_repeated_notes), in brief and in full
+# results alike. The references are replaced wherever they stand as a whole
+# value or list item, and `shared_notes` is dropped, so it is not reported as
+# left out. A payload without `shared_notes` comes back as it is.
+resolve_shared_notes <- function(payload) {
+  notes <- if (is_object(payload)) payload[["shared_notes"]] else NULL
+  if (!is.list(notes) || length(notes) == 0) {
+    return(payload)
+  }
+
+  payload[names(payload) != "shared_notes"] |>
+    swap_note(notes = unlist(notes))
+}
+
 is_record_list <- function(x) {
   is.list(x) && is.null(names(x)) && length(x) > 0 &&
     all(purrr::map_lgl(x, is_object))

@@ -9,37 +9,58 @@ from collections.abc import Iterator
 import pytest
 from tenacity import BaseRetrying, wait_none
 
-# Importing maplestats_mcp.asgi marks the process as an HTTP server, which would
-# change how the server module describes its export tools for every test after it.
+# The tests run as a stdio server unless one sets this itself. The variable does not stop
+# an import of maplestats_mcp.asgi from marking the process as HTTP: that mark wins over
+# it, and mark_serving_http is replaced below for that reason.
 os.environ.setdefault("MAPLE_TRANSPORT", "stdio")
 # The census profile keeps its values in a file between runs; a test must neither read a
 # file a past run left in the temp folder nor leave one (census tests that want the file
 # set the folder to their own tmp_path).
 os.environ.setdefault("MAPLE_CENSUS_CACHE_DIR", "off")
 
+from maplestats_mcp import config
 from maplestats_mcp.shared import cache, file_download, path_health
 from maplestats_mcp.shared.breaker import BREAKER
 from maplestats_mcp.shared.rate_limiter import TokenBucket
 
+# Importing maplestats_mcp.asgi marks the process as an HTTP server, and a marked process
+# is HTTP whatever MAPLE_TRANSPORT says (config.get_transport). Left alone, every test
+# after that import would run as an HTTP server (export tools described as hosted), and a
+# process whose first server import came through asgi would build the shared `mcp`
+# without wds_query_series. The tests of the mark itself set config._serves_http
+# (tests/test_config.py).
+config.mark_serving_http = lambda: None
+
 # Marker, and the variable that turns its skip into a failure.
 _REQUIRED_WHEN_SKIPPED = (("r_julia", "MAPLE_REQUIRE_R_JULIA"), ("ocr", "MAPLE_REQUIRE_OCR"))
+# A package, and the variable that turns a skip for want of it into a failure. The tests
+# that need it call pytest.importorskip(package) in their body, so no marker marks them.
+_REQUIRED_PACKAGES = (("polars", "MAPLE_REQUIRE_POLARS"),)
 
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]):
-    """Fail an r_julia or ocr test that skips when MAPLE_REQUIRE_R_JULIA=1 or MAPLE_REQUIRE_OCR=1.
+    """Fail a skip when MAPLE_REQUIRE_R_JULIA, MAPLE_REQUIRE_OCR or MAPLE_REQUIRE_POLARS is 1.
 
-    Those tests skip without R, Julia or one of their packages (or without
-    pypdfium2, the tesseract program or its language data), which is right on a
-    laptop but would let CI's r-julia or ocr job pass with a package missing.
+    The r_julia and ocr tests skip without R, Julia or one of their packages (or
+    without pypdfium2, the tesseract program or its language data), which is right
+    on a laptop but would let CI's r-julia or ocr job pass with a package missing.
+    The tests that run reproduce_code's Python scripts skip without polars, which
+    was in no dependency group, so they skipped in every CI job unnoticed.
     """
     outcome = yield
     report = outcome.get_result()
     if not report.skipped:
         return
+    reason = report.longrepr[2] if isinstance(report.longrepr, tuple) else report.longrepr
     for marker, variable in _REQUIRED_WHEN_SKIPPED:
         if os.environ.get(variable) == "1" and item.get_closest_marker(marker) is not None:
-            reason = report.longrepr[2] if isinstance(report.longrepr, tuple) else report.longrepr
+            report.outcome = "failed"
+            report.longrepr = f"{variable}=1, but the test skipped: {reason}"
+            return
+    for package, variable in _REQUIRED_PACKAGES:
+        # importorskip's message: "Skipped: could not import 'polars': No module named ..."
+        if os.environ.get(variable) == "1" and f"could not import '{package}'" in str(reason):
             report.outcome = "failed"
             report.longrepr = f"{variable}=1, but the test skipped: {reason}"
             return

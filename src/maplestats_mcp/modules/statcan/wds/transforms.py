@@ -208,6 +208,17 @@ def kept_dates(
         first = computed.points[0].ref_date
         last = shift_months(computed.points[-1].ref_date, 12 // (out_ppy or 12))
         kept = [d for d in kept if first <= d < last]
+    elif (
+        computed.aggregation is not None
+        and latest_n is not None
+        and window_start is None
+        and window_end is None
+        and kept
+    ):
+        # Aggregated, counted by latest_n, no window, published rows and no point: the
+        # only period was the one the data end inside, which transform_series leaves
+        # out (a note names it), so no published value goes with it either.
+        kept = []
     else:
         if window_start is not None:
             kept = [d for d in kept if d >= window_start]

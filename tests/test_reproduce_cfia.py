@@ -447,15 +447,19 @@ async def test_hostile_animal_type_is_one_r_string(tmp_path):
         "cfia_disease_detections", {"disease": "cwd", "animal_type": _PAYLOAD}, "r"
     )
     path = tmp_path / "script.R"
-    path.write_text(result.scripts[0].code)
+    path.write_text(result.scripts[0].code, encoding="utf-8")
     # parse() reads the whole script without running it: any code the payload
     # escaped into would show up as calls to system().
     probe = (
-        f"exprs <- parse({json.dumps(str(path))}, keep.source = FALSE)\n"
+        f"exprs <- parse({json.dumps(path.as_posix())}, keep.source = FALSE, encoding = 'UTF-8')\n"
         "calls <- all.names(as.call(c(as.name('{'), exprs)))\n"
         "cat(sum(calls == 'system'), sum(calls == 'run'), '\\n')\n"
     )
-    out = _run([rscript, "-e", probe])
+    # The probe goes in a file: on Windows `Rscript -e` with a multi-line
+    # expression printed nothing (R 4.5.2, 2026-11-26), so the test failed there.
+    probe_path = tmp_path / "probe.R"
+    probe_path.write_text(probe, encoding="utf-8")
+    out = _run([rscript, str(probe_path)])
     assert out.returncode == 0, out.stderr
     assert out.stdout.split() == ["0", "0"]
 
@@ -669,7 +673,8 @@ async def test_r_scripts_reproduce_the_tool_offline(tmp_path):
                 out,
                 _fields(tool),
                 _aggregate_file(tool, groups) if aggregate is not None else None,
-            )
+            ),
+            encoding="utf-8",
         )
         run = _run([rscript, str(script)], cwd=tmp_path)
         assert run.returncode == 0, run.stderr[-3000:]
@@ -711,7 +716,9 @@ async def test_r_french_premises_listed_twice_take_the_last_row(tmp_path, monkey
     result = await client.reproduce("cfia_avian_influenza", args, "r")
     out = tmp_path / "out.tsv"
     script = tmp_path / "script.R"
-    script.write_text(_offline_r(result.scripts[0].code, out, _fields("cfia_avian_influenza")))
+    script.write_text(
+        _offline_r(result.scripts[0].code, out, _fields("cfia_avian_influenza")), encoding="utf-8"
+    )
     run = _run([rscript, str(script)], cwd=tmp_path)
     assert run.returncode == 0, run.stderr[-3000:]
     assert _read_rows(out) == expected
@@ -741,7 +748,9 @@ async def test_julia_scripts_reproduce_the_tool_offline(tmp_path):
             )
         )
     script = tmp_path / "scripts.jl"
-    script.write_text("\n".join(modules))
+    # UTF-8 stated: the platform default (cp1252 on Windows) wrote the French
+    # titles as bytes Julia rejects as invalid UTF-8.
+    script.write_text("\n".join(modules), encoding="utf-8")
     run = _run([julia, str(script)], cwd=tmp_path)
     assert run.returncode == 0, run.stderr[-3000:]
     for out, groups, aggregate, tool, args in outputs:

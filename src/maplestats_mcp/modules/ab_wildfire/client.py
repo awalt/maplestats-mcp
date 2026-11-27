@@ -375,8 +375,7 @@ def build_fire_where(
             )
         clauses.append("SIZE_CLASS IN (" + ", ".join(_quote(x) for x in letters) + ")")
     if filters.forest_area and filters.forest_area.strip():
-        pattern = filters.forest_area.strip().upper().replace("'", "''")
-        clauses.append(f"UPPER(RESP_AREA) LIKE '%{pattern}%'")
+        clauses.append(arcgis.like_contains("RESP_AREA", filters.forest_area))
     if filters.fire_year is not None:
         clauses.append(f"FIRE_YEAR = {int(filters.fire_year)}")
     if filters.carryover is not None:
@@ -823,8 +822,7 @@ def build_perimeter_where(
 ) -> str:
     clauses: list[str] = []
     if fire_number and fire_number.strip():
-        pattern = fire_number.strip().upper().replace("'", "''")
-        clauses.append(f"UPPER(FireNumber) LIKE '%{pattern}%'")
+        clauses.append(arcgis.like_contains("FireNumber", fire_number))
     if cause:
         clauses.append(f"UPPER(GENERAL_CAUSE) = {_quote(cause.strip().upper())}")
     if size_class:
@@ -838,8 +836,7 @@ def build_perimeter_where(
             )
         clauses.append("SIZE_CLASS IN (" + ", ".join(_quote(x) for x in letters) + ")")
     if forest_area and forest_area.strip():
-        pattern = forest_area.strip().upper().replace("'", "''")
-        clauses.append(f"UPPER(RESP_AREA) LIKE '%{pattern}%'")
+        clauses.append(arcgis.like_contains("RESP_AREA", forest_area))
     if min_area_ha is not None:
         clauses.append(f"AREA_ESTIMATE >= {float(min_area_ha)}")
     return " AND ".join(clauses) or "1=1"
@@ -1221,14 +1218,19 @@ async def get_fire_control_orders(
                 f"alert_type doit être l'une des valeurs {list(layers)} ; reçu {alert_type!r}.",
             )
         layers = {match[0]: layers[match[0]]}
-    pattern = (name_contains or "").strip().upper().replace("'", "''")
+    text = (name_contains or "").strip()
+    # The quoted, upper-cased text also keys the cache and is echoed in `where`.
+    pattern = text.upper().replace("'", "''")
 
     def where_for(kind: str) -> str:
-        if not pattern:
+        if not text:
             return "1=1"
         if kind == c.OHV_LABEL:
-            return f"UPPER(Website_Name) LIKE '%{pattern}%'"
-        return f"(UPPER(name) LIKE '%{pattern}%' OR UPPER(jurisdictions) LIKE '%{pattern}%')"
+            return arcgis.like_contains("Website_Name", text)
+        return (
+            f"({arcgis.like_contains('name', text)} OR "
+            f"{arcgis.like_contains('jurisdictions', text)})"
+        )
 
     async def fetch() -> list[dict[str, Any]]:
         results = await asyncio.gather(

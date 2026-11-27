@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import json
 import math
+import re
+import unicodedata
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -463,6 +465,37 @@ async def get_perimeters(
 # --------------------------------------------------------------- stations
 
 
+def _fold(text: str) -> str:
+    """Case, accents and punctuation removed: "Île-du-Prince-Édouard" is "ile du prince edouard"."""
+    plain = "".join(
+        ch for ch in unicodedata.normalize("NFKD", text) if not unicodedata.combining(ch)
+    )
+    return re.sub(r"[^a-z0-9]+", " ", plain.casefold()).strip()
+
+
+_PROVINCE_BY_NAME = {
+    _fold(name): code for code, names in c.PROVINCE_NAMES.items() for name in names
+} | {"newfoundland": "NL", "terre neuve": "NL"}
+
+
+def province_code(text: str) -> str | None:
+    """The standard code (AB, NL) for what a caller typed: a code, the station layer's
+    legacy code (NF, SA) or a province or territory name in English or French, whatever
+    its case and accents; None for anything else, such as a US state.
+
+    It reads the `province` argument only. The layer's own `prov` values are codes in
+    every response recorded so far (AB, BC, NF, SA), so the filter sends the code and the
+    output maps only the two legacy codes back: a filter and an output that read the same
+    values. A name in the layer would match neither, and nothing says there is one.
+    """
+    value = text.strip().upper()
+    if value in c.PROVINCE_NAMES:
+        return value
+    if value in c.STATION_CODE_TO_PROVINCE:
+        return c.STATION_CODE_TO_PROVINCE[value]
+    return _PROVINCE_BY_NAME.get(_fold(text))
+
+
 def _station(p: dict[str, Any], distance: float | None = None) -> WeatherStation:
     raw_prov = (p.get("prov") or "").strip()
     return WeatherStation(
@@ -518,7 +551,10 @@ async def get_stations(
         )
     clauses: list[str] = []
     if province:
-        code = province.upper()
+        # A name ("Alberta", "Colombie-Britannique") is turned into its code: left as
+        # typed it became prov = 'ALBERTA', matched nothing and the empty answer blamed
+        # the season. Other codes (a US state) pass through.
+        code = province_code(province) or province.strip().upper()
         clauses.append(f"prov = {_quote(c.PROVINCE_TO_STATION_CODE.get(code, code))}")
     if name:
         clauses.append(f"strToUpperCase(name) LIKE {_quote('%' + name.upper() + '%')}")

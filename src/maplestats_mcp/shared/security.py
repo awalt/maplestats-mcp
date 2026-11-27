@@ -15,12 +15,17 @@ import hmac
 import ipaddress
 import json
 import math
+import re
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
+from urllib.parse import urlsplit
 
 ASGIApp = Callable[[dict, Callable, Callable], Awaitable[None]]
 _MCP_PATHS = {"/mcp", "/mcp/"}
+# A host name label as it can appear in an Origin: what is left out (@ ? # \ ; , and so on)
+# is what would let a string match read a different host than a browser would.
+_HOST_LABEL = re.compile(r"[a-z0-9_-]+")
 
 # How long a request may wait for a free concurrency slot before a 503.
 # Long enough to absorb an ordinary burst of parallel tool calls (the
@@ -52,6 +57,35 @@ def _bucket(client_key: str) -> str:
     return str(address)
 
 
+def _parse_address(entry: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """The address a proxy wrote in a forwarding header entry, or None if it wrote anything else.
+
+    A proxy does not always write a bare address: Azure's gateways append `1.2.3.4:5678`
+    (the port changes with each connection), others bracket IPv6 (`[2001:db8::1]`,
+    `[2001:db8::1]:443`), and a link-local address can carry a `%zone`. Each names one
+    client, so the spaces, brackets, port and zone are dropped. A hostname, `unknown`, an
+    obfuscated token or a port past 65535 is not an address: None, and the caller falls
+    back to the socket's peer rather than keying on the text.
+    """
+    text = entry.strip()
+    port: str | None = None
+    if text.startswith("["):
+        text, closing, rest = text[1:].partition("]")
+        if not closing or (rest and not rest.startswith(":")):
+            return None
+        port = rest[1:] if rest else None
+    elif text.count(":") == 1:
+        text, _, port = text.partition(":")
+    if port is not None and not (
+        port.isascii() and port.isdecimal() and len(port) <= 5 and int(port) <= 65535
+    ):
+        return None
+    try:
+        return ipaddress.ip_address(text.split("%")[0])
+    except ValueError:
+        return None
+
+
 def _header(scope: dict, name: bytes) -> str | None:
     """The header's value; repeated lines are joined with ", " (RFC 9110 section 5.3).
 
@@ -78,9 +112,8 @@ def _forwarded_shape(scope: dict) -> tuple[int, str]:
     entries = [e.strip() for e in raw.split(",") if e.strip()]
     if not entries:
         return 0, "none"
-    try:
-        address = ipaddress.ip_address(entries[-1].split("%")[0])
-    except ValueError:
+    address = _parse_address(entries[-1])
+    if address is None:
         return len(entries), "public"
     private = address.is_private or address in ipaddress.ip_network("100.64.0.0/10")
     return len(entries), "private" if private else "public"
@@ -117,20 +150,25 @@ def _client_key(
     the `X-Forwarded-For` rule above applies. Behind Cloudflare and a second
     load balancer, the rightmost `X-Forwarded-For` entry can be a shared edge
     address, which would put many callers in one bucket.
+
+    The entry is parsed as an address (`_parse_address`) and returned normalised, so
+    `1.2.3.4`, `1.2.3.4:5678` and ` 1.2.3.4 ` are one caller; an entry that is not an
+    address leaves the socket's peer address as the key.
     """
     if trust_proxy_headers and client_ip_header:
         raw = _header(scope, client_ip_header.lower().encode("ascii"))
         if raw:
-            try:
-                return str(ipaddress.ip_address(raw.split(",")[0].strip()))
-            except ValueError:
-                pass
+            address = _parse_address(raw.split(",")[0])
+            if address is not None:
+                return str(address)
     if trust_proxy_headers:
         forwarded_for = _header(scope, b"x-forwarded-for")
         if forwarded_for:
             entries = [e.strip() for e in forwarded_for.split(",") if e.strip()]
             if entries:
-                return entries[max(0, len(entries) - max(1, proxy_hops))]
+                address = _parse_address(entries[max(0, len(entries) - max(1, proxy_hops))])
+                if address is not None:
+                    return str(address)
     client = scope.get("client")
     if isinstance(client, (tuple, list)) and client:
         return str(client[0])
@@ -355,6 +393,43 @@ def with_http_security(
     return app
 
 
+def _split_origin(text: str) -> tuple[str, str, int | None] | None:
+    """(scheme, host, port) of a bare origin, `scheme://host[:port]`, or None for any other text.
+
+    Read with urllib.parse and then required to be exactly what a browser sends: matching
+    the raw string (`endswith(".example.com")`) let `https://evil.org?.example.com`,
+    `https://evil.org;.example.com` and `https://evil.org@a.example.com` through, because
+    what follows the host is not part of it. User information, a path, a query, a
+    fragment, a trailing colon, a port that is not 0-65535 or is written with leading zeros,
+    and any character a host name cannot hold are all refused. The text is lower-cased.
+    """
+    if not (text.isascii() and text.isprintable()) or any(char in text for char in " ?#"):
+        return None
+    try:
+        parts = urlsplit(text)
+        port = parts.port
+    except ValueError:
+        return None
+    host = parts.hostname
+    if not (parts.scheme and host) or parts.path or parts.query or parts.fragment:
+        return None
+    if ":" in host:
+        try:
+            ipaddress.IPv6Address(host)
+        except ValueError:
+            return None
+        shown = f"[{host}]"
+    elif all(_HOST_LABEL.fullmatch(label) for label in host.split(".")):
+        shown = host
+    else:
+        return None
+    # Whatever the parts left unread (user information, a bare colon, a padded port)
+    # shows as a difference from the origin written back out of them.
+    if parts.netloc != shown + (f":{port}" if port is not None else ""):
+        return None
+    return parts.scheme, shown, port
+
+
 def origin_allowed(origin: str, allowed_origins: Sequence[str]) -> bool:
     """Whether a browser Origin header matches one allow-list entry.
 
@@ -362,29 +437,34 @@ def origin_allowed(origin: str, allowed_origins: Sequence[str]) -> bool:
     a port wildcard (`http://localhost:*`), or a subdomain wildcard
     (`https://*.example.org`, which does not match the bare domain and
     matches any port unless the entry names one). Comparison ignores case
-    and a trailing slash.
+    and a trailing slash. A wildcard entry is matched against the parsed origin:
+    the scheme and port compare exactly, and the `*.` stands for one or more whole
+    host labels in front of the entry's domain (`https://evil-example.org` and
+    `https://example.org.evil.net` do not match `https://*.example.org`).
     """
     origin = origin.strip().rstrip("/").lower()
+    seen = _split_origin(origin)
     for entry in allowed_origins:
         entry = entry.strip().rstrip("/").lower()
         if entry == "*" or entry == origin:
             return True
+        if seen is None:
+            continue
         if entry.endswith(":*"):
-            base = entry[:-2]
-            if origin == base or (
-                origin.startswith(base + ":") and origin[len(base) + 1 :].isdigit()
-            ):
+            base = _split_origin(entry[:-2])
+            if base and base[2] is None and base[:2] == seen[:2]:
                 return True
-        if "://*." in entry:
-            scheme, _, domain = entry.partition("://*.")
-            prefix = scheme + "://"
-            host = origin[len(prefix) :] if origin.startswith(prefix) else ""
-            # A port is not part of the host name: compare the suffix without it
-            # (an entry that names a port is matched against the full host as before).
-            name, _, port = host.rpartition(":")
-            bare_host = name if name and port.isdigit() else host
-            if "/" not in host and (
-                host.endswith("." + domain) or bare_host.endswith("." + domain)
+        elif "://*." in entry:
+            scheme, _, rest = entry.partition("://*.")
+            wanted = _split_origin(f"{scheme}://{rest}")
+            if wanted is None or ":" in wanted[1]:
+                continue
+            labels, suffix = seen[1].split("."), wanted[1].split(".")
+            if (
+                seen[0] == wanted[0]
+                and len(labels) > len(suffix)
+                and labels[-len(suffix) :] == suffix
+                and (wanted[2] is None or seen[2] == wanted[2])
             ):
                 return True
     return False

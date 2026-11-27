@@ -419,6 +419,66 @@ async def test_ocr_that_cannot_start_in_the_time_left_says_so(monkeypatch):
     )
 
 
+async def _scan_two_pages(monkeypatch, *, spent: float, lang: str, stop_at: int | None = None):
+    monkeypatch.setattr(ocr, "status", lambda lang="en": ocr.Status(ENGINE))
+
+    def read(body, number, engine, dpi, wait, memory_mb):
+        if number == stop_at:
+            # The budget ended while this page was being read.
+            raise ocr._Stop("time")
+        return ocr._Recognised(f"Compte rendu page {number}", 90.0, dpi)
+
+    monkeypatch.setattr(ocr, "_read_page", read)
+    pdf_bytes = build_pdf([scan(), scan()])
+    document = client.pdf.extract(pdf_bytes, URL, max_pages=400, max_chars=10**6, seconds=60.0)
+
+    async def body() -> bytes:
+        return pdf_bytes
+
+    return await scans.read_scans(
+        document,
+        URL,
+        body,
+        mode="auto",
+        selected=None,
+        scope=None,
+        spent=spent,
+        lang=lang,
+        context=TOOL,
+    )
+
+
+async def test_ocr_that_runs_out_of_time_inside_the_first_page_does_not_say_it_never_started(
+    monkeypatch,
+):
+    # The budget ends while page 1 is being read: OCR did start, and read nothing.
+    result = await _scan_two_pages(monkeypatch, spent=0.0, lang="en", stop_at=1)
+    assert result.ocr_pages == []
+    note = result.limits[0]
+    assert "did not start" not in note
+    assert "page 1" in note and "40 s" in note and "ran out" in note
+    assert "pages=" in note
+    # No page was read, so nothing came from the cache.
+    assert result.cached is False
+
+
+async def test_the_same_in_french(monkeypatch):
+    result = await _scan_two_pages(monkeypatch, spent=0.0, lang="fr", stop_at=1)
+    note = result.limits[0]
+    assert "n'a pas démarré" not in note
+    assert "page 1" in note and "40 s" in note and "pages=" in note
+    assert result.cached is False
+
+
+async def test_ocr_that_never_starts_for_want_of_time_is_not_a_cached_answer(monkeypatch):
+    # The time was spent before OCR began (45 s of 40 s): the wording stays as it was.
+    result = await _scan_two_pages(monkeypatch, spent=45.0, lang="en")
+    assert "OCR did not start: reading the PDF's text used the 40 s allowed." in result.limits[0]
+    assert result.cached is False
+    french = await _scan_two_pages(monkeypatch, spent=45.0, lang="fr")
+    assert "n'a pas démarré" in french.limits[0]
+
+
 def test_page_numbers_of_a_section():
     document = client.pdf.extract(
         build_pdf([PROSE, scan(), PROSE]), URL, max_pages=400, max_chars=10**6, seconds=60.0

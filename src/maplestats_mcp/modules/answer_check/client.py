@@ -27,9 +27,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from maplestats_mcp.modules.answer_check.schemas import AnswerCheck, AnswerProblem, CitedFigure
 from maplestats_mcp.modules.boc import client as boc
@@ -38,6 +39,7 @@ from maplestats_mcp.modules.planner.places import PROVINCE_ALIASES, PROVINCE_COD
 from maplestats_mcp.modules.statcan.wds import auto_notes, context
 from maplestats_mcp.modules.statcan.wds import client as wds
 from maplestats_mcp.modules.statcan.wds.schemas import ObservationRow
+from maplestats_mcp.modules.statcan.wds.transforms import FREQUENCY_PPY
 from maplestats_mcp.shared.envelope import make_provenance
 from maplestats_mcp.shared.errors import (
     DataLocked,
@@ -51,6 +53,7 @@ from maplestats_mcp.shared.fitness_rules import RULES
 from maplestats_mcp.shared.i18n import normalize_lang, pick
 from maplestats_mcp.shared.json_utils import list_or_empty
 from maplestats_mcp.shared.transform import (
+    infer_periods_per_year,
     parse_period,
     period_end,
     period_label,
@@ -826,6 +829,110 @@ def _flag_problems(
     return problems
 
 
+_SUB_PERIODS = {
+    12: ("months", "mois"),
+    6: ("two-month periods", "périodes de deux mois"),
+    4: ("quarters", "trimestres"),
+    2: ("half-years", "semestres"),
+}
+# (span, "to date" form, latest complete one) for the cited period, by periods per year.
+_SPANS = {
+    1: ("year", "depuis le début de l'année", "la dernière année complète"),
+    2: ("half-year", "depuis le début du semestre", "le dernier semestre complet"),
+    4: ("quarter", "depuis le début du trimestre", "le dernier trimestre complet"),
+}
+
+
+def _today() -> date:
+    """Today where StatCan publishes, for how recent a series' latest period is."""
+    return datetime.now(ZoneInfo("America/Toronto")).date()
+
+
+def _partial_period(
+    index: int,
+    published: Sequence[date],
+    label: str,
+    frequency: Any,
+    latest_day: date | None,
+    lang: str,
+) -> AnswerProblem | None:
+    """A year, half-year or quarter whose periods are not all published: the average
+    or total of those that are is not the figure for the whole period.
+
+    `published` holds every reference period with a row inside the cited period,
+    null values included (a suppressed month is published; the flags report it).
+    Daily and weekly series have no fixed count of periods in a year and are not
+    checked here.
+    """
+    source_ppy = FREQUENCY_PPY.get(frequency)
+    try:
+        cited_start, cited_ppy = parse_period(label)
+    except ValueError:
+        return None
+    if source_ppy is None or cited_ppy not in _SPANS or source_ppy % cited_ppy:
+        return None
+    expected = source_ppy // cited_ppy
+    periods = sorted({period_start(d, source_ppy) for d in published})
+    if not periods or len(periods) >= expected:
+        return None
+    count = len(periods)
+    first, last = (auto_notes.format_period(d, frequency) for d in (periods[0], periods[-1]))
+    words_en, words_fr = _SUB_PERIODS[source_ppy]
+    span, to_date_fr, complete_fr = _SPANS[cited_ppy]
+    step = 12 // source_ppy
+    from_start = periods == [shift_months(cited_start, step * k) for k in range(count)]
+    # Still being published: the series' latest period is in the cited one and recent.
+    # Three periods after its own leaves room for the slowest monthly releases
+    # (monthly GDP comes out about two months after its month ends).
+    running = (
+        latest_day is not None
+        and period_start(latest_day, cited_ppy) == cited_start
+        and shift_months(period_start(latest_day, source_ppy), step * 4) > _today()
+    )
+    if from_start and running:
+        # The period is still being published: what is out so far runs to date.
+        return _problem(
+            index,
+            "period",
+            pick(
+                lang,
+                f"The published data cover only {count} of the {expected} {words_en} of "
+                f"{label} (to {last}): their average or total is a {span}-to-date figure, not "
+                f"the {label} value.",
+                f"Les données publiées ne couvrent que {count} des {expected} {words_fr} de "
+                f"{label} (jusqu'à {last}) : leur moyenne ou leur total ne couvre que la "
+                f"période écoulée {to_date_fr}, pas toute la période {label}.",
+            ),
+            pick(
+                lang,
+                f"Say it is {span} to date (to {last}), or cite the latest complete {span}.",
+                f"Précisez que le chiffre porte sur la période écoulée {to_date_fr} (jusqu'à "
+                f"{last}), ou citez {complete_fr}.",
+            ),
+        )
+    # A series that starts or stops inside the period, or has a gap: not "to date".
+    covered_en = first if count == 1 else f"{first} to {last}"
+    covered_fr = first if count == 1 else f"{first} à {last}"
+    return _problem(
+        index,
+        "period",
+        pick(
+            lang,
+            f"The published data cover only {count} of the {expected} {words_en} of {label} "
+            f"({covered_en}): their average or total is not the {label} value.",
+            f"Les données publiées ne couvrent que {count} des {expected} {words_fr} de "
+            f"{label} ({covered_fr}) : leur moyenne ou leur total n'est pas la valeur de "
+            f"toute la période {label}.",
+        ),
+        pick(
+            lang,
+            f"Say which period it covers ({covered_en}), or cite a {span} that is fully published.",
+            f"Précisez la période couverte ({covered_fr}), ou citez une période entièrement "
+            "publiée.",
+        ),
+    )
+
+
 def _coarse_value(
     index: int,
     figure: CitedFigure,
@@ -834,10 +941,26 @@ def _coarse_value(
     frequency: Any,
     scale: str | None,
     lang: str,
+    *,
+    published: Sequence[date] | None = None,
+    latest_day: date | None = None,
 ) -> list[AnswerProblem]:
     """A value cited for a year (or quarter) of a finer series: its average or total
-    matches; one period's value is named as that period; else the average is given."""
+    matches; one period's value is named as that period; else the average is given.
+
+    When the period is not fully published (`published`: every reference period with a
+    row, nulls included), that is said first; a figure that matches what is published
+    gets only that, a figure that does not also gets the value problem."""
     assert figure.value is not None
+    partial = _partial_period(
+        index,
+        [r.ref_period for r in values] if published is None else published,
+        label,
+        frequency,
+        latest_day,
+        lang,
+    )
+    first_problems = [partial] if partial else []
     cited = _fmt(_number(figure.value, lang)[0])
     numbers = [r.value for r in values if r.value is not None]
     multiplier = values[-1].scale_multiplier
@@ -847,7 +970,7 @@ def _coarse_value(
         return not _value_problems(index, figure, published, multiplier, None, label, None, lang)
 
     if matches(average) or matches(total):
-        return []
+        return first_problems
     # Half up, as StatCan rounds: 1930.2 / 12 = 160.85 is shown 160.9.
     shown_average = float(
         Decimal(str(round(average, 9))).quantize(
@@ -855,6 +978,22 @@ def _coarse_value(
         )
     )
     one = next((r for r in values if r.value is not None and matches(r.value)), None)
+    if one is not None and partial:
+        # One month's value: not a to-date figure either, so it is named as that month.
+        period = auto_notes.format_period(one.ref_period, frequency)
+        return [
+            *first_problems,
+            _problem(
+                index,
+                "period",
+                pick(
+                    lang,
+                    f"{cited} is the value for {period}, not for {label}.",
+                    f"{cited} est la valeur de {period}, pas de {label}.",
+                ),
+                pick(lang, f"Cite it as {period}.", f"Citez-la pour {period}."),
+            ),
+        ]
     if one is not None:
         period = auto_notes.format_period(one.ref_period, frequency)
         mean = _fmt(shown_average * multiplier)
@@ -898,7 +1037,7 @@ def _coarse_value(
                 f" Say it is the average of {count} values, or cite one period.",
                 f" Précisez que c'est la moyenne de {count} valeurs, ou citez une période.",
             )
-    return found
+    return first_problems + found
 
 
 def _newer(
@@ -976,7 +1115,7 @@ async def _resolve(ctxs: list[_Ctx], lang: str, notes: list[str]) -> list[Answer
                     figure.product_id, figure.coordinate
                 )
             except _OUTAGE:
-                notes.append(_not_reread(ctx.index, "Statistics Canada WDS", lang))
+                notes.append(_not_reread(ctx.index, _WDS_SOURCE, lang))
                 continue
             except _SOFT as exc:
                 problems.append(
@@ -1090,17 +1229,28 @@ async def _percent_change(
         else pick(lang, "a level", "un niveau")
     )
     shown_unit = f" ({unit})" if unit else ""
-    if ppy is None and len(current) == 1 and ctx.cube is not None:
-        # A day cited for a monthly or quarterly series ("2026-09-01") is its period.
-        ppy = {6: 12, 9: 4, 12: 1}.get(int(ctx.cube.get("frequencyCode") or 0))
-    if ppy not in (1, 2, 4, 12):
+    series_ppy = FREQUENCY_PPY.get(int((ctx.cube or {}).get("frequencyCode") or 0))
+    if ppy is None and len(current) == 1:
+        # A day cited for a monthly, bi-monthly, quarterly, semi-annual or annual series
+        # ("2026-09-01") is its period.
+        ppy = series_ppy
+    elif ppy is not None and series_ppy is not None and series_ppy < ppy:
+        # A label finer than the series ("2026-01" for a semi-annual one, or the month
+        # a latest period is written with) does not make the series' period shorter:
+        # "one period back" is its own, six months for a semi-annual series. Read from
+        # the label, the semi-annual change was never offered and a right figure was
+        # called wrong.
+        ppy = series_ppy
+    if ppy not in (1, 2, 4, 6, 12):
         notes.append(
             pick(
                 lang,
                 f"Figure {ctx.index} not checked: it is a percent and the series is {what}; "
-                f"its change is computed for monthly, quarterly or annual periods only.",
+                "its change is computed for monthly, bi-monthly, quarterly, semi-annual or "
+                "annual periods only.",
                 f"Chiffre {ctx.index} non vérifié : c'est un pourcentage et la série est "
-                f"{what} ; sa variation n'est calculée que pour des mois, trimestres ou années.",
+                f"{what} ; sa variation n'est calculée que pour des périodes mensuelles, "
+                "bimestrielles, trimestrielles, semestrielles ou annuelles.",
             )
         )
         return []
@@ -1114,7 +1264,7 @@ async def _percent_change(
         )
         earlier = [o for s in history.series for o in s.observations if o.value is not None]
     except _OUTAGE:
-        notes.append(_not_reread(ctx.index, "Statistics Canada WDS", lang))
+        notes.append(_not_reread(ctx.index, _WDS_SOURCE, lang))
         return []
     except _SOFT:
         earlier = []
@@ -1217,7 +1367,7 @@ async def _check_statcan(
         # period can only be compared with the latest value, so it gets a note.
         for c in live:
             if c.figure.period is None and c.figure.value is not None:
-                notes.append(_not_reread(c.index, "Statistics Canada WDS", lang))
+                notes.append(_not_reread(c.index, _WDS_SOURCE, lang))
     described, _ = await context.describe_vectors(ids, set())
     for ctx in live:
         assert ctx.vector_id is not None
@@ -1302,7 +1452,7 @@ async def _check_statcan(
             rows = [o for s in window.series for o in s.observations]
         except _OUTAGE:
             # An outage is not "no value is published".
-            notes.append(_not_reread(ctx.index, "Statistics Canada WDS", lang))
+            notes.append(_not_reread(ctx.index, _WDS_SOURCE, lang))
             continue
         except _SOFT:
             rows = []
@@ -1356,7 +1506,23 @@ async def _check_statcan(
                 )
             elif coarse:
                 problems.extend(
-                    _coarse_value(ctx.index, figure, values, cited_period, frequency, scale, lang)
+                    _coarse_value(
+                        ctx.index,
+                        figure,
+                        values,
+                        cited_period,
+                        frequency,
+                        scale,
+                        lang,
+                        # ".." rows (not available) are not published periods; x, F
+                        # and E rows are, and their flags are reported above.
+                        published=[
+                            r.ref_period
+                            for r in rows
+                            if r.status_code != auto_notes.STATUS_NOT_AVAILABLE
+                        ],
+                        latest_day=latest_row.ref_period if latest_row else None,
+                    )
                 )
             elif not any(
                 not _value_problems(
@@ -1473,12 +1639,48 @@ def _check_combinations(ctxs: Sequence[_Ctx], summed: bool, lang: str) -> list[A
     return problems
 
 
-def _not_reread(index: int, source: str, lang: str) -> str:
+# The source of a not-re-read note, as the note names it in English and in French (a
+# French note used to carry "Statistics Canada WDS").
+_WDS_SOURCE = ("Statistics Canada WDS", "le SDW de Statistique Canada")
+_VALET_SOURCE = ("Bank of Canada Valet", "l'API Valet de la Banque du Canada")
+
+
+def _not_reread(index: int, source: tuple[str, str], lang: str) -> str:
     return pick(
         lang,
-        f"Figure {index} not re-read: {source} did not answer, so its value is unchecked.",
-        f"Chiffre {index} non relu : {source} n'a pas répondu, sa valeur n'est donc pas vérifiée.",
+        f"Figure {index} not re-read: {source[0]} did not answer, so its value is unchecked.",
+        f"Chiffre {index} non relu : {source[1]} n'a pas répondu, sa valeur n'est donc pas "
+        "vérifiée.",
     )
+
+
+# Valet's metadata.frequency ("Monthly", "Quarterly", "Business daily"; French on
+# the French domain) as the WDS frequency code the period checks read.
+_VALET_FREQUENCIES = (
+    (("daily", "quotidien", "weekly", "hebdomadaire"), 1),
+    (("monthly", "mensuel"), 6),
+    (("quarterly", "trimestriel"), 9),
+    (("semi-annual", "semestriel"), 11),
+    (("annual", "annuel"), 12),
+)
+
+
+def _valet_frequency_code(window: Any, name: str, days: list[date]) -> int | None:
+    """The series' frequency as a WDS code: from the metadata the observations call
+    already returned, else from the spacing of the dates (a gap inside the window can
+    mislead it: January and April read as quarterly). None when neither tells, and
+    then no completeness check is made."""
+    brief = (getattr(window, "series", None) or {}).get(name)
+    text = str(getattr(brief, "frequency", None) or "").lower()
+    for words, code in _VALET_FREQUENCIES:
+        if any(word in text for word in words):
+            return code
+    ppy = infer_periods_per_year(days)
+    if ppy:
+        return {12: 6, 6: 7, 4: 9, 2: 11, 1: 12}.get(ppy)
+    if len(days) > 1:
+        return 1 if (days[1] - days[0]).days < 28 else None
+    return None
 
 
 async def _check_boc(
@@ -1510,7 +1712,7 @@ async def _check_boc(
         # No period cited: the answer presents the value as current, so it is
         # compared with the latest observation, as the StatCan path does.
         if latest is None or latest[1] is None:
-            notes.append(_not_reread(index, "Bank of Canada Valet", lang))
+            notes.append(_not_reread(index, _VALET_SOURCE, lang))
             return []
         return _value_problems(index, figure, latest[1], 1, None, latest[0], None, lang)
     try:
@@ -1535,15 +1737,23 @@ async def _check_boc(
             [name], start_date=start.isoformat(), end_date=end.isoformat(), lang=lang
         )
     except _SOFT:
-        notes.append(_not_reread(index, "Bank of Canada Valet", lang))
+        notes.append(_not_reread(index, _VALET_SOURCE, lang))
         return []
     published = [(o.ref_date, o.values.get(name)) for o in window.observations]
     values = [v for _, v in published if v is not None]
     problems: list[AnswerProblem] = []
     cited_ppy = parse_period(figure.period)[1]
-    if cited_ppy is not None and len(values) > 1:
-        # A year, quarter or month of a daily (or weekly) rate: its average or
-        # total matches, as on the StatCan path, not only one day's value.
+    days = [day for day, v in published if v is not None]
+    code = _valet_frequency_code(window, name, days)
+    source_ppy = FREQUENCY_PPY.get(code) if code is not None else None
+    if (
+        values
+        and cited_ppy is not None
+        and (len(values) > 1 or (source_ppy is not None and source_ppy > cited_ppy))
+    ):
+        # A year, quarter or month of a finer series (a daily rate, a monthly index):
+        # its average or total matches, as on the StatCan path, not only one day's
+        # value; one January value cited for the year is a partial year.
         decimals = max(len(f"{v:g}".partition(".")[2]) for v in values)
         rows = [
             ObservationRow(
@@ -1558,16 +1768,16 @@ async def _check_boc(
             for day, v in published
             if v is not None
         ]
-        gap = (rows[1].ref_period - rows[0].ref_period).days
         problems.extend(
             _coarse_value(
                 index,
                 figure,
                 rows,
                 period_label(start, cited_ppy),
-                1 if gap < 28 else 6,
+                code,
                 None,
                 lang,
+                latest_day=latest_obs.ref_date if latest_obs else None,
             )
         )
     elif not values:

@@ -1189,7 +1189,7 @@ def test_generated_period_helpers_match_the_client(language, tmp_path):
             + 'for v in values println(coalesce(parse_period(v), "NA")) end\n'
         )
     path = tmp_path / ("periods.R" if language == "r" else "periods.jl")
-    path.write_text(script)
+    path.write_text(script, encoding="utf-8")
     out = subprocess.run(
         [binary, str(path)], capture_output=True, text=True, timeout=600, check=False
     )

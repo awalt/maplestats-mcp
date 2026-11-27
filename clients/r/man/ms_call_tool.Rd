@@ -4,12 +4,20 @@
 \alias{ms_call_tool}
 \title{Call a tool and return its raw result}
 \usage{
-ms_call_tool(tool, ..., client = ms_default_client())
+ms_call_tool(tool, ..., detail = NULL, client = ms_default_client())
 }
 \arguments{
 \item{tool}{Tool name, as [ms_search_tools()] returns it.}
 
 \item{...}{The tool's arguments, by name.}
+
+\item{detail}{`NULL` (the default) or `"full"` for every field, the whole
+provenance and each list of rows as objects, or `"brief"` for the server's
+compact answer: a list of six or more rows is one CSV text block
+(`format`, `rows`, `csv`) and the provenance is cut to what a citation
+needs. A server older than 0.6.0 answers in full either way. For the
+server's own tools (`search_tools`, `plan_query`) a `detail` you pass goes
+to the tool as one of its arguments.}
 
 \item{client}{A client from [ms_client()].}
 }

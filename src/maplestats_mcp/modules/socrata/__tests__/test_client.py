@@ -8,7 +8,7 @@ import pytest
 from maplestats_mcp.modules.socrata import client, constants
 from maplestats_mcp.modules.socrata.schemas import PortalKey
 from maplestats_mcp.shared import cache as cache_module
-from maplestats_mcp.shared.errors import InvalidInput, NotFound
+from maplestats_mcp.shared.errors import InvalidInput, NotFound, UpstreamError
 
 
 @pytest.fixture(autouse=True)
@@ -151,6 +151,56 @@ async def test_query_dataset_rows_passes_soql_params(httpx_mock):
     )
     assert result.returned_count == 1
     assert result.rows[0]["region"] == "CBRM"
+
+
+async def test_a_later_page_with_no_order_sorts_by_the_row_id(httpx_mock):
+    # SODA gives no stable order without $order, so page 2 could repeat or skip rows of page 1.
+    httpx_mock.add_response(
+        url=httpx.URL(
+            f"https://{DOMAIN}/resource/44ah-ugrd.json",
+            params={"$limit": 5, "$offset": 5, "$order": ":id"},
+        ),
+        json=[{"region": "CBRM"}],
+    )
+    result = await client.query_dataset_rows(PORTAL, "44ah-ugrd", limit=5, offset=5)
+    assert result.returned_count == 1
+    assert result.order is None
+    limits = result.provenance.limits or ""
+    # True to what is sent: only the later page is ordered, so stable paging needs `order`.
+    assert "this later page is ordered by :id" in limits and "pass `order` on every page" in limits
+    assert httpx_mock.get_request().url.params["$order"] == ":id"
+
+
+async def test_a_first_page_and_a_caller_order_are_sent_as_given(httpx_mock):
+    httpx_mock.add_response(json=[], is_reusable=True)
+    await client.query_dataset_rows(PORTAL, "44ah-ugrd", limit=5)
+    await client.query_dataset_rows(PORTAL, "44ah-ugrd", limit=5, offset=5, order="year DESC")
+    first, second = httpx_mock.get_requests()
+    assert "$order" not in first.url.params
+    assert second.url.params["$order"] == "year DESC"
+
+
+async def test_an_aggregate_query_keeps_no_default_order(httpx_mock):
+    # An aggregate has no row id to sort by; SoQL would refuse the query.
+    httpx_mock.add_response(json=[], is_reusable=True)
+    await client.query_dataset_rows(
+        PORTAL, "44ah-ugrd", select="region, count(*)", group="region", offset=5
+    )
+    await client.query_dataset_rows(PORTAL, "44ah-ugrd", select="count(*)", offset=5)
+    # SoQL is likely to refuse an ORDER BY outside a DISTINCT select list.
+    await client.query_dataset_rows(PORTAL, "44ah-ugrd", select="DISTINCT region", offset=5)
+    await client.query_dataset_rows(PORTAL, "44ah-ugrd", select="distinct region, year", offset=5)
+    assert all("$order" not in r.url.params for r in httpx_mock.get_requests())
+    assert len(httpx_mock.get_requests()) == 4
+
+
+async def test_a_non_list_answer_is_an_upstream_error_not_zero_rows(httpx_mock):
+    httpx_mock.add_response(json={"message": "maintenance"})
+    with pytest.raises(UpstreamError, match="not the list of rows"):
+        await client.query_dataset_rows(PORTAL, "44ah-ugrd")
+    httpx_mock.add_response(json={"message": "maintenance"})
+    with pytest.raises(UpstreamError, match="aucune ligne ne peut"):
+        await client.query_dataset_rows(PORTAL, "44ah-ugrd", limit=6, lang="fr")
 
 
 async def test_colons_in_free_text_do_not_share_a_cache_key(httpx_mock):

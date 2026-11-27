@@ -310,19 +310,34 @@ async def read_scans(
     rest = [n for n in wanted if n not in done]
     result.document = pdf.with_page_text(document, texts)
     result.ocr_pages = done
-    result.cached = all(p.cached for p in run.pages)
+    # With no page read there is no cached answer to speak of (all() of nothing is True).
+    result.cached = bool(run.pages) and all(p.cached for p in run.pages)
     if run.pages:
         result.limits.append(_read_note(run, rest, document.page_count, url, lang))
         result.caveats.append(_caveat(url, lang))
     else:
-        result.limits.append(
-            say(
-                f"OCR did not start: reading the PDF's text used the {constants.PDF_EXTRACT_SECONDS:.0f} "
-                "s allowed. Ask again, with pages= for these pages.",
-                f"La reconnaissance optique n'a pas démarré : la lecture du texte du PDF a "
-                f"utilisé les {constants.PDF_EXTRACT_SECONDS:.0f} s allouées. Redemandez, avec "
-                "pages= pour ces pages.",
-                lang,
-            )
-        )
+        result.limits.append(_nothing_read_note(run, lang))
     return result
+
+
+def _nothing_read_note(run: ocr.OcrRun, lang: str) -> str:
+    """Why OCR read no page. The run reads none only when the time ran out (stopped
+    "time"): before the first page began, when reading the PDF's text had used the
+    allowance (no stopped_page), or inside the first page (stopped_page names it)."""
+    budget = f"{constants.PDF_EXTRACT_SECONDS:.0f}"
+    if run.stopped_page is None:
+        return say(
+            f"OCR did not start: reading the PDF's text used the {budget} s allowed. Ask again, "
+            "with pages= for these pages.",
+            f"La reconnaissance optique n'a pas démarré : la lecture du texte du PDF a "
+            f"utilisé les {budget} s allouées. Redemandez, avec pages= pour ces pages.",
+            lang,
+        )
+    return say(
+        f"OCR started but read no page: the {budget} s allowed ran out while it was reading "
+        f"page {run.stopped_page}. Ask again, with pages= for these pages.",
+        f"La reconnaissance optique a démarré mais n'a lu aucune page : les {budget} s allouées "
+        f"se sont écoulées pendant la lecture de la page {run.stopped_page}. Redemandez, avec "
+        "pages= pour ces pages.",
+        lang,
+    )

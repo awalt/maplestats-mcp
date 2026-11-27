@@ -40,6 +40,16 @@
     ).split(" "),
   );
 
+  // search.py drops a character after NFKD only if unicodedata.combining() is not 0,
+  // that is, if it has a canonical combining class. \p{M} also holds marks with class 0
+  // (Indic vowel signs, variation selectors, U+034F, the keycap), which search.py keeps:
+  // they are not letters, so they end a word there, and must here. JavaScript has no
+  // property for the class, but canonical ordering shows it: put in front of a mark, the
+  // iota subscript (class 240) swaps places with it exactly when the mark's class is
+  // 1 to 239. U+0345 itself comes back out of NFKD from U+037A and is dropped too.
+  const hasClass = (mark) =>
+    mark === "\u0345" || !("\u0345" + mark).normalize("NFD").startsWith("\u0345");
+
   function tokenize(text) {
     // Like search.py: NFKD leaves the ligatures whole, so fold them first.
     // casefold turns the iota subscript inside a letter into an iota too
@@ -50,7 +60,7 @@
       .replace(/æ/g, "ae")
       .normalize("NFD")
       .replace(/[ßς\u0345]/g, (c) => CASEFOLD[c]);
-    const plain = folded.normalize("NFKD").replace(/\p{M}/gu, "");
+    const plain = folded.normalize("NFKD").replace(/\p{M}/gu, (m) => (hasClass(m) ? "" : m));
     return (plain.match(/[\p{L}\p{N}]{2,}/gu) || []).filter((w) => !STOP_WORDS.has(w)).map(fold);
   }
 

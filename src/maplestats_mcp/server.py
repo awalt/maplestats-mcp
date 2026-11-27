@@ -551,11 +551,13 @@ class AnnotatedBM25SearchTransform(BM25SearchTransform):
                 if resolved is not None:
                     return await _call_with_schema(ctx, tools[resolved], arguments, detail)
                 # A name MAPLE_GIS has hidden is an unknown name, as for any other caller;
-                # the other switches are limits, and say so.
-                switch = TOOL_SWITCHES.get(name)
-                if switch is not None and not switch() and name not in PROFILE_SWITCHES:
+                # the other switches are limits, and say so. Looked up as _resolve_tool_name
+                # reads the name: "maplestats.wds_query_series" is that tool, switched off.
+                switched = normalized_tool_name(name) if len(name) <= 200 else name
+                switch = TOOL_SWITCHES.get(switched)
+                if switch is not None and not switch() and switched not in PROFILE_SWITCHES:
                     raise InvalidInput(
-                        f"{name} is switched off on this server (it runs code or files "
+                        f"{switched} is switched off on this server (it runs code or files "
                         "the hosted server does not allow). For StatCan series use "
                         "wds_get_data_from_vectors or wds_get_full_table_download instead."
                     )
@@ -843,7 +845,8 @@ Sources, by tool-name prefix:
   cihi_ (health-system indicators), cihi_workforce_ (CIHI health workforce
   tables: physicians, nurses, pharmacists, therapists), phac_infobase_
   (surveillance files),
-  nrcan_geo_ (geocoding, place names), nrcan_energy_use_, nrcan_nbac_
+  nrcan_geo_ (geocoding, place names), nrcan_energy_use_, nrcan_fuel_prices_
+  (retail gasoline and diesel prices by city), nrcan_nbac_
   (burned areas), nrcan_minerals_ (annual mineral production by
   province), cer_ (Canada Energy Regulator), cgc_ (Canadian Grain
   Commission), cdc_ (Canadian Dairy Commission), cfia_ (reportable animal

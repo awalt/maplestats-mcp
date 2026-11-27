@@ -51,6 +51,32 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+_SWITCH_ON = frozenset({"1", "true", "yes", "on"})
+_SWITCH_OFF = frozenset({"0", "false", "no", "off"})
+
+
+def _env_switch(name: str, default: bool) -> bool:
+    """An on/off variable read strictly, for the settings that guard the server.
+
+    Unset or empty gives the default. Anything that is not one of the documented
+    spellings raises, naming the variable: the looser reading (on for 1/true/yes/on,
+    off for everything else, or the reverse) turned `MAPLE_REQUIRE_AUTH=required` into
+    an open server and `MAPLE_QUERY_SERIES=disabled` into a tool that runs SQL.
+    """
+    raw = os.environ.get(name, "").strip()
+    value = raw.lower()
+    if not value:
+        return default
+    if value in _SWITCH_ON:
+        return True
+    if value in _SWITCH_OFF:
+        return False
+    raise ValueError(
+        f"{name}={raw!r} is not a recognized setting; "
+        "use 1, true, yes or on, or 0, false, no or off."
+    )
+
+
 def get_host() -> str:
     return os.environ.get("MAPLE_HOST", "127.0.0.1")
 
@@ -79,11 +105,18 @@ def mark_serving_http() -> None:
 
 
 def get_transport() -> str:
+    # The ASGI app is HTTP by construction: once asgi.py has marked the process, no
+    # variable can make it stdio. MAPLE_TRANSPORT=stdio left in the environment of a
+    # `uvicorn maplestats_mcp.asgi:app` process used to be believed, which allowed local
+    # exports for remote callers (with MAPLE_EXPORT_DIR set), turned wds_query_series on
+    # and left the startup preload off.
+    if _serves_http:
+        return "http"
     # Local MCP clients launch the package as a stdio subprocess. Hosted
     # deployments set MAPLE_TRANSPORT=http explicitly in their service config.
     # Anything else raises: a misspelling such as "sdtio" must not start an HTTP
     # server while the MCP client waits on stdin.
-    raw = os.environ.get("MAPLE_TRANSPORT", "http" if _serves_http else "stdio").strip().lower()
+    raw = os.environ.get("MAPLE_TRANSPORT", "stdio").strip().lower()
     if raw not in {"stdio", "http"}:
         raise ValueError(f"MAPLE_TRANSPORT={raw!r} is not supported; use 'stdio' or 'http'.")
     return raw
@@ -171,8 +204,11 @@ def get_instance_name() -> str:
 
 
 def get_require_auth() -> bool:
-    raw = os.environ.get("MAPLE_REQUIRE_AUTH", "0").strip().lower()
-    return raw in {"1", "true", "yes", "on"}
+    """Whether the server refuses to start without MAPLE_AUTH_TOKEN (MAPLE_REQUIRE_AUTH, default off).
+
+    Read strictly: an unrecognized value stops the server instead of starting it open.
+    """
+    return _env_switch("MAPLE_REQUIRE_AUTH", False)
 
 
 def get_max_concurrent_requests() -> int:
@@ -190,8 +226,26 @@ def get_max_requests_per_client() -> int:
 
 
 def get_rate_limit_requests() -> int:
-    value = _env_int("MAPLE_RATE_LIMIT_REQUESTS", 120)
-    return min(10_000, max(0, value))
+    """Requests one client may make per window (MAPLE_RATE_LIMIT_REQUESTS, default 120).
+
+    Exactly 0 means no limit (shared/security.py), the documented way to turn it off.
+    A negative or non-numeric value raises rather than being read as 0 or the default,
+    since a typo must not switch the limit off.
+    """
+    raw = os.environ.get("MAPLE_RATE_LIMIT_REQUESTS", "").strip()
+    if not raw:
+        return 120
+    message = (
+        f"MAPLE_RATE_LIMIT_REQUESTS={raw!r} is not a request count; "
+        "set a whole number from 0 (no limit) to 10000."
+    )
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ValueError(message) from None
+    if value < 0:
+        raise ValueError(message)
+    return min(10_000, value)
 
 
 def get_rate_limit_window_seconds() -> float:
@@ -322,27 +376,29 @@ def get_pumf_cache_dir() -> Path:
 def get_pumf_tabulate_enabled() -> bool:
     """Whether statcan_pumf_tabulate is offered.
 
-    A small hosted instance sets MAPLE_PUMF_TABULATE=0: the tool downloads
-    whole PUMF ZIPs (30 to 534 MB) into a disk that free hosts lose on every
-    restart. Search, ZIP listings and codebooks need no disk and stay on.
+    A small hosted instance sets MAPLE_PUMF_TABULATE=0 (the Render backup does): the
+    tool downloads whole PUMF ZIPs (30 to 534 MB) into a disk that free hosts lose on
+    every restart. Search, ZIP listings and codebooks need no disk and stay on. Read
+    strictly: an unrecognized value stops the server instead of leaving the tool on.
     """
-    raw = os.environ.get("MAPLE_PUMF_TABULATE", "1").strip().lower()
-    return raw not in {"0", "false", "no", "off"}
+    return _env_switch("MAPLE_PUMF_TABULATE", True)
 
 
 def get_query_series_enabled() -> bool:
     """Whether wds_query_series is offered.
 
-    The hosted server sets MAPLE_QUERY_SERIES=0: DuckDB's memory limit does not
-    cover scalar functions that build large lists or strings, so one query
-    (`SELECT len(range(1000000000))`) could exhaust a small instance's memory, and
-    the time limit does not interrupt a single long operator. Local installs keep it.
+    DuckDB's memory limit does not cover scalar functions that build large lists or
+    strings, so one query (`SELECT len(range(1000000000))`) could exhaust a small
+    instance's memory, and the time limit does not interrupt a single long operator.
+    Each query now runs in its own process whose address space is capped
+    (MAPLE_QUERY_MEMORY_MB, shared/duck_sandbox.py). The Render backup (512 MB) still
+    sets MAPLE_QUERY_SERIES=0 (render.yaml); the Azure endpoint (2 GiB) sets it to 1
+    (docker.yml). Local installs keep it on. Read strictly: an unrecognized value stops
+    the server instead of leaving the tool on.
     """
     # Off by default when serving HTTP, so a hosted server is safe even if its
     # service settings never pick up MAPLE_QUERY_SERIES; on for local (stdio) use.
-    default = "0" if get_transport() == "http" else "1"
-    raw = os.environ.get("MAPLE_QUERY_SERIES", default).strip().lower()
-    return raw not in {"0", "false", "no", "off"}
+    return _env_switch("MAPLE_QUERY_SERIES", get_transport() != "http")
 
 
 def get_gis_enabled() -> bool:

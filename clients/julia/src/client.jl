@@ -12,7 +12,7 @@ const DIRECT_TOOLS = ("search_tools", "plan_query", "call_tool")
     MapleStatsError(message, retry_after)
 
 A tool error, a JSON-RPC error or an HTTP failure, with the server's message.
-`retry_after` is set (seconds) when the hosted server's limit of 60 requests a
+`retry_after` is set (seconds) when the hosted server's limit of 120 requests a
 minute was hit, and `nothing` otherwise.
 """
 struct MapleStatsError <: Exception
@@ -208,15 +208,51 @@ function decode_result(result)
     end
 end
 
-function call_server_tool(client::Client, name::String, arguments::AbstractDict)
-    params = if name in DIRECT_TOOLS
-        Dict("name" => name, "arguments" => arguments)
-    else
-        Dict(
-            "name" => "call_tool",
-            "arguments" => Dict("name" => name, "arguments" => arguments),
-        )
+# What a server says of an argument it does not know, in English and French
+# ("detail is not a parameter of this tool; parameters: name, arguments").
+const UNKNOWN_ARGUMENT = r"not a parameter|n'est pas un paramètre|unexpected|additional propert|unrecognized|unknown"
+
+"""
+Whether the server refused `detail` as an argument it does not know. A server older
+than the compact search (before 2026-11-09) does this to search_tools, and one older
+than 0.6.0 (2026-11-18) to call_tool. Both answer in full anyway, so the call is
+repeated once without it. The error must also say the argument is unknown: any other
+error that mentions "detail" is the tool's own, and repeating the call would only
+hide it.
+"""
+function rejects_detail(err)
+    err isa MapleStatsError || return false
+    text = lowercase(err.message)
+    return occursin("detail", text) && occursin(UNKNOWN_ARGUMENT, text)
+end
+
+# `detail` is call_tool's own argument, beside `name` and `arguments`. The server's
+# default, "brief", writes a list of six or more rows as CSV text and cuts the
+# provenance; "full" keeps the rows as objects. For the server's own tools
+# (search_tools, plan_query) a `detail` that was given travels inside the arguments,
+# where the tool reads it.
+function call_server_tool(
+    client::Client,
+    name::String,
+    arguments::AbstractDict;
+    detail::Union{Nothing,AbstractString}=nothing,
+)
+    if name in DIRECT_TOOLS
+        sent = detail === nothing ? arguments : merge(arguments, Dict("detail" => detail))
+        params = Dict("name" => name, "arguments" => sent)
+        return decode_result(rpc_request(client, "tools/call", params))
     end
+    inner = Dict(
+        "name" => name, "arguments" => arguments, "detail" => something(detail, "full")
+    )
+    params = Dict("name" => "call_tool", "arguments" => inner)
+    try
+        return decode_result(rpc_request(client, "tools/call", params))
+    catch err
+        rejects_detail(err) || rethrow()
+    end
+    # A server that does not know `detail` answers in full without it.
+    delete!(inner, "detail")
     return decode_result(rpc_request(client, "tools/call", params))
 end
 
@@ -237,9 +273,7 @@ function search_tools(
     found = try
         call_server_tool(client, "search_tools", Dict("query" => query, "detail" => detail))
     catch err
-        # A server older than the compact search has no `detail` and rejects it;
-        # its answer is the full form anyway.
-        (err isa MapleStatsError && occursin("detail", err.message)) || rethrow()
+        rejects_detail(err) || rethrow()
         call_server_tool(client, "search_tools", Dict("query" => query))
     end
     tools = is_record_list(found) ? found : []
@@ -267,12 +301,23 @@ function plan_query(question::AbstractString; lang="en", client::Client=default_
 end
 
 """
-    call_tool(tool; client = default_client(), arguments...)
+    call_tool(tool; detail = nothing, client = default_client(), arguments...)
 
 Run a tool and return its result as parsed JSON (provenance included).
+`detail = "full"` (what `nothing` means) returns every field, the whole provenance and
+each list of rows as objects. `detail = "brief"` returns the server's compact
+answer: a list of six or more rows is one CSV text block (`format`, `rows`,
+`csv`) and the provenance is cut to what a citation needs. A server older than
+0.6.0 answers in full either way. For the server's own tools (`search_tools`,
+`plan_query`) a `detail` you pass goes to the tool as one of its arguments.
 """
-function call_tool(tool::AbstractString; client::Client=default_client(), kwargs...)
-    return call_server_tool(client, String(tool), as_arguments(kwargs))
+function call_tool(
+    tool::AbstractString;
+    detail::Union{Nothing,AbstractString}=nothing,
+    client::Client=default_client(),
+    kwargs...,
+)
+    return call_server_tool(client, String(tool), as_arguments(kwargs); detail)
 end
 
 """
@@ -281,7 +326,9 @@ end
 Run a tool and return its rows. The rows are the result's largest list of
 objects; a series' observations become one row each, carrying the series'
 fields. Nested fields become `parent_child` columns and names are cleaned to
-snake_case. Values keep their JSON types: dates stay text.
+snake_case. Values keep their JSON types: dates stay text. The server is always
+asked for `detail = "full"`: a brief result writes six or more rows as CSV text,
+which cannot be read as rows, so the frame has every field the server sends.
 
 The frame's metadata holds `"citation"` (a vector of strings), `"provenance"`,
 `"left_out"` (fields of the result beside the rows), `"tool"` and
@@ -289,11 +336,12 @@ The frame's metadata holds `"citation"` (a vector of strings), `"provenance"`,
 """
 function get_data(tool::AbstractString; client::Client=default_client(), kwargs...)
     arguments = as_arguments(kwargs)
-    raw = call_server_tool(client, String(tool), arguments)
-    rows, left = rows_and_left_out(raw)
+    # Notes the server states once for several items are written back in.
+    payload = resolve_shared_notes(call_server_tool(client, String(tool), arguments))
+    rows, left = rows_and_left_out(payload)
     frame = rows_to_frame(rows)
-    metadata!(frame, "citation", result_citation(raw); style=:note)
-    metadata!(frame, "provenance", result_provenance(raw); style=:note)
+    metadata!(frame, "citation", result_citation(payload); style=:note)
+    metadata!(frame, "provenance", result_provenance(payload); style=:note)
     metadata!(frame, "left_out", Dict(left); style=:note)
     metadata!(frame, "tool", String(tool); style=:note)
     metadata!(frame, "arguments", arguments; style=:note)

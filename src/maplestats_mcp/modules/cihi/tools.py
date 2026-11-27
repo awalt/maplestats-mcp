@@ -70,9 +70,9 @@ async def cihi_get_indicator_data(
     Alberta, or readmission rates by hospital. `place` is a substring
     of "Place or organization"; `filters` match columns exactly, e.g.
     {"Reporting level": "Province/Territory", "Time frame": "2024–2025",
-    "Level 1 breakdown": "Not applicable"}. The last `limit` matching
-    rows in file order come back (default 40, max 2000), held to about
-    200 KB, with the cut noted in provenance.limits. `columns` picks the
+    "Level 1 breakdown": "Not applicable"}. The newest `limit` matching
+    rows by time frame come back, in file order (default 40, max 2000),
+    held to about 200 KB, with the cut noted in provenance.limits. `columns` picks the
     columns to return (names as in the file); without it, columns blank
     in every returned row are left out and listed in empty_columns. The
     first read of an indicator downloads its workbook (about 2 MB; 20-50 s

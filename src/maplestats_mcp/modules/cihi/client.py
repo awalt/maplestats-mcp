@@ -486,6 +486,22 @@ async def _tables(
     return await cached_fetch(f"cihi:data:{url}", constants.CACHE_TTL_DATA_SECONDS, fetch)
 
 
+_YEAR = re.compile(r"(?:19|20)\d{2}")
+
+
+def _padded(row: list[str], width: int) -> list[str]:
+    return row + [""] * (width - len(row))
+
+
+def _period_key(text: str) -> tuple[int, int]:
+    """(newest year, oldest year) a time frame names: "2024–2025" is (2025, 2024).
+
+    A frame with no year ("Not applicable", blank) sorts before every dated one.
+    """
+    years = [int(y) for y in _YEAR.findall(text)]
+    return (max(years), min(years)) if years else (0, 0)
+
+
 async def get_indicator_data(
     indicator: str,
     *,
@@ -496,7 +512,7 @@ async def get_indicator_data(
     limit: int = constants.ROWS_DEFAULT,
     lang: str = "en",
 ) -> IndicatorData:
-    """Rows of an indicator's data table; the latest rows come last in the file."""
+    """Rows of an indicator's data table: the newest time frames, in file order."""
     if limit < 1 or limit > constants.ROWS_MAX:
         raise lang_error(
             InvalidInput,
@@ -566,8 +582,18 @@ async def get_indicator_data(
             return False
         return all(cells[i].lower() == v for i, v in wanted)
 
-    matching = [r for r in data if keep(r)]
-    kept = [r + [""] * (len(header) - len(r)) for r in matching[-limit:]]
+    matching = [_padded(r, len(header)) for r in data if keep(r)]
+    # The newest rows are the newest time frames, not the end of the file: a data
+    # table is ordered by place, so its last rows are the last place's rows.
+    period_index = next(
+        (by_lower[name] for name in constants.PERIOD_COLUMNS if name in by_lower), None
+    )
+    ranked = list(range(len(matching)))
+    if period_index is not None:
+        # Stable: rows of one time frame keep their file order.
+        ranked.sort(key=lambda i: _period_key(matching[i][period_index]))
+    newest_first = ranked[-limit:][::-1]
+    kept = [matching[i] for i in sorted(newest_first)]
     # Rows carry 33 columns (about 1.35 KB each, live 2026-10-03), many of
     # them blank for a given indicator; pick columns, or drop the blank ones.
     if columns:
@@ -580,9 +606,10 @@ async def get_indicator_data(
             chosen = list(range(len(header)))
     shown = [header[i] for i in chosen]
 
-    # The latest rows come last in the file: fill the byte budget newest
-    # first, then put them back in file order.
-    rows = fit_to_budget([{header[i]: row[i] for i in chosen} for row in kept][::-1])[::-1]
+    # Fill the byte budget newest first, then put the rows back in file order.
+    shaped = [(i, {header[c]: matching[i][c] for c in chosen}) for i in newest_first]
+    fitted = fit_to_budget([row for _, row in shaped])
+    rows = [row for _, row in sorted(shaped[: len(fitted)], key=lambda pair: pair[0])]
     return IndicatorData(
         slug=detail.slug,
         table=title or sheet,
@@ -602,8 +629,11 @@ async def get_indicator_data(
             schema_name="cihi.IndicatorData",
             coverage=fr_or_en(
                 lang,
-                f"last {len(rows)} of {len(matching)} matching rows",
-                f"{len(rows)} dernières lignes sur {len(matching)} correspondantes",
+                f"{'newest' if period_index is not None else 'last'} {len(rows)} of "
+                f"{len(matching)} matching rows",
+                f"{len(rows)} lignes les plus récentes sur {len(matching)} correspondantes"
+                if period_index is not None
+                else f"{len(rows)} dernières lignes sur {len(matching)} correspondantes",
             ),
             limits=truncation_note_lang(
                 lang,

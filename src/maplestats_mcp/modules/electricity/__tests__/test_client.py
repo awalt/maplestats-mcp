@@ -169,6 +169,179 @@ async def test_hourly_demand_with_a_start_date_keeps_the_first_rows(httpx_mock):
     assert result.rows_matched == 3
 
 
+# On 1 January (IESO time) the new year's file is absent, or holds a few hours: the
+# latest hours then come from the year before, which the old code never read.
+_DEMAND_2026_END = """\\\\Hourly Demand Report,,,
+Date,Hour,Market Demand,Ontario Demand
+2026-07-15,18,25500,24000
+2026-12-31,22,17000,15000
+2026-12-31,23,16500,14000
+2026-12-31,24,16000,13500
+"""
+_DEMAND_2027_START = """\\\\Hourly Demand Report,,,
+Date,Hour,Market Demand,Ontario Demand
+2027-01-01,1,15800,13400
+"""
+
+
+def _new_year(monkeypatch) -> None:
+    monkeypatch.setattr(client, "ieso_today", lambda: date(2027, 1, 1))
+
+
+async def test_latest_demand_reads_the_year_before_when_the_new_file_is_absent(
+    httpx_mock, monkeypatch
+):
+    _new_year(monkeypatch)
+    httpx_mock.add_response(
+        url=f"{BASE}/Demand/PUB_Demand_2027.csv", status_code=404, text="<h1>Not Found</h1>"
+    )
+    httpx_mock.add_response(url=f"{BASE}/Demand/PUB_Demand_2026.csv", text=_DEMAND_2026_END)
+    result = await client.get_hourly_demand(limit=3)
+    assert [(r.date.year, r.hour_ending) for r in result.rows] == [
+        (2026, 22),
+        (2026, 23),
+        (2026, 24),
+    ]
+    assert result.year == 2026 and result.last_row_date == date(2026, 12, 31)
+    assert result.provenance.url.endswith("/Demand/PUB_Demand_2026.csv")
+    assert "2027 file is not published yet" in (result.provenance.limits or "")
+    # The previous file holds a July peak of 24,000 MW: the figures cover the three
+    # hours returned, not that whole file (rows_matched was 4, the peak 24,000).
+    assert result.rows_matched == 3
+    assert result.peak_ontario_demand_mw == 15000 and result.peak_hour_ending == 22
+    assert result.average_ontario_demand_mw == 14166.7
+    assert "3 hours returned (2026-12-31 to 2026-12-31)" in (result.provenance.limits or "")
+
+
+async def test_latest_demand_adds_the_year_before_when_the_new_file_is_short(
+    httpx_mock, monkeypatch
+):
+    _new_year(monkeypatch)
+    httpx_mock.add_response(url=f"{BASE}/Demand/PUB_Demand_2027.csv", text=_DEMAND_2027_START)
+    httpx_mock.add_response(url=f"{BASE}/Demand/PUB_Demand_2026.csv", text=_DEMAND_2026_END)
+    result = await client.get_hourly_demand(limit=3, lang="fr")
+    assert [(r.date.year, r.hour_ending) for r in result.rows] == [
+        (2026, 23),
+        (2026, 24),
+        (2027, 1),
+    ]
+    # Three hours returned, so three matched: not the previous file's July peak.
+    assert result.rows_matched == 3 and result.year == 2027
+    assert result.peak_ontario_demand_mw == 14000 and result.peak_date == date(2026, 12, 31)
+    assert result.average_ontario_demand_mw == 13633.3
+    limits = result.provenance.limits or ""
+    assert "Le fichier de 2027 contenait moins que les 3 heures demandées" in limits
+    assert "ne couvrent que les 3 heures renvoyées (du 2026-12-31 au 2027-01-01)" in limits
+
+
+async def test_latest_demand_keeps_one_file_when_it_holds_enough(httpx_mock, monkeypatch):
+    _new_year(monkeypatch)
+    httpx_mock.add_response(url=f"{BASE}/Demand/PUB_Demand_2027.csv", text=_DEMAND_2027_START)
+    result = await client.get_hourly_demand(limit=1)
+    assert [(r.date.year, r.hour_ending) for r in result.rows] == [(2027, 1)]
+    assert len(httpx_mock.get_requests()) == 1
+
+
+async def test_an_explicit_year_or_start_date_never_reads_the_year_before(httpx_mock, monkeypatch):
+    _new_year(monkeypatch)
+    httpx_mock.add_response(url=f"{BASE}/Demand/PUB_Demand_2027.csv", text=_DEMAND_2027_START)
+    result = await client.get_hourly_demand(year=2027, limit=3)
+    assert [(r.date.year, r.hour_ending) for r in result.rows] == [(2027, 1)]
+    result = await client.get_hourly_demand(start_date="2027-01-01", limit=3)
+    assert result.rows_matched == 1
+    assert len(httpx_mock.get_requests()) == 1
+
+
+_DEMAND_2025 = """\\\\Hourly Demand Report,,,
+Date,Hour,Market Demand,Ontario Demand
+2025-01-01,1,15000,13000
+2025-01-01,2,14800,12800
+2025-06-01,1,17000,15000
+"""
+
+
+async def test_an_end_date_in_an_earlier_year_reads_that_years_file_alone(httpx_mock, monkeypatch):
+    # An end date names the year's file: only a call with no year, start date or end
+    # date is "the latest hours" and may read the year before. This one asked for the
+    # 48 hours up to 2025-01-01 in November 2026, found two, and also read 2024.
+    monkeypatch.setattr(client, "ieso_today", lambda: date(2026, 11, 26))
+    httpx_mock.add_response(url=f"{BASE}/Demand/PUB_Demand_2025.csv", text=_DEMAND_2025)
+    result = await client.get_hourly_demand(end_date="2025-01-01", limit=48)
+    assert [(r.date, r.hour_ending) for r in result.rows] == [
+        (date(2025, 1, 1), 1),
+        (date(2025, 1, 1), 2),
+    ]
+    assert result.year == 2025 and result.rows_matched == 2
+    assert result.peak_ontario_demand_mw == 13000
+    assert "fewer than" not in (result.provenance.limits or "")
+    assert len(httpx_mock.get_requests()) == 1
+
+
+async def test_a_supply_by_fuel_end_date_reads_that_years_file_alone(httpx_mock, monkeypatch):
+    monkeypatch.setattr(client, "ieso_today", lambda: date(2026, 11, 26))
+    httpx_mock.add_response(
+        url=f"{BASE}/GenOutputbyFuelHourly/PUB_GenOutputbyFuelHourly_2026.xml", text=_FUEL_XML
+    )
+    result = await client.get_supply_by_fuel(end_date="2026-01-01", limit=48)
+    assert result.year == 2026 and result.rows_matched == 2
+    assert len(httpx_mock.get_requests()) == 1
+
+
+async def test_supply_by_fuel_figures_cover_only_the_hours_returned_after_a_top_up(
+    httpx_mock, monkeypatch
+):
+    _new_year(monkeypatch)
+    httpx_mock.add_response(
+        url=f"{BASE}/GenOutputbyFuelHourly/PUB_GenOutputbyFuelHourly_2027.xml",
+        status_code=404,
+        text="<h1>Not Found</h1>",
+    )
+    httpx_mock.add_response(
+        url=f"{BASE}/GenOutputbyFuelHourly/PUB_GenOutputbyFuelHourly_2026.xml", text=_FUEL_XML
+    )
+    result = await client.get_supply_by_fuel(limit=1)
+    # The previous file has two hours; the one hour returned is hour 2, with no gas value.
+    assert [(r.date, r.hour_ending) for r in result.rows] == [(date(2026, 1, 1), 2)]
+    assert result.rows_matched == 1
+    totals = {t.fuel: t for t in result.totals}
+    assert totals["nuclear"].energy_mwh == 9000
+    assert result.first_date == result.last_date == date(2026, 1, 1)
+    assert "cover only the 1 hours returned (2026-01-01 to 2026-01-01)" in (
+        result.provenance.limits or ""
+    )
+
+
+async def test_a_missing_file_is_still_an_error_for_a_chosen_year(httpx_mock, monkeypatch):
+    _new_year(monkeypatch)
+    httpx_mock.add_response(
+        url=f"{BASE}/Demand/PUB_Demand_2027.csv", status_code=404, text="<h1>Not Found</h1>"
+    )
+    with pytest.raises(NotFound):
+        await client.get_hourly_demand(year=2027)
+
+
+async def test_latest_supply_by_fuel_reads_the_year_before_in_early_january(
+    httpx_mock, monkeypatch
+):
+    _new_year(monkeypatch)
+    httpx_mock.add_response(
+        url=f"{BASE}/GenOutputbyFuelHourly/PUB_GenOutputbyFuelHourly_2027.xml",
+        status_code=404,
+        text="<h1>Not Found</h1>",
+    )
+    httpx_mock.add_response(
+        url=f"{BASE}/GenOutputbyFuelHourly/PUB_GenOutputbyFuelHourly_2026.xml", text=_FUEL_XML
+    )
+    result = await client.get_supply_by_fuel(limit=2)
+    assert [(r.date, r.hour_ending) for r in result.rows] == [
+        (date(2026, 1, 1), 1),
+        (date(2026, 1, 1), 2),
+    ]
+    assert result.year == 2026
+    assert result.provenance.url.endswith("PUB_GenOutputbyFuelHourly_2026.xml")
+    assert "2027 file is not published yet" in (result.provenance.limits or "")
+
+
 async def test_hourly_demand_rejects_cross_year_and_bad_limit():
     with pytest.raises(InvalidInput):
         await client.get_hourly_demand(start_date="2025-12-31", end_date="2026-01-01")

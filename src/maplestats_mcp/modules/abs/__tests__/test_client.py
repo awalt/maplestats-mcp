@@ -7,6 +7,8 @@ first, as the API sends it). The 404 "NoRecordsFound" is the API's own."""
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import re
 from pathlib import Path
@@ -93,6 +95,60 @@ async def test_get_data_sorts_newest_first_rows_and_labels_series(httpx_mock):
     assert _data_requests(httpx_mock)[0].url.params["lastNObservations"] == "3"
 
 
+def _lf_with_gaps(*, everything_blank: bool = False) -> str:
+    """The LF answer with the ABS's way of saying a value is missing: an empty OBS_VALUE
+    and an OBS_STATUS ("M: Missing value"). New South Wales loses September 2026 and
+    Victoria all three months, so that series has no number at all."""
+    rows = list(csv.reader(io.StringIO(_text("data_lf.csv"))))
+    header, body = rows[0], rows[1:]
+    region, period = header.index("REGION: Region"), header.index("TIME_PERIOD: Time Period")
+    value, status = header.index("OBS_VALUE"), header.index("OBS_STATUS: Observation Status")
+    for row in body:
+        gone = everything_blank or (
+            row[region].startswith("2:")
+            or (row[region].startswith("1:") and row[period] == "2026-09")
+        )
+        if gone:
+            row[value], row[status] = "", "M: Missing value"
+    out = io.StringIO()
+    csv.writer(out, lineterminator="\n").writerows(rows)
+    return out.getvalue()
+
+
+async def test_values_left_out_are_counted_by_status_in_the_notes_and_limits(httpx_mock):
+    _mock(httpx_mock, "LF", None)
+    httpx_mock.add_response(url=_data("LF"), text=_lf_with_gaps())
+    result = await client.get_data("LF", "m13.3.1599.20.1+2+aus.m", last_n=3)
+    # What was returned is what it was: Victoria, with no number at all, is still not a series.
+    assert [s.region for s in result.series] == ["New South Wales", "Australia"]
+    sentence = next(n for n in result.notes if "no numeric value" in n)
+    assert "4 observations had no numeric value" in sentence and "4 Missing value" in sentence
+    assert "1 series had no numeric value at all" in sentence
+    assert sentence in (result.provenance.limits or "")
+
+
+async def test_values_left_out_are_worded_in_french(httpx_mock):
+    _mock(httpx_mock, "LF", None)
+    httpx_mock.add_response(url=_data("LF"), text=_lf_with_gaps())
+    result = await client.get_data("LF", "m13.3.1599.20.1+2+aus.m", last_n=3, lang="fr")
+    sentence = next(n for n in result.notes if "sans valeur numérique" in n)
+    assert "4 Missing value" in sentence and "aucune valeur numérique" in sentence
+    assert sentence in (result.provenance.limits or "")
+
+
+async def test_an_answer_without_gaps_has_no_such_note(httpx_mock):
+    _mock(httpx_mock, "LF", "data_lf.csv")
+    result = await client.get_data("LF", "m13.3.1599.20.1+2+aus.m", last_n=3)
+    assert not any("no numeric value" in n for n in result.notes)
+
+
+async def test_an_answer_with_no_number_at_all_is_still_not_found(httpx_mock):
+    _mock(httpx_mock, "LF", None)
+    httpx_mock.add_response(url=_data("LF"), text=_lf_with_gaps(everything_blank=True))
+    with pytest.raises(NotFound, match="has no values for key"):
+        await client.get_data("LF", "m13.3.1599.20.1+2+aus.m", last_n=3)
+
+
 async def test_unit_multiplier_is_kept_so_thousands_are_not_read_as_units(httpx_mock):
     _mock(httpx_mock, "LF", None)
     thousands = _text("data_lf.csv").replace("0: Units", "3: Thousands")
@@ -125,6 +181,21 @@ async def test_indicator_gives_the_canadian_counterpart(httpx_mock):
     assert "18-10-0004-01" in result.canada_counterpart
     assert result.provenance.schema_name == "abs.IndicatorResult"
     assert _data_requests(httpx_mock)[0].url.params["lastNObservations"] == "24"
+
+
+async def test_indicator_carries_the_note_on_values_left_out(httpx_mock):
+    _mock(httpx_mock, "CPI", None)
+    gap = "2026-08,4,PCT: Percent,,"
+    text = _text("data_cpi.csv")
+    assert text.count(gap) == 1
+    httpx_mock.add_response(
+        url=_data("CPI"), text=text.replace(gap, "2026-08,,PCT: Percent,M: Missing value,")
+    )
+    result = await client.get_indicator("cpi_inflation")
+    assert "2026-08" not in [o.period for o in result.observations]
+    sentence = next(n for n in result.notes if "no numeric value" in n)
+    assert "1 observation had no numeric value" in sentence and "1 Missing value" in sentence
+    assert sentence in (result.provenance.limits or "")
 
 
 async def test_bad_inputs_are_invalid():

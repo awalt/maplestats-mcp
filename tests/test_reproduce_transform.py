@@ -349,3 +349,61 @@ def test_generated_python_smoothed_change_matches_the_tool_offline(
     assert [v is None for v in got] == [v is None for v in want]
     assert any(v is not None for v in want)
     assert [v for v in got if v is not None] == pytest.approx([v for v in want if v is not None])
+
+
+@pytest.mark.parametrize(
+    ("transform", "frequency", "latest_n", "gap"),
+    [
+        ("pct_change", None, 5, False),
+        ("level", "annual", 1, False),
+        ("yoy_diff", "annual", 2, False),
+        ("level", "annual", 1, True),
+    ],
+)
+def test_generated_python_matches_the_tool_on_negative_levels_and_a_running_year(
+    transform, frequency, latest_n, gap
+):
+    pl = pytest.importorskip("polars")
+    from datetime import date
+
+    from maplestats_mcp.shared.transform import transform_series
+
+    plan = builders._Plan(
+        builders.TransformRequest(transform, frequency), "wds", {"1": 1}, [], "", latest_n=latest_n
+    )
+    # Monthly through 2026-10, the last months negative: the scripts leave a percent
+    # change from a negative level null and, like the tool, count latest_n over
+    # complete years only.
+    months = [(2024 + i // 12, i % 12 + 1) for i in range(34)]
+    levels = [50.0 - 3 * i for i in range(34)]
+    if gap:  # 2025-06 has no row: 2025 is incomplete but not running, and stays null
+        del months[17], levels[17]
+    data = pl.DataFrame(
+        {
+            "vectorId": [1] * len(months),
+            "refPer": [f"{y}-{m:02d}-01" for y, m in months],
+            "value": levels,
+        }
+    )
+    code = builders._python_transform(plan)
+    namespace = {"data": data, "pl": pl}
+    exec("\n".join(code.imports) + "\n" + code.body, namespace)  # noqa: S102
+    expected = transform_series(
+        [(date(y, m, 1), v) for (y, m), v in zip(months, levels, strict=True)],
+        source_ppy=12,
+        transform=transform,
+        frequency=frequency,
+        latest_n=latest_n,
+    )
+    got = namespace["data"]
+    want = [p.value for p in expected.points]
+    if frequency:
+        assert got["period"].to_list()[-1] == date(2025, 1, 1)  # not the running 2026
+        assert (got["value"].to_list()[-1] is None) == gap
+    else:
+        assert got["value"].to_list() == [None] * latest_n  # every base is negative
+    assert got["period"].to_list() == [p.ref_date for p in expected.points]
+    assert [v is None for v in got["value"].to_list()] == [v is None for v in want]
+    assert [v for v in got["value"].to_list() if v is not None] == pytest.approx(
+        [v for v in want if v is not None]
+    )

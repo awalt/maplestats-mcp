@@ -168,8 +168,8 @@ async def oecd_get_data(
     )
 
 
-# Left undefined when MAPLE_QUERY_SERIES=0, like wds_query_series: the hosted server
-# keeps DuckDB queries off until each runs in a memory-capped process.
+# Left undefined when MAPLE_QUERY_SERIES=0, like wds_query_series. The Render backup sets
+# 0 (512 MB); the Azure endpoint sets 1 (docker.yml).
 if config.get_query_series_enabled():
 
     @tool

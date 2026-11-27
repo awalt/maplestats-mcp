@@ -780,3 +780,67 @@ async def test_without_a_period_files_before_the_wells_first_production_are_not_
     early = await client.get_production(well_authorization="22311", to_period="1999")
     assert [m.member for m in early.members_read] == ["zone_prd_1954_to_2006.csv"]
     assert early.records_matched == 0
+
+
+# --- lines the scanner skipped ----------------------------------------------------------
+# RowScanner counts a line with the wrong number of fields (a quoted field holding a line
+# break does it) but no result said so: a total could be short with nothing to show it.
+
+SKIPPED = "did not have as many fields as the header"
+
+
+@pytest.mark.parametrize(("extra", "skipped"), [(b"", 0), (b'"99999","SHORT ROW"\n', 1)])
+async def test_a_skipped_index_line_is_said_in_the_notes(serve, extra, skipped):
+    serve({**drilling_files(), "well_index.csv": INDEX_CSV + extra})
+    result = await client.search_wells(well_authorization="1811")
+    said = [n for n in result.notes if SKIPPED in n]
+    assert len(said) == skipped
+    if skipped:
+        assert said[0].startswith("1 line(s) of well_index.csv")
+
+
+async def test_a_skipped_production_line_is_said_in_the_notes(serve):
+    recent = [
+        prod_row("22311", "202501", 100, 0, 10, 2),
+        q("22311", "BROKEN"),
+        prod_row("22311", "202502", 110, 0, 11, 2),
+    ]
+    members = {"zone_prd_2025_to_present.csv": prod_member("ZONE_PRD_2025_TO_present FILE", recent)}
+    serve({"prod_csv.zip": make_zip(members), **drilling_files()})
+    result = await client.get_production(well_authorization="22311", from_period="2025-01")
+    assert result.records_matched == 2
+    assert any(n.startswith("1 line(s) of prod_csv.zip") and SKIPPED in n for n in result.notes)
+    french = await client.get_production(
+        well_authorization="22311", from_period="2025-01", lang="fr"
+    )
+    assert any(
+        "1 ligne(s) de prod_csv.zip n'avaient pas autant de champs" in n for n in french.notes
+    )
+
+
+async def test_a_skipped_drilling_line_is_said_in_the_notes(serve):
+    casings = CASINGS_CSV.replace(q("B", "01811", "00", "1203.9", "139.7"), q("B", "01811"))
+    members = {"wells.csv": WELLS_CSV, "clients.csv": CLIENTS_CSV, "casings.csv": casings}
+    serve({"well_index.csv": INDEX_CSV, "drill_csv.zip": make_zip(members)})
+    result = await client.get_drilling_records(well_authorization="1811", table="casings")
+    assert result.rows_matched == 1
+    assert any(n.startswith("1 line(s) of casings.csv") and SKIPPED in n for n in result.notes)
+
+
+async def test_a_skipped_facility_line_is_said_in_the_notes(serve):
+    serve({"facindex.csv": (FACINDEX + "\n" + q("00000009", "SHORT")).encode()})
+    result = await client.search_facilities(query="boundarylake")
+    assert result.rows_matched == 1
+    assert any(n.startswith("1 line(s) of facindex.csv") and SKIPPED in n for n in result.notes)
+
+
+async def test_a_skipped_reference_line_is_said_in_the_notes(serve):
+    members = {
+        "wells.csv": WELLS_CSV,
+        "clients.csv": CLIENTS_CSV,
+        "codes.csv": CODES_CSV + "\n" + q("FORT", "9999"),
+    }
+    serve({"drill_csv.zip": make_zip(members), "well_index.csv": INDEX_CSV})
+    result = await client.get_reference_table(table="codes", query="montney")
+    assert [(r["Table ID"], r["Code"]) for r in result.rows] == [("FORT", "5000")]
+    assert any(n.startswith("1 line(s) of codes.csv") and SKIPPED in n for n in result.notes)

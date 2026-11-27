@@ -25,7 +25,7 @@ observation's release time, decoded codes) or the whole `provenance` block
 
 ## Connect
 
-Hosted server, no account or key (60 requests a minute per client):
+Hosted server, no account or key (120 requests a minute per client):
 
 ```bash
 claude mcp add --transport http --scope user maplestats https://mcp.maplestats.danielstats.io/mcp

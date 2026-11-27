@@ -61,6 +61,12 @@ def test_build_where_quotes_and_makes_end_date_inclusive():
     assert "UPPER(Intersection) LIKE '%JASPER AV%'" in where
 
 
+def test_build_where_intersection_wildcards_match_only_themselves():
+    # "%" used to be a LIKE wildcard that matched every intersection.
+    where = client.build_where(intersection_contains="50%_av")
+    assert "UPPER(Intersection) LIKE '%50$%$_AV%' ESCAPE '$'" in where
+
+
 def test_build_where_defaults_to_all_rows():
     assert client.build_where() == "1=1"
 

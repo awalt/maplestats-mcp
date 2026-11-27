@@ -212,6 +212,122 @@ def test_division_by_zero_is_missing():
     assert values["2024-02"] is None
 
 
+@pytest.mark.parametrize("transform", ["pct_change", "annualized_pct_change"])
+def test_percent_change_from_a_negative_level_is_missing(transform):
+    # -100 to -50 is a rise; 100 * (-50 / -100 - 1) = -50 would show it as a fall,
+    # and -50 to 50 would give -200.
+    points = _monthly({"2024-01": -100.0, "2024-02": -50.0, "2024-03": 50.0, "2024-04": 60.0})
+    result = transform_series(points, source_ppy=12, transform=transform)
+    values = _values(result)
+    assert values["2024-02"] is None and values["2024-03"] is None
+    assert values["2024-04"] is not None  # from 50, a positive base
+    assert sum("negative level" in note for note in result.notes) == 1
+    assert any("transform='diff'" in note for note in result.notes)
+    french = transform_series(points, source_ppy=12, transform=transform, lang="fr")
+    assert any("niveau négatif" in note for note in french.notes)
+    # The differences are unchanged: 50 and 100.
+    diffs = _values(transform_series(points, source_ppy=12, transform="diff"))
+    assert diffs["2024-02"] == pytest.approx(50.0) and diffs["2024-03"] == pytest.approx(100.0)
+
+
+def test_yoy_percent_change_from_a_negative_level_is_missing():
+    points = _monthly({"2024-01": -100.0, "2025-01": -50.0})
+    result = transform_series(points, source_ppy=12, transform="yoy_pct_change")
+    assert _values(result)["2025-01"] is None
+    assert any("negative level" in note for note in result.notes)
+    yoy_diff = transform_series(points, source_ppy=12, transform="yoy_diff")
+    assert _values(yoy_diff)["2025-01"] == pytest.approx(50.0)
+    assert not any("negative level" in note for note in yoy_diff.notes)
+
+
+def test_negative_level_note_only_when_a_returned_value_was_nulled():
+    # 10, 5, -3: the bases are positive, so -50 and -160 are returned and no note.
+    falling = _monthly({"2024-01": 10.0, "2024-02": 5.0, "2024-03": -3.0})
+    result = transform_series(falling, source_ppy=12, transform="pct_change")
+    assert _values(result)["2024-03"] == pytest.approx(-160.0)
+    assert not any("negative level" in note for note in result.notes)
+    # A negative level only in the history fetched for the lag: no returned value is
+    # nulled by it, so no note.
+    history = _monthly({"2024-01": -5.0, "2024-02": 5.0, "2024-03": 6.0})
+    latest = transform_series(history, source_ppy=12, transform="pct_change", latest_n=1)
+    assert not any("negative level" in note for note in latest.notes)
+    # The same for a zero level.
+    zero = _monthly({"2024-01": 0.0, "2024-02": 5.0, "2024-03": 6.0})
+    latest = transform_series(zero, source_ppy=12, transform="pct_change", latest_n=1)
+    assert not any("level of 0" in note for note in latest.notes)
+    assert any(
+        "level of 0" in note
+        for note in transform_series(zero, source_ppy=12, transform="pct_change").notes
+    )
+    # Smoothed: the null change inside the returned period's window counts.
+    smoothed = transform_series(
+        history, source_ppy=12, transform="pct_change", window=2, latest_n=1
+    )
+    assert _values(smoothed)["2024-03"] is None
+    assert any("negative level" in note for note in smoothed.notes)
+
+
+# Monthly data through 2026-10: 2025 is a whole year, 2026 is still running.
+THROUGH_OCTOBER = [(date(2025 + i // 12, i % 12 + 1, 1), 100.0 + i) for i in range(22)]
+
+
+def test_latest_n_counts_complete_aggregated_periods():
+    result = transform_series(
+        THROUGH_OCTOBER, source_ppy=12, frequency="annual", aggregation="average", latest_n=1
+    )
+    # The mean of 100..111, not a null 2026.
+    assert [(p.period, p.value) for p in result.points] == [("2025", pytest.approx(105.5))]
+    dropped = (
+        "Not aggregated, the data end before the end of the period: 2026 (left out: the "
+        "latest periods asked for count complete periods only)."
+    )
+    assert result.notes == [dropped]
+    french = transform_series(
+        THROUGH_OCTOBER, source_ppy=12, frequency="annual", latest_n=1, lang="fr"
+    )
+    assert any("2026 (laissée de côté" in note for note in french.notes)
+
+
+def test_latest_n_keeps_a_period_a_gap_left_incomplete():
+    # 2024-12 to 2026-10 without 2025-06: 2025 is incomplete because of the gap, not
+    # because it is running. Only 2026 (the data end inside it) is left out.
+    months = [(date(2024 + (11 + i) // 12, (11 + i) % 12 + 1, 1), 100.0 + i) for i in range(23)]
+    months = [m for m in months if m[0] != date(2025, 6, 1)]
+    result = transform_series(months, source_ppy=12, frequency="annual", latest_n=1)
+    assert [(p.period, p.value) for p in result.points] == [("2025", None)]
+    assert any("2025" in n and "left null" in n for n in result.notes)
+    assert any("2026 (left out" in n for n in result.notes)
+    # A series whose last year is cut by a gap but ends on December: nothing left out.
+    ended = [m for m in months if m[0] < date(2026, 1, 1)]
+    result = transform_series(ended, source_ppy=12, frequency="annual", latest_n=1)
+    assert [(p.period, p.value) for p in result.points] == [("2025", None)]
+    assert not any("left out" in n for n in result.notes)
+
+
+def test_latest_n_over_daily_data_is_unchanged():
+    # Daily data are fetched by observation count; their partial month stays, null.
+    days = [(date(2026, 10, d), 1.0) for d in (1, 2, 5)]
+    result = transform_series(days, source_ppy=None, frequency="monthly", latest_n=1)
+    assert [(p.period, p.value) for p in result.points] == [("2026-10", None)]
+
+
+def test_without_latest_n_the_running_period_is_still_returned_null():
+    result = transform_series(THROUGH_OCTOBER, source_ppy=12, frequency="annual")
+    assert [(p.period, p.value) for p in result.points] == [
+        ("2025", pytest.approx(105.5)),
+        ("2026", None),
+    ]
+    windowed = transform_series(
+        THROUGH_OCTOBER,
+        source_ppy=12,
+        frequency="annual",
+        window_start=date(2026, 1, 1),
+        window_end=date(2026, 10, 1),
+    )
+    assert [(p.period, p.value) for p in windowed.points] == [("2026", None)]
+    assert "2026" in windowed.notes[0] and "left null" in windowed.notes[0]
+
+
 def test_history_needed():
     assert source_periods_needed(3, "yoy_pct_change", 12, 12) == 15
     assert source_periods_needed(3, "level", 12, 1) == 47  # 3 years + 11 months of slack

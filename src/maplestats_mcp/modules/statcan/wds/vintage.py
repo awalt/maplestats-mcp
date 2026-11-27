@@ -6,7 +6,10 @@ WDS serves, listed in statcan/delta/realtime.py). Member ids of the shared
 dimensions do not always agree between the two tables (the NAICS dimension
 of 12-10-0165 numbers 21 members differently from 12-10-0163; 36-10-0491
 has 321 industries where 36-10-0434 has 249), so members are matched by
-their English names, dimension by dimension, never by id.
+their English names, dimension by dimension, never by id. A name shared by
+several members (the same label under two parents) is told apart by the
+parent's name, then by the classification code; when neither decides, the
+call fails and lists the candidates rather than reading the first one.
 
 Release members are named "April 20, 2026" in English and "20 avril 2026"
 in French; only the English name is parsed.
@@ -71,19 +74,123 @@ def _parse_as_of(value: str) -> date:
         ) from exc
 
 
+def _find_member(dim: dict[str, Any], member_id: Any) -> dict[str, Any] | None:
+    return next((m for m in list_or_empty(dim, "member") if m["memberId"] == member_id), None)
+
+
+def _parent_name(dim: dict[str, Any], member: dict[str, Any]) -> str | None:
+    """The folded English name of a member's parent, None for a top-level member."""
+    parent = _find_member(dim, member.get("parentMemberId"))
+    return _fold(parent["memberNameEn"]) if parent is not None else None
+
+
+def _describe(dim: dict[str, Any], member: dict[str, Any], fr: bool) -> str:
+    """One candidate as the error lists it: id, name, parent and code, in one language."""
+    stem = "memberNameFr" if fr else "memberNameEn"
+
+    def named(m: dict[str, Any]) -> str:
+        # A member without a French name is shown by its English one.
+        text = m.get(stem) or m["memberNameEn"]
+        return f"« {text} »" if fr else repr(text)
+
+    parent = _find_member(dim, member.get("parentMemberId"))
+    under = f", {'sous' if fr else 'under'} {named(parent)}" if parent is not None else ""
+    code = f", code {member['classificationCode']}" if member.get("classificationCode") else ""
+    return f"{member['memberId']} ({named(member)}{under}{code})"
+
+
+def _real_time_dimension(
+    regular_dim: dict[str, Any], real_time: dict[str, Any]
+) -> dict[str, Any] | None:
+    """The real-time dimension (release excluded) with the regular one's English name.
+
+    Two dimensions can share a name. The position the regular dimension holds then
+    decides (the real-time table is the regular one plus a last Release dimension),
+    and when that does not single one out the pair cannot be matched.
+    """
+    name = _fold(regular_dim["dimensionNameEn"])
+    named = [
+        d for d in list_or_empty(real_time, "dimension")[:-1] if _fold(d["dimensionNameEn"]) == name
+    ]
+    if len(named) <= 1:
+        return named[0] if named else None
+    position = int(regular_dim["dimensionPositionId"])
+    same_position = [d for d in named if int(d["dimensionPositionId"]) == position]
+    if len(same_position) == 1:
+        return same_position[0]
+    raise InvalidInput(
+        _m(
+            f"Real-time table {real_time['productId']} has {len(named)} dimensions named "
+            f"{regular_dim['dimensionNameEn']!r}, so which one is dimension {position}'s "
+            "cannot be told. Read the real-time table directly with "
+            "wds_get_data_from_cube_coord and a Release member.",
+            f"Le tableau en temps réel {real_time['productId']} a {len(named)} dimensions "
+            f"nommées {regular_dim['dimensionNameFr']!r} : on ne peut pas dire laquelle "
+            f"correspond à la dimension {position}. Lisez le tableau en temps réel directement "
+            "avec wds_get_data_from_cube_coord et un membre de la dimension Diffusion.",
+        )
+    )
+
+
+def _real_time_member(
+    regular_dim: dict[str, Any],
+    member: dict[str, Any],
+    rt_dim: dict[str, Any],
+    real_time_pid: Any,
+) -> dict[str, Any] | None:
+    """The real-time member standing for the regular one, matched on its English name.
+
+    Ids are not comparable between the two tables (see the module docstring), so the
+    name is the link. When it is not unique on either side, the member's parent (its
+    place in the hierarchy) and then its classification code decide; if they cannot
+    pick exactly one, InvalidInput lists the candidates. The first hit is never taken:
+    it would be a plausible series for the wrong member.
+    """
+    name = _fold(member["memberNameEn"])
+    candidates = [m for m in list_or_empty(rt_dim, "member") if _fold(m["memberNameEn"]) == name]
+    shared_name = sum(
+        _fold(m["memberNameEn"]) == name for m in list_or_empty(regular_dim, "member")
+    )
+    if not candidates or (len(candidates) == 1 and shared_name == 1):
+        return candidates[0] if candidates else None
+
+    wanted_parent = _parent_name(regular_dim, member)
+    narrowed = [m for m in candidates if _parent_name(rt_dim, m) == wanted_parent]
+    code = str(member.get("classificationCode") or "").strip()
+    if len(narrowed) > 1 and code:
+        narrowed = [m for m in narrowed if str(m.get("classificationCode") or "").strip() == code]
+    if len(narrowed) == 1:
+        return narrowed[0]
+
+    options_en = ", ".join(_describe(rt_dim, m, False) for m in candidates)
+    options_fr = ", ".join(_describe(rt_dim, m, True) for m in candidates)
+    raise InvalidInput(
+        _m(
+            f"{member['memberNameEn']!r} ({regular_dim['dimensionNameEn']}) is a name shared by "
+            f"several members, and neither its parent nor its code tells which member of "
+            f"real-time table {real_time_pid} is the same one (candidates: {options_en}). Read the "
+            "real-time table directly with wds_get_data_from_cube_coord and a Release member.",
+            f"« {member['memberNameFr']} » ({regular_dim['dimensionNameFr']}) est un nom partagé "
+            f"par plusieurs membres, et ni son parent ni son code n'indiquent lequel du tableau "
+            f"en temps réel {real_time_pid} est le même membre (candidats : {options_fr}). Lisez le "
+            "tableau en temps réel directement avec wds_get_data_from_cube_coord et un membre de "
+            "la dimension Diffusion.",
+        )
+    )
+
+
 def _map_coordinate(
     regular: dict[str, Any], real_time: dict[str, Any], coordinate: str
 ) -> list[int]:
     """The real-time member ids for the regular coordinate's members, release excluded."""
     ids = [int(p) for p in coordinate.split(".")]
-    rt_dims = {_fold(d["dimensionNameEn"]): d for d in list_or_empty(real_time, "dimension")[:-1]}
     mapped: list[int] = []
     for dim in sorted(
         list_or_empty(regular, "dimension"), key=lambda d: int(d["dimensionPositionId"])
     ):
         position = int(dim["dimensionPositionId"])
         member_id = ids[position - 1]
-        member = next((m for m in list_or_empty(dim, "member") if m["memberId"] == member_id), None)
+        member = _find_member(dim, member_id)
         if member is None:
             raise NotFound(
                 _m(
@@ -93,17 +200,10 @@ def _map_coordinate(
                     f"dimension {position} ({dim['dimensionNameFr']}).",
                 )
             )
-        rt_dim = rt_dims.get(_fold(dim["dimensionNameEn"]))
+        rt_dim = _real_time_dimension(dim, real_time)
         rt_member = None
         if rt_dim is not None:
-            rt_member = next(
-                (
-                    m
-                    for m in list_or_empty(rt_dim, "member")
-                    if _fold(m["memberNameEn"]) == _fold(member["memberNameEn"])
-                ),
-                None,
-            )
+            rt_member = _real_time_member(dim, member, rt_dim, real_time["productId"])
         if rt_member is None:
             raise NotFound(
                 _m(

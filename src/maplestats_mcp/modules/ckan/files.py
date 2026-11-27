@@ -516,6 +516,7 @@ async def _read_datastore(
             limit=limit,
             offset=offset,
             lang=resolved.lang,
+            resource_checked=True,
         )
     except NotFound:
         # Confirmed live: some resources keep datastore_active true after the table

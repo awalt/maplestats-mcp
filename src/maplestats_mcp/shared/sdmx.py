@@ -24,11 +24,14 @@ import csv
 import io
 import math
 import re
+from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from maplestats_mcp.shared.envelope import raise_localized
 from maplestats_mcp.shared.errors import InvalidInput
+from maplestats_mcp.shared.i18n import fr_number, pick
 from maplestats_mcp.shared.json_utils import list_or_empty
 
 # SDMX reporting periods: 2026, 2026-Q1, 2026-S1, 2026-09, 2026-M09, 2026-09-30.
@@ -66,11 +69,18 @@ class Structure:
 @dataclass
 class Series:
     """One series of a data answer: its dimension codes and labels, its
-    series-level attributes (code, label) and its observations, oldest first."""
+    series-level attributes (code, label) and its observations, oldest first.
+
+    `no_value` holds the observations the answer sent without a number, as (period,
+    status label), oldest first. They cannot be rows of `observations`, whose values
+    are numbers, but a status such as "Missing value" says why a period is absent:
+    no_value_note() turns them into a sentence for the caller's notes.
+    """
 
     dims: list[tuple[str, str, str]]
     attributes: dict[str, tuple[str, str]]
     observations: list[tuple[str, float, str | None]]
+    no_value: list[tuple[str, str | None]] = field(default_factory=list)
 
     @property
     def key(self) -> str:
@@ -310,10 +320,18 @@ def split_label(cell: str) -> tuple[str, str]:
     return (code, label or code) if sep else (cell.strip(), cell.strip())
 
 
-def parse_csv(text: str, dimensions: list[Dim], attributes: tuple[str, ...]) -> list[Series]:
+def parse_csv(
+    text: str,
+    dimensions: list[Dim],
+    attributes: tuple[str, ...],
+    empty: list[Series] | None = None,
+) -> list[Series]:
     """Series from an SDMX-CSV 2.0 (labels=both) answer, observations sorted by
-    period. Rows without a numeric value are left out; `attributes` are read
-    from the first row of each series that has them."""
+    period. Rows without a numeric value are not observations, but each is kept in
+    its series' `no_value` with its status. A series with no numeric value at all is
+    left out of the result, as it always was (callers read an empty answer as "no
+    data"); pass a list as `empty` to receive those series, with their `no_value`.
+    `attributes` are read from the first row of each series that has them."""
     reader = csv.reader(io.StringIO(text.lstrip("﻿")))
     header = next(reader, None)
     if not header:
@@ -347,18 +365,63 @@ def parse_csv(text: str, dimensions: list[Dim], attributes: tuple[str, ...]) -> 
             cell = row[index[name]].strip() if name in index else ""
             if cell and name not in entry.attributes:
                 entry.attributes[name] = split_label(cell)
+        status_cell = row[index["OBS_STATUS"]].strip() if "OBS_STATUS" in index else ""
+        status = split_label(status_cell)[1] if status_cell else None
         try:
             value = float(row[index["OBS_VALUE"]].strip())
         except ValueError:
-            continue
+            value = math.nan
         if not math.isfinite(value):
+            # The ABS sends a missing value as an empty cell with an OBS_STATUS (M:
+            # Missing value); the status used to leave with the row.
+            entry.no_value.append((period, status))
             continue
-        status_cell = row[index["OBS_STATUS"]].strip() if "OBS_STATUS" in index else ""
-        entry.observations.append(
-            (period, value, split_label(status_cell)[1] if status_cell else None)
-        )
+        entry.observations.append((period, value, status))
     result = [s for s in series.values() if s.observations]
     for s in result:
         s.observations.sort(key=lambda o: o[0])
+        s.no_value.sort(key=lambda o: o[0])
     result.sort(key=lambda s: s.key)
+    if empty is not None:
+        # Every row of such a series went to no_value, so each has at least one entry.
+        gone = sorted((s for s in series.values() if not s.observations), key=lambda s: s.key)
+        for s in gone:
+            s.no_value.sort(key=lambda o: o[0])
+        empty.extend(gone)
     return result
+
+
+def no_value_note(series: Sequence[Series], lang: str, empty: Sequence[Series] = ()) -> str | None:
+    """One sentence on the observations the answer held without a number, by status,
+    for the caller's notes; None when there were none.
+
+    Counts what `parse_csv` kept in each series' `no_value`. Pass the `empty` list it
+    filled to count the series with no number at all too: they are not in `series`,
+    and the sentence then says how many were left out.
+    """
+    statuses = Counter(status for s in (*series, *empty) for _, status in s.no_value)
+    total = sum(statuses.values())
+    if not total:
+        return None
+    # Flagged statuses first, the most frequent first; an observation with no status last.
+    ranked = sorted(statuses.items(), key=lambda item: (item[0] is None, -item[1], item[0] or ""))
+    detail_en = ", ".join(f"{n} {status or 'no status'}" for status, n in ranked)
+    detail_fr = ", ".join(f"{fr_number(n)} {status or 'sans statut'}" for status, n in ranked)
+    en = (
+        f"{total:,} observation{'s' if total != 1 else ''} had no numeric value and "
+        f"{'are' if total != 1 else 'is'} not among the rows ({detail_en})."
+    )
+    fr = (
+        f"{fr_number(total)} observation{'s' if total > 1 else ''} sans valeur numérique "
+        f"ne figure{'nt' if total > 1 else ''} pas parmi les lignes ({detail_fr})."
+    )
+    if empty:
+        few = len(empty)
+        en += (
+            f" {few} series had no numeric value at all and {'is' if few == 1 else 'are'} left out."
+        )
+        fr += (
+            f" {fr_number(few)} série{'s' if few > 1 else ''} sans aucune valeur numérique "
+            f"{'est omise' if few == 1 else 'sont omises'}."
+        )
+    return pick(lang, en, fr)

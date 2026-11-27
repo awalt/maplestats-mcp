@@ -316,6 +316,32 @@ async def test_detection_filters(httpx_mock):
     ]
 
 
+async def test_province_counts_say_when_a_row_is_counted_in_several_provinces(httpx_mock):
+    key = "bovine_tuberculosis"
+    _mock(httpx_mock, constants.DETECTION_PAGES[key]["en"], "btb_en.html")
+    result = await client.get_disease_detections("bovine tb", counts_by="province")
+    assert result.counts is not None
+    by_province = {c.key: c for c in result.counts}
+    # "Alberta and Saskatchewan" (2016) is one row in the totals and one in each province.
+    assert sum(c.detections for c in result.counts) == result.row_count + 1
+    assert by_province["AB"].detections >= 1 and by_province["SK"].detections >= 1
+    assert any(
+        "1 row(s) name several provinces" in n and "use those two for the national total" in n
+        for n in result.notes
+    )
+    # Another grouping says nothing of it.
+    by_year = await client.get_disease_detections("bovine tb", counts_by="year")
+    assert not any("name several provinces" in n for n in by_year.notes)
+
+
+async def test_province_counts_note_is_in_french_for_lang_fr(httpx_mock):
+    key = "bovine_tuberculosis"
+    _mock(httpx_mock, constants.DETECTION_PAGES[key]["en"], "btb_en.html")
+    _mock(httpx_mock, constants.DETECTION_PAGES[key]["fr"], "btb_fr.html")
+    result = await client.get_disease_detections("tb", counts_by="province", lang="fr")
+    assert any("nomment plusieurs provinces" in n and "total national" in n for n in result.notes)
+
+
 async def test_animal_filter_accepts_either_language(httpx_mock):
     key = "chronic_wasting_disease"
     _mock(httpx_mock, constants.DETECTION_PAGES[key]["en"], "cwd_en.html")

@@ -83,7 +83,19 @@ async def serve(wanted: Wanted, latest_n: int, lang: str) -> Served | None:
     newest: date | None = rows[-1].ref_period if rows else None
     unit = detail.unit
     table_known = product_id > 0
-    cite = context.citation(series, None, "", lang)
+    if table_known:
+        cite = context.citation(series, None, "", lang)
+    else:
+        # context.citation would print "Table 00-00-0000-01" for product_id 0, a table
+        # number that does not exist and that a reader would quote. Cite what was read:
+        # the Valet series, which carries StatCan's vector id (see the module docstring).
+        cite = pick(
+            lang,
+            f"Statistics Canada, passed on by the Bank of Canada's Valet API. Series {name} "
+            f"({detail.label}), StatCan vector v{vector}.",
+            f"Statistique Canada, rediffusé par l'API Valet de la Banque du Canada. Série {name} "
+            f"({detail.label}), vecteur v{vector} de Statistique Canada.",
+        )
     ctx = SeriesContext(
         citation=cite,
         table_id=context.table_number(product_id) if table_known else "",

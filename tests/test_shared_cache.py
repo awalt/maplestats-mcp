@@ -248,6 +248,39 @@ async def test_a_bot_check_on_refresh_serves_the_last_good_copy():
     assert "dernière copie valide" in cache_module.last_good_note(served, "fr")
 
 
+async def test_waiters_on_a_bot_checked_refresh_get_the_last_good_caveat_too():
+    async def first():
+        return {"rows": [1, 2]}
+
+    await cached_fetch("k-shared", 60, first)
+    cache_module._caches.clear()  # the TTL ran out
+    release = asyncio.Event()
+    calls = 0
+
+    async def refresh():
+        nonlocal calls
+        calls += 1
+        await release.wait()
+        raise _challenge()
+
+    async def one_call():
+        # Each concurrent tool call watches its own list, as the middleware does.
+        with cache_module.watching_last_good() as served:
+            data, was_cached = await cached_fetch("k-shared", 60, refresh)
+        return data, was_cached, served
+
+    tasks = [asyncio.create_task(one_call()) for _ in range(3)]
+    await asyncio.sleep(0)
+    release.set()
+    results = await asyncio.gather(*tasks)
+    assert calls == 1
+    for data, was_cached, served in results:
+        # The owner and every waiter: a stale copy, labelled as one.
+        assert data == {"rows": [1, 2]} and was_cached
+        assert len(served) == 1
+    assert not cache_module._inflight
+
+
 async def test_without_a_last_good_copy_the_bot_check_is_raised():
     from maplestats_mcp.shared.errors import CloudflareChallenge
 

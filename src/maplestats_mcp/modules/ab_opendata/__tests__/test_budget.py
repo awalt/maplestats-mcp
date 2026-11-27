@@ -233,6 +233,89 @@ def test_line_numbers_and_column_numbers_are_dropped():
     assert sheet.rows[0].section == "Revenue"
 
 
+def test_a_line_item_that_looks_like_years_is_data_not_a_header():
+    # Values in $ millions can all be whole numbers between 1900 and 2100 and rise
+    # left to right. Read as a header row they swallowed the line item and gave
+    # every later row column names such as "2025-26 Budget 1950".
+    book = Workbook()
+    sheet = book.active
+    assert sheet is not None
+    sheet.title = "Capital plan"
+    sheet.append(["Capital plan"])
+    sheet.append(["(millions of dollars)"])
+    sheet.append([None, "2025-26", "2026-27", "2027-28", "2028-29"])
+    sheet.append([None, "Budget", "Target", "Target", "Target"])
+    sheet.append(["Roads", 1950, 1980, 2020, 2075])
+    sheet.append(["Buildings", 100, 200, 300, 400])
+    # Consecutive numbers after the data have begun, with no header line under
+    # them, are a line item too, not the start of a second table.
+    sheet.append(["Backlog", 2020, 2021, 2022, 2023])
+    sheet.append(["Reserve", 5, 6, 7, 8])
+    parsed = budget_sheets.parse_sheet(_bytes(book), "Capital plan")
+    assert parsed.columns == [
+        "2025-26 Budget",
+        "2026-27 Target",
+        "2027-28 Target",
+        "2028-29 Target",
+    ]
+    assert [r.label for r in parsed.rows] == ["Roads", "Buildings", "Backlog", "Reserve"]
+    assert parsed.rows[0].values["2027-28 Target"] == 2020
+    assert parsed.rows[2].values["2028-29 Target"] == 2023
+    assert parsed.rows[3].section is None
+
+
+def test_a_header_of_years_with_gaps_is_still_a_header_with_evidence():
+    # The Key Assumptions calendar header read 2017, 2019, 2025, 2026 in older editions,
+    # where no column is hidden. With a header line under it, the gaps do not matter;
+    # requiring consecutive years turned the row into data and named the columns
+    # "Actuals", "Actuals (2)", "Estimate", "Forecast".
+    book = Workbook()
+    sheet = book.active
+    assert sheet is not None
+    sheet.title = "KeyAssumptions"
+    sheet.append(["Key Energy and Economic Assumptions"])
+    sheet.append(["Fiscal Year Assumptionsa", "2017-18", "2019-20", "2025-26", "2026-27"])
+    sheet.append([None, "Actuals", "Actuals", "Estimate", "Forecast"])
+    sheet.append(["Crude Oil Pricesb"])
+    sheet.append(["WTI (US$/bbl)", 53.69, 56.99, 61.5, 60.5])
+    sheet.append(["Calendar Year Assumptionsa", 2017, 2019, 2025, 2026])
+    sheet.append([None, "Actuals", "Actuals", "Estimate", "Forecast"])
+    sheet.append(["Gross Domestic Product"])
+    sheet.append(["Nominal (billions of dollars)", 332.191, 345.0, 481.1, 490.3])
+    parsed = budget_sheets.parse_sheet(_bytes(book), "KeyAssumptions")
+    wti = next(r for r in parsed.rows if r.label == "WTI (US$/bbl)")
+    assert list(wti.values) == [
+        "2017-18 Actuals",
+        "2019-20 Actuals",
+        "2025-26 Estimate",
+        "2026-27 Forecast",
+    ]
+    gdp = next(r for r in parsed.rows if r.label == "Nominal (billions of dollars)")
+    assert gdp.values == {
+        "2017 Actuals": 332.191,
+        "2019 Actuals": 345.0,
+        "2025 Estimate": 481.1,
+        "2026 Forecast": 490.3,
+    }
+    assert gdp.section == "Gross Domestic Product"
+
+
+def test_an_unlabelled_header_of_years_with_gaps_names_the_columns():
+    book = Workbook()
+    sheet = book.active
+    assert sheet is not None
+    sheet.title = "Projection"
+    sheet.append(["Population projection"])
+    sheet.append(["(thousands)"])
+    sheet.append([None, 2025, 2030, 2035])
+    sheet.append(["Alberta", 4900, 5300, 5700])
+    sheet.append(["Total", 5400, 5800, 6300])
+    parsed = budget_sheets.parse_sheet(_bytes(book), "Projection")
+    assert parsed.columns == ["2025", "2030", "2035"]
+    assert [r.label for r in parsed.rows] == ["Alberta", "Total"]
+    assert parsed.rows[0].values == {"2025": 4900, "2030": 5300, "2035": 5700}
+
+
 async def test_no_part_lists_the_workbooks(budget):
     result = await client.get_budget_table()
     assert result.edition == 2026 and result.editions == [2026]

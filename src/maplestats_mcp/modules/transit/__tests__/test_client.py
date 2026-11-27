@@ -422,6 +422,74 @@ async def test_frequency_template_trips_are_left_out(httpx_mock):
     assert sum(h.trips for h in summary.hourly) == 3
 
 
+async def test_frequency_trips_left_out_are_counted_in_the_limits(httpx_mock):
+    # A route or stop served only by frequencies.txt trips must not read as "no service".
+    files = dict(FILES)
+    files["frequencies.txt"] = (
+        "trip_id,start_time,end_time,headway_secs,exact_times\nT2,05:20:00,11:59:00,1800,1\n"
+    )
+    _serve(httpx_mock, "stsv_valleyfield", files)
+    stop = await client.get_stop_departures(
+        "stsv_valleyfield", "S1", service_date="2026-10-06", start_time="00:00"
+    )
+    assert "frequencies.txt are not listed (1 at this stop on this date)" in (
+        stop.provenance.limits or ""
+    )
+    summary = await client.get_route_summary("stsv_valleyfield", "10", service_date="2026-10-06")
+    limits = summary.provenance.limits or ""
+    assert "1 of this route's 5 trips in the feed are frequency-based" in limits
+    assert "1 of them running on this date" in limits
+    french = await client.get_route_summary(
+        "stsv_valleyfield", "10", service_date="2026-10-06", lang="fr"
+    )
+    assert "1 des 5 voyages de cette ligne" in (french.provenance.limits or "")
+
+
+@pytest.mark.parametrize(
+    ("end_time", "counted"),
+    [("11:59:00", False), ("23:59:00", False), ("26:00:00", True)],
+)
+async def test_a_weekday_frequency_trip_is_not_left_out_on_a_saturday(
+    httpx_mock, end_time, counted
+):
+    # Friday's service only reaches Saturday if the trip's window runs to 24:00 or later.
+    files = dict(FILES)
+    files["frequencies.txt"] = (
+        "trip_id,start_time,end_time,headway_secs,exact_times\nT2,05:20:00,"
+        + end_time
+        + ",1800,1\n"
+    )
+    _serve(httpx_mock, "stsv_valleyfield", files)
+    result = await client.get_stop_departures(
+        "stsv_valleyfield", "S1", service_date="2026-10-10", start_time="00:00"
+    )
+    assert (
+        "frequencies.txt are not listed (1 at this stop" in (result.provenance.limits or "")
+    ) is counted
+
+
+async def test_a_route_made_only_of_frequency_trips_says_why_it_has_no_trips(httpx_mock):
+    files = dict(FILES)
+    files["frequencies.txt"] = "trip_id,start_time,end_time,headway_secs\n" + "".join(
+        f"{trip},05:00:00,23:00:00,600\n" for trip in ("T1", "T2", "T3", "T4", "T5")
+    )
+    _serve(httpx_mock, "stsv_valleyfield", files)
+    summary = await client.get_route_summary("stsv_valleyfield", "10", service_date="2026-10-06")
+    assert summary.trips_in_feed == 0 and summary.trips_on_date == 0
+    assert "5 of this route's 5 trips" in (summary.provenance.limits or "")
+
+
+async def test_a_feed_without_frequencies_has_no_frequency_note(httpx_mock):
+    _serve(httpx_mock, "stsv_valleyfield")
+    summary = await client.get_route_summary("stsv_valleyfield", "10", service_date="2026-10-06")
+    assert "frequencies.txt" not in (summary.provenance.limits or "")
+
+
+async def test_a_bad_start_time_is_refused_in_french():
+    with pytest.raises(InvalidInput, match="start_time doit avoir la forme"):
+        await client.get_stop_departures("calgary", "S1", start_time="noon", lang="fr")
+
+
 async def test_whole_download_feed_for_a_host_without_ranges(httpx_mock):
     # The STQ host answered a Range request with the whole 71 KB zip (HTTP 200).
     _serve_whole(httpx_mock, "stq_ferries")

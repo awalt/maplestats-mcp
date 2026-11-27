@@ -425,6 +425,9 @@ async def test_active_datastore_serves_rows_without_the_file(httpx_mock):
     assert result.rows == [{"Year": "2022", "n": "5"}] and result.total_rows == 40
     assert result.truncated and result.all_columns == ["Year", "n"]
     assert not any(str(r.url) == FED_FILE for r in httpx_mock.get_requests())
+    # read_resource already checked the resource: datastore_search does not look it up again.
+    shown = [r for r in httpx_mock.get_requests() if "resource_show" in str(r.url)]
+    assert len(shown) == 1
 
 
 async def test_datastore_404_falls_back_to_the_file(httpx_mock):

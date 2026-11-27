@@ -96,10 +96,11 @@ DOWN_TOOLS: dict[str, str] = {}
 
 
 # A call opens a session (initialize, its notice, the call: three requests; 727
-# requests for about 245 calls on Azure, 2026-11-22). The Azure server allows 60
-# requests a minute per caller, not the default 120: measured 2026-11-22, the 61st
-# request in a minute got a 429. One call every 2 s peaked at 60 to 66 a minute and
-# met 23 refusals per run; one every 3.2 s keeps a caller at 56 at most.
+# requests for about 245 calls on Azure, 2026-11-22). The Azure server allowed 60
+# requests a minute per caller then, not the default 120 (set by hand; docker.yml has
+# set 120 since 2026-11-23): measured 2026-11-22, the 61st request in a minute got a
+# 429. One call every 2 s peaked at 60 to 66 a minute and met 23 refusals per run;
+# one every 3.2 s keeps a caller at 56 at most.
 _HOSTED_CALL_SPACING_SECONDS = 3.2
 
 
@@ -1253,6 +1254,53 @@ STEPS: list[Step] = [
     ),
     Step("ourcommons", "ourcommons_get_party_standings", {}, _non_empty("by_party")),
     Step("ourcommons", "ourcommons_get_ministry", {"lang": "fr"}, _non_empty("ministers")),
+    # NRCan retail fuel prices by city. Live 2026-11-24: 71 cities and Canada; daily prices
+    # are the last 43 business days; auto propane asked monthly is served weekly.
+    Step(
+        "nrcan_fuel_prices",
+        "nrcan_fuel_prices_list_locations",
+        {},
+        lambda data: len(data["locations"]) >= 70 and data["locations"][0]["name"] == "Canada",
+    ),
+    Step(
+        "nrcan_fuel_prices",
+        "nrcan_fuel_prices_get_prices",
+        {"product": "regular", "locations": ["Canada", "Calgary"], "frequency": "daily"},
+        lambda data: (
+            data["frequency"] == "daily"
+            and data["locations"] == ["Canada", "Calgary"]
+            and 70 <= len(data["rows"]) <= 100
+            and all(r["price"] and 50 < r["price"] < 300 for r in data["rows"])
+        ),
+    ),
+    Step(
+        "nrcan_fuel_prices",
+        "nrcan_fuel_prices_get_prices",
+        {"product": "diesel", "locations": ["66", "Edmonton"], "year": 2025},
+        lambda data: (
+            data["frequency"] == "weekly"
+            and len(data["rows"]) == 104
+            and data["rows"][-1]["period"] == "2025-12-30"
+        ),
+    ),
+    Step(
+        "nrcan_fuel_prices",
+        "nrcan_fuel_prices_get_prices",
+        {"product": "propane", "locations": ["Toronto"], "frequency": "monthly", "year": 2024},
+        lambda data: data["frequency"] == "weekly" and "not monthly" in (data["note"] or ""),
+    ),
+    Step(
+        "nrcan_fuel_prices",
+        "nrcan_fuel_prices_get_prices",
+        {"product": "super", "locations": ["Montréal"], "latest_n": 1, "lang": "fr"},
+        lambda data: data["product_name"] == "Essence super" and len(data["rows"]) == 1,
+    ),
+    Step(
+        "nrcan_fuel_prices",
+        "nrcan_fuel_prices_get_prices",
+        {"product": "kerosene", "locations": ["Canada"]},
+        expect_error="unknown product",
+    ),
     # NRCan energy use
     Step("nrcan_energy_use", "nrcan_energy_use_list_products", {}, _non_empty("surveys")),
     Step(

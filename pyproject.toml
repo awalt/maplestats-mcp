@@ -121,6 +121,10 @@ dev = [
     "pyright",
     "types-pyyaml>=6.0.12.20260906",
     "pytest-xdist>=3.8.0",
+    # The tests that run the Python scripts reproduce_code writes and compare them
+    # with the tools' own output (tests/test_reproduce*.py) need it; they skipped
+    # in every job before it was here. MAPLE_REQUIRE_POLARS=1 fails a skip (conftest.py).
+    "polars>=1.0",
 ]
 
 [tool.pytest.ini_options]
